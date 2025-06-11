@@ -41,5 +41,7 @@
    }
    ```
 - #### Me (http://localhost:8000/api/v1/me) GET (response is user with its full details)
+- #### Logout (http://localhost:8000/api/v1/logout) POST (response is logout message)
+
 6) 
 
