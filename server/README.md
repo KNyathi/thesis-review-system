@@ -32,12 +32,14 @@
     "institution": "****",
     "role": "reviewer" (other option is 'student')
    }
-```
+   ```
 - #### Login (http://localhost:8000/api/v1/login) POST (response is jwt token, user (id, role))
+  ```
   {
   "email":"apples@gmail.com",
-"password": "*****"
-}
+   "password": "*****"
+   }
+   ```
 - #### Me (http://localhost:8000/api/v1/me) GET (response is user with its full details)
 6) 
 
