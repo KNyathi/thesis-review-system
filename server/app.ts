@@ -3,11 +3,26 @@ import express, { NextFunction, Request, Response } from "express";
 export const app = express();
 
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import { ErrorMiddleware } from "./middleware/error";
+import reviewRouter from "./routes/reviewRoutes";
+import thesisRouter from "./routes/thesisRoutes";
+import authRouter from "./routes/authRoutes";
+import adminRouter from "./routes/adminRoutes";
+
+import fs from 'fs';
+import path from 'path';
+
+const uploadsDir = path.join(__dirname, 'uploads/theses');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
 //Body parser
 app.use(express.json({ limit: "50mb" }));
 
+//cookie parse
+app.use(cookieParser());
 
 // cors => cros origin resource sharing
 const allowedOrigins: string | string[] = process.env.ORIGIN
@@ -25,8 +40,13 @@ app.use(
 //routes
 app.use(
   "/api/v1",
-
+    reviewRouter,
+    thesisRouter,
+    authRouter,
+    adminRouter,
+    authRouter,
 );
+
 
 //testing api
 app.get("/test", (req: Request, res: Response, next: NextFunction) => {
