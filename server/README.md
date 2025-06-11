@@ -1,5 +1,5 @@
 # Server Functionality (Thesis-Review-System)
-## The application was developed using NodeJS for backend, database is MongoDB, and Typescript as programming language.
+## The application was developed using NodeJS for backend, MongoDB as database, and Typescript as programming language.
 
 ## Key Points
 1) Clone the repository using the command below
