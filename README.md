@@ -11,7 +11,7 @@
 1) Make reviews to student theses
 2) Submit feedback with review grade
 
-### Student
+### Student roles:
 1) Submit pdf file of thesis for review
 2) Fill in the correct details before submission
 
