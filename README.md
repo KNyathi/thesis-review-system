@@ -1,6 +1,6 @@
 # Thesis Review System
 
-## The project aims to review theses for students in Bachelor's and Master's level of education. Through modern technology stack, a web application is developed with different functionalities for three different users (admin, reviewer, and student).
+## The project aims to review *theses* for students in Bachelor's and Master's level of education. Through modern technology stack, a web application is developed with different functionalities for three different users (admin, reviewer, and student).
 
 ### Admin roles:
 1) Assign/Reassign theses to reviewers
