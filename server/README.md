@@ -24,13 +24,13 @@
 5) API endpoints
 - ### Auth Routes
 - #### Register (http://localhost:8000/api/v1/register) POST (response is jwt token sent to client)
-  {
+  ```{
     "fullName": "Banana Apples",
     "email": "apples@gmail.com",
     "password": "********",
     "institution": "****",
     "role": "reviewer" (other option is 'student')
-}
+}```
 - #### Login (http://localhost:8000/api/v1/login) POST (response is jwt token, user (id, role))
   {
   "email":"apples@gmail.com",
