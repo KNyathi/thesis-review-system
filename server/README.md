@@ -31,7 +31,7 @@
     "password": "********",
     "institution": "****",
     "role": "reviewer" (other option is 'student')
-}
+   }
 ```
 - #### Login (http://localhost:8000/api/v1/login) POST (response is jwt token, user (id, role))
   {
