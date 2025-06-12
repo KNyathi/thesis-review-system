@@ -84,16 +84,23 @@
    ```
 
 - ### Review Routes
-- #### assigned-theses (http://localhost:8000/api/assigned-theses) GET (response is a list of theses)
-- #### completed-theses (http://localhost:8000/api/completed-theses) GET (response is a list of completed theses from assigned ones)
-- #### submit-review (http://localhost:8000/api/submit-review/:thesisid) POST (response is )
+- #### assigned-theses (http://localhost:8000/api/v1/assigned-theses) GET (response is a list of theses)
+- #### completed-theses (http://localhost:8000/api/v1/completed-theses) GET (response is a list of completed theses from assigned ones)
+- #### submit-review (http://localhost:8000/api/v1/submit-review/:thesisid) POST (response is )
   ```
   {
   "grade": "",
-  "comments": ""
+  "assessmentData": ""
   }
   ```
 
+- ### Thesis Routes
+- #### my-thesis (http://localhost:8000/api/v1/my-thesis) GET (response is thesis status, message)
+- #### submit-thesis (http://localhost:8000/api/v1/submit-thesis) POST (response is thesis)
+  {
+   "title": "kkkkk"
+  } 
+- #### /thesis/:id/download (http://localhost:8000/api/v1/thesis/:id/download) GET (file is downloaded)
   
 6) 
 
