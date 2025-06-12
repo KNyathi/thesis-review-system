@@ -13,11 +13,11 @@ const authRouter = express.Router();
 
 // Public routes
 authRouter.post('/register', register);
-authRouter.post('/login', login);
+authRouter.post('/login', login); //add token on client
 
 // Authenticated routes
 authRouter.get('/me', authenticate, getCurrentUser);
-authRouter.post('/logout', authenticate, logout);
+authRouter.post('/logout', authenticate, logout); //remove token on client
 
 // Authenticated user routes
 authRouter.patch('/profile', authenticate, updateProfile);

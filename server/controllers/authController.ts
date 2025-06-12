@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
-import { User } from "../models/User.model";
+import { User, IUser, IReviewer, IAdmin  } from "../models/User.model";
 import { generateToken } from "../middleware/auth";
 
 export const register = async (req: Request, res: Response) => {
@@ -59,7 +59,16 @@ export const login = async (req: Request, res: Response) => {
     // Generate JWT token
     const token = generateToken(user._id.toString(), user.role);
 
-    res.json({ token });
+    res.setHeader('Authorization', `Bearer ${token}`);
+    
+    res.json({ 
+      token, 
+      user: { 
+        id: user._id, 
+        role: user.role 
+      } 
+    });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Login failed" });
@@ -87,32 +96,54 @@ export const getCurrentUser = (req: Request, res: Response) => {
 
 export const updateProfile = async (req: Request, res: Response) => {
   try {
-    const user = req.user;
+    const user = req.user as IUser;
     if (!user) {
       res.status(401).json({ error: "User not authenticated" });
       return;
     }
 
     const updates = Object.keys(req.body);
-    const allowedUpdates = ["fullName", "institution"]; // Add other fields as needed
+    
+     // Define allowed updates based on user role
+    let allowedUpdates: string[] = [];
+
+    if (user.role === 'student') {
+      allowedUpdates = ['fullName', 'institution', 'faculty', 'group', 'subjectArea', 'educationalProgram', 'degreeLevel', 'thesisTopic'];
+    } else if (user.role === 'reviewer') {
+      allowedUpdates = ['fullName', 'institution', 'positions'];
+    } else if (user.role === 'admin') {
+      allowedUpdates = ['fullName', 'institution', 'position'];
+    }
+
+
     const isValidOperation = updates.every((update) =>
       allowedUpdates.includes(update)
     );
 
     if (!isValidOperation) {
-      res.status(400).json({ error: "Invalid updates!" });
+      res.status(400).json({ error: "Invalid updates for this user role!" });
       return;
     }
 
-    updates.forEach((update) => {
-      if (update in user) {
-        (user as any)[update] = req.body[update];
+    // Fetch the user as a Mongoose document
+    const userDoc = await User.findById(user._id);
+    if (!userDoc) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    // Apply updates to the Mongoose document
+    updates.forEach(update => {
+      if (update in userDoc) {
+        (userDoc as any)[update] = req.body[update];
       }
     });
 
-    await user.save();
+    // Save the Mongoose document
+    await userDoc.save();
 
-    res.json(user);
+    res.json(userDoc);
+
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Profile update failed" });
@@ -130,6 +161,13 @@ export const changePassword = async (req: Request, res: Response) => {
 
     const { currentPassword, newPassword } = req.body;
 
+    // Fetch the user as a Mongoose document
+    const userDoc = await User.findById(user._id);
+    if (!userDoc) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
     // Check current password
     const isMatch = await bcrypt.compare(currentPassword, user.password);
 
@@ -138,9 +176,11 @@ export const changePassword = async (req: Request, res: Response) => {
       return;
     }
 
-    // Hash new password
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
+     // Hash new password
+    userDoc.password = await bcrypt.hash(newPassword, 10);
+
+    // Save the Mongoose document
+    await userDoc.save();
 
     res.json({ message: "Password changed successfully" });
   } catch (error) {

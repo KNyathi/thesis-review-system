@@ -6,7 +6,7 @@ export const submitReview = async (req: Request, res: Response) => {
   try {
     const reviewer = req.user as IReviewer;
     const { thesisId } = req.params;
-    const { grade, comments } = req.body;
+    const { grade, assessmentData } = req.body;
 
     // Update the thesis with the review details
     const thesis = await Thesis.findByIdAndUpdate(
@@ -14,7 +14,7 @@ export const submitReview = async (req: Request, res: Response) => {
       {
         status: "evaluated",
         finalGrade: grade,
-        comments,
+        assessment: assessmentData,
       },
       { new: true }
     );
@@ -39,6 +39,7 @@ export const submitReview = async (req: Request, res: Response) => {
     res.json(thesis);
   } catch (error) {
     console.error(error);
+    console.log("err: ", error)
     res.status(500).json({ error: "Failed to submit review" });
   }
 };
