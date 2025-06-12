@@ -75,6 +75,12 @@
    "position": "Manager"
    }
 ```
-
+- #### Password (http://localhost:8000/api/v1/password) PATCH (partly update) (response is success message)
+  ```
+   {
+      "currentPassword": "****",
+     "newPassword":"***"
+   }
+   ```
 6) 
 
