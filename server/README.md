@@ -101,6 +101,26 @@
    "title": "kkkkk"
   } 
 - #### /thesis/:id/download (http://localhost:8000/api/v1/thesis/:id/download) GET (file is downloaded)
-  
+
+- ### Admin Routes
+- #### users (http://localhost:8000/api/v1/users) GET (response is users)
+- #### delete-user (http://localhost:8000/api/v1/users/:id) DELETE (response is success message)
+- #### approve-reviewer (http://localhost:8000/api/v1/reviewers/:id/approve) PATCH (response is success message)
+- #### reject-reviewer (http://localhost:8000/api/v1/reviewers/:id/reject) PATCH (response is success message)
+- #### assign-thesis (http://localhost:8000/api/v1/assign-thesis) POST (response is success message)
+ ```
+   {
+     "thesisId": "",
+     "reviewerId": ""
+  }
+   ```
+  - #### reassign-thesis (http://localhost:8000/api/v1/reassign-thesis) PATCH (response is success message)
+```
+   {
+     "thesisId": "",
+     "oldReviewerId": "",
+     "newReviewerId": ""
+     }
+   ```
 6) 
 
