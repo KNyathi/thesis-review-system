@@ -82,5 +82,18 @@
      "newPassword":"***"
    }
    ```
+
+- ### Review Routes
+- #### assigned-theses (http://localhost:8000/api/assigned-theses) GET (response is a list of theses)
+- #### completed-theses (http://localhost:8000/api/completed-theses) GET (response is a list of completed theses from assigned ones)
+- #### submit-review (http://localhost:8000/api/submit-review/:thesisid) POST (response is )
+  ```
+  {
+  "grade": "",
+  "comments": ""
+  }
+  ```
+
+  
 6) 
 
