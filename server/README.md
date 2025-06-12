@@ -40,9 +40,41 @@
    "password": "*****"
    }
    ```
-- #### Me (http://localhost:8000/api/v1/me) GET (response is user with its full details)
+- #### Me (http://localhost:8000/api/v1/me) GET (response is user details)
 - #### Logout (http://localhost:8000/api/v1/logout) POST (response is logout message)
-- 
+- #### Profile (http://localhost:8000/api/v1/profile) PATCH (partly update) (response is user details)
+  
+  *student*
+ ```
+  {
+  "fullName":"Banana Apples",
+   "institution": "Apples Org",
+   "faculty" : "IT",
+   "group" : "BVT2209",
+   "subjectArea": "09.03.01 Information Science and Computer Engineering",
+   "educationalProgram": "Artificial Intelligence",
+   "degreeLevel": "Bachelors",
+   "thesisTopic":"AI in Unmanned Aerial Vehicles"
+   }
+   ```
+
+*reviewer*
+```
+   {
+   "fullName": "Banana Oranges Orengovich",
+   "institution": "Oranges Org",
+   "positions": "Dean of IT Faculty, CEO at RoboTech"
+   }
+   ```
+
+*admin*
+```
+   {
+   "fullName" : "Banana Oranges",
+   "institution": "Oranges Org",
+   "position": "Manager"
+   }
+```
 
 6) 
 
