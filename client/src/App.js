@@ -5,6 +5,7 @@ import Login from './components/Login';
 import PendingApproval from './components/PendingApproval';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import './index.css';
 
 function App() {
   return (

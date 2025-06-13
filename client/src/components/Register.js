@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { FiUser, FiMail, FiLock, FiBook, FiAward } from 'react-icons/fi';
+import { FiUser, FiMail, FiLock, FiBook, FiEye, FiEyeOff } from 'react-icons/fi';
 
 const Register = () => {
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     password: '',
+    confirmPassword: '',
     institution: '',
     role: '',
-    faculty: '',
-    group: ''
   });
+
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
 
@@ -22,16 +23,26 @@ const Register = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
+
     if (!formData.role) {
       setError('Please select a role');
       return;
     }
 
-    const result = await register(formData);
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    const { confirmPassword, ...userData } = formData;
+    const result = await register(userData);
     if (!result.success) {
       setError(result.error);
     }
@@ -57,18 +68,18 @@ const Register = () => {
             <div className="grid grid-cols-2 gap-4 mt-1">
               <button
                 type="button"
-                className={`p-3 border rounded-lg flex flex-col items-center ${formData.role === 'student' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}
+                className={`p-3 border rounded-lg flex flex-col items-center ${formData.role === 'student' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
                 onClick={() => setFormData(prev => ({ ...prev, role: 'student' }))}
               >
-                <FiUser className="w-6 h-6 mb-2 text-gray-600" />
+                <FiUser className="w-6 h-6 mb-2" />
                 <span>Student</span>
               </button>
               <button
                 type="button"
-                className={`p-3 border rounded-lg flex flex-col items-center ${formData.role === 'reviewer' ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}
+                className={`p-3 border rounded-lg flex flex-col items-center ${formData.role === 'reviewer' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
                 onClick={() => setFormData(prev => ({ ...prev, role: 'reviewer' }))}
               >
-                <FiAward className="w-6 h-6 mb-2 text-gray-600" />
+                <FiBook className="w-6 h-6 mb-2" />
                 <span>Reviewer</span>
               </button>
             </div>
@@ -125,16 +136,51 @@ const Register = () => {
                 <FiLock className="text-gray-400" />
               </div>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 id="password"
                 name="password"
-                className="block w-full py-2 pl-10 pr-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                className="block w-full py-2 pl-10 pr-10 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
                 placeholder="••••••••"
                 value={formData.password}
                 onChange={handleChange}
                 required
                 minLength={6}
               />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 flex items-center pr-3"
+                onClick={togglePasswordVisibility}
+              >
+                {showPassword ? <FiEyeOff /> : <FiEye />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+              Confirm Password
+            </label>
+            <div className="relative mt-1 rounded-md shadow-sm">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <FiLock className="text-gray-400" />
+              </div>
+              <input
+                type={showPassword ? "text" : "password"}
+                id="confirmPassword"
+                name="confirmPassword"
+                className="block w-full py-2 pl-10 pr-10 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                placeholder="••••••••"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                required
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 flex items-center pr-3"
+                onClick={togglePasswordVisibility}
+              >
+                {showPassword ? <FiEyeOff /> : <FiEye />}
+              </button>
             </div>
           </div>
 
@@ -158,42 +204,6 @@ const Register = () => {
               />
             </div>
           </div>
-
-          {formData.role === 'student' && (
-            <>
-              <div>
-                <label htmlFor="faculty" className="block text-sm font-medium text-gray-700">
-                  Faculty
-                </label>
-                <input
-                  type="text"
-                  id="faculty"
-                  name="faculty"
-                  className="block w-full py-2 px-3 mt-1 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Faculty of Science"
-                  value={formData.faculty}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="group" className="block text-sm font-medium text-gray-700">
-                  Group
-                </label>
-                <input
-                  type="text"
-                  id="group"
-                  name="group"
-                  className="block w-full py-2 px-3 mt-1 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="CS-101"
-                  value={formData.group}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-            </>
-          )}
 
           <button
             type="submit"
