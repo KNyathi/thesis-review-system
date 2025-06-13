@@ -6,7 +6,7 @@ import { generateToken } from "../middleware/auth";
 export const register = async (req: Request, res: Response) => {
   try {
     const { email, password, fullName, institution, role } = req.body;
-
+    
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
