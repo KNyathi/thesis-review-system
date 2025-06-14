@@ -2,9 +2,18 @@
 
 ## Overview
 
-This frontend application is developed using React.js with TypeScript, Tailwind CSS for styling, and Axios for API requests. It provides a user interface for the Thesis Review System, allowing users to register, log in, and interact with the system based on their roles.
+This frontend application is developed using React.js with modern UI components, Tailwind CSS for styling, and Axios for API requests. It provides a sleek, minimalistic user interface for the Thesis Review System with a modern dark theme, allowing users to register, log in, and interact with the system based on their roles (Student/Reviewer).
 
-## Key Points
+## Technology Stack
+
+- **React.js** - Frontend framework
+- **React Router DOM** - Client-side routing
+- **Tailwind CSS** - Utility-first CSS framework
+- **React Icons** - Modern icon library (Feather Icons)
+- **Axios** - HTTP client for API requests
+- **PostCSS & Autoprefixer** - CSS processing and vendor prefixes
+
+# Setup Instructions
 
 ### 1. Clone the Repository
 
