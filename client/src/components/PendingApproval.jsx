@@ -1,4 +1,3 @@
-"use client"
 import { useAuth } from "../context/AuthContext"
 import { FiClock, FiLogOut } from "react-icons/fi"
 
