@@ -1,77 +1,142 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { createContext, useContext, useState, useEffect } from "react"
+import axios from "axios"
 
-const AuthContext = createContext();
+const AuthContext = createContext()
+
+export const useAuth = () => {
+  const context = useContext(AuthContext)
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider")
+  }
+  return context
+}
+
+const API_BASE_URL = "http://localhost:8000/api/v1"
+
+// Create axios instance
+const authAPI = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+})
+
+// Auth functions
+const realLogin = async (email, password) => {
+  try {
+    const response = await authAPI.post("/login", { email, password })
+    const { token, user } = response.data
+
+    // Store token in localStorage
+    localStorage.setItem("token", token)
+
+    return {
+      success: true,
+      user: user,
+      token: token,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || "Login failed",
+    }
+  }
+}
+
+const realRegister = async (userData) => {
+  try {
+    const response = await authAPI.post("/register", userData)
+    const { token } = response.data
+
+    // Store token in localStorage
+    localStorage.setItem("token", token)
+
+    // Get user info after registration
+    const userResponse = await authAPI.get("/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+    return {
+      success: true,
+      user: userResponse.data,
+      token: token,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || "Registration failed",
+    }
+  }
+}
+
+const getCurrentUser = async (token) => {
+  try {
+    const response = await authAPI.get("/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    return response.data
+  } catch (error) {
+    localStorage.removeItem("token")
+    return null
+  }
+}
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
 
+  // Check for existing token on app load
   useEffect(() => {
-    const checkAuth = async () => {
-      const token = localStorage.getItem('token');
+    const initAuth = async () => {
+      const token = localStorage.getItem("token")
       if (token) {
-        try {
-          const res = await axios.get('http://localhost:8000/api/v1/me', {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          setUser(res.data);
-        } catch (err) {
-          localStorage.removeItem('token');
-        }
+        const userData = await getCurrentUser(token)
+        setUser(userData)
       }
-      setLoading(false);
-    };
-    checkAuth();
-  }, []);
+      setLoading(false)
+    }
+
+    initAuth()
+  }, [])
 
   const login = async (email, password) => {
+    setLoading(true)
     try {
-      const res = await axios.post('http://localhost:8000/api/v1/login', { email, password });
-      localStorage.setItem('token', res.data.token);
-      setUser(res.data.user);
-
-      if (res.data.user.role === 'reviewer' && !res.data.user.isApproved) {
-        navigate('/pending-approval');
-      } else {
-        navigate(`/${res.data.user.role}`);
+      const result = await realLogin(email, password)
+      if (result.success) {
+        setUser(result.user)
       }
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.response?.data?.error || 'Login failed' };
+      return result
+    } finally {
+      setLoading(false)
     }
-  };
+  }
 
   const register = async (userData) => {
+    setLoading(true)
     try {
-      const res = await axios.post('http://localhost:8000/api/v1/register', userData);
-      localStorage.setItem('token', res.data.token);
-      setUser(res.data.user);
-
-      if (res.data.user.role === 'reviewer') {
-        navigate('/pending-approval');
-      } else {
-        navigate('/student');
+      const result = await realRegister(userData)
+      if (result.success) {
+        setUser(result.user)
       }
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.response?.data?.error || 'Registration failed' };
+      return result
+    } finally {
+      setLoading(false)
     }
-  };
+  }
 
   const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
-    navigate('/login');
-  };
+    localStorage.removeItem("token")
+    setUser(null)
+  }
 
-  return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
-};
+  const value = {
+    user,
+    login,
+    register,
+    logout,
+    loading,
+  }
 
-export const useAuth = () => useContext(AuthContext);
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}

@@ -1,27 +1,52 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Register from './components/Register';
-import Login from './components/Login';
-import PendingApproval from './components/PendingApproval';
-import { AuthProvider } from './context/AuthContext';
-import ProtectedRoute from './components/ProtectedRoute';
-import './index.css';
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
+import { AuthProvider } from "./context/AuthContext"
+import LoginPage from "./pages/LoginPage"
+import RegisterPage from "./pages/RegisterPage"
+import PendingApprovalPage from "./pages/PendingApprovalPage"
+import StudentDashboard from "./pages/StudentDashboard"
+import ReviewerDashboard from "./pages/ReviewerDashboard"
+import AdminDashboard from "./pages/AdminDashboard"
+import ProtectedRoute from "./components/ProtectedRoute"
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <AuthProvider>
+      <Router>
+        <div className="font-sans">
           <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/pending-approval" element={<PendingApproval />} />
-            <Route path="/" element={<Navigate to="/login" />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/pending" element={<PendingApprovalPage />} />
+            <Route
+              path="/student"
+              element={
+                <ProtectedRoute role="student">
+                  <StudentDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/reviewer"
+              element={
+                <ProtectedRoute role="reviewer">
+                  <ReviewerDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute role="admin">
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/" element={<Navigate to="/login" replace />} />
           </Routes>
         </div>
-      </AuthProvider>
-    </Router>
-  );
+      </Router>
+    </AuthProvider>
+  )
 }
 
-export default App;
+export default App

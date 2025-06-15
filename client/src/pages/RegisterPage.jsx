@@ -1,10 +1,10 @@
-import { useState } from "react"
-import { useAuth } from "../context/AuthContext"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { FiUser, FiMail, FiLock, FiBook, FiEye, FiEyeOff } from "react-icons/fi"
-import { Toast, useToast } from "./Toast"
+import { Toast, useToast } from "../components/Toast"
+import { useAuth } from "../context/AuthContext"
 
-const Register = () => {
+const RegisterPage = () => {
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -14,10 +14,19 @@ const Register = () => {
     role: "",
   })
   const [showPassword, setShowPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const { register } = useAuth()
+  const { register, loading, user } = useAuth()
   const navigate = useNavigate()
   const { toast, showToast, hideToast } = useToast()
+
+  useEffect(() => {
+    if (user) {
+      if (user.role === "reviewer" && !user.isApproved) {
+        navigate("/pending", { replace: true })
+      } else {
+        navigate(`/${user.role}`, { replace: true })
+      }
+    }
+  }, [user, navigate])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -37,17 +46,15 @@ const Register = () => {
       return
     }
 
-    setIsLoading(true)
     const { confirmPassword, ...userData } = formData
     const result = await register(userData)
 
     if (result.success) {
       showToast("Account created successfully!", "success")
+      // Navigation will be handled by useEffect
     } else {
       showToast(result.error || "Registration failed", "error")
     }
-
-    setIsLoading(false)
   }
 
   return (
@@ -199,10 +206,10 @@ const Register = () => {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={loading}
             className="w-full bg-white text-black font-medium py-3 px-4 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {isLoading ? (
+            {loading ? (
               <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
             ) : (
               "Create Account"
@@ -221,4 +228,4 @@ const Register = () => {
   )
 }
 
-export default Register
+export default RegisterPage

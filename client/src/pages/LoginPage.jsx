@@ -1,31 +1,37 @@
-import { useState } from "react"
-import { useAuth } from "../context/AuthContext"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { FiLogIn, FiMail, FiLock, FiEye, FiEyeOff } from "react-icons/fi"
-import { Toast, useToast } from "./Toast"
+import { Toast, useToast } from "../components/Toast"
+import { useAuth } from "../context/AuthContext"
 
-const Login = () => {
+const LoginPage = () => {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, loading, user } = useAuth()
   const navigate = useNavigate()
   const { toast, showToast, hideToast } = useToast()
 
+  useEffect(() => {
+    if (user) {
+      if (user.role === "reviewer" && !user.isApproved) {
+        navigate("/pending", { replace: true })
+      } else {
+        navigate(`/${user.role}`, { replace: true })
+      }
+    }
+  }, [user, navigate])
+
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setIsLoading(true)
-
     const result = await login(email, password)
 
     if (result.success) {
       showToast("Successfully logged in!", "success")
+      // Navigation will be handled by useEffect
     } else {
       showToast(result.error || "Login failed", "error")
     }
-
-    setIsLoading(false)
   }
 
   return (
@@ -97,10 +103,10 @@ const Login = () => {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={loading}
             className="w-full bg-white text-black font-medium py-3 px-4 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {isLoading ? (
+            {loading ? (
               <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
             ) : (
               <>
@@ -122,4 +128,4 @@ const Login = () => {
   )
 }
 
-export default Login
+export default LoginPage
