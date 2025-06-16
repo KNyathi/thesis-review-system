@@ -50,16 +50,6 @@ const PendingApprovalPage = () => {
             </div>
 
             <div className="flex items-start gap-3">
-              <FiMail className="w-5 h-5 text-blue-400 mt-0.5" />
-              <div>
-                <p className="text-white font-medium text-sm">Email Notification</p>
-                <p className="text-gray-400 text-sm">
-                  You will receive an email notification once your account has been approved.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
               <FiClock className="w-5 h-5 text-green-400 mt-0.5" />
               <div>
                 <p className="text-white font-medium text-sm">Review Process</p>

@@ -30,7 +30,7 @@ const LoginPage = () => {
       showToast("Successfully logged in!", "success")
       // Navigation will be handled by useEffect
     } else {
-      showToast(result.error || "Login failed", "error")
+      showToast("Login failed", result.error)
     }
   }
 

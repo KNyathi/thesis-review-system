@@ -1,12 +1,12 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
-import { User, IUser, IReviewer, IAdmin  } from "../models/User.model";
+import { User, IUser, Admin, Reviewer, Student } from "../models/User.model";
 import { generateToken } from "../middleware/auth";
 
 export const register = async (req: Request, res: Response) => {
   try {
     const { email, password, fullName, institution, role } = req.body;
-    
+
     // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -18,13 +18,50 @@ export const register = async (req: Request, res: Response) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create new user
-    const user = new User({
-      email,
-      password: hashedPassword,
-      fullName,
-      institution,
-      role,
-    });
+
+    let user;
+    switch (role) {
+      case "student":
+        user = new Student({
+          email,
+          password: hashedPassword,
+          fullName,
+          institution,
+          role,
+          faculty: "",
+          group: "",
+          subjectArea: "",
+          educationalProgram: "",
+          degreeLevel: "bachelors",
+        });
+        break;
+      case "reviewer":
+        user = new Reviewer({
+          email,
+          password: hashedPassword,
+          fullName,
+          institution,
+          role,
+          positions: [],
+          assignedTheses: [],
+          reviewedTheses: [],
+          isApproved: false,
+        });
+        break;
+      case "admin":
+        user = new Admin({
+          email,
+          password: hashedPassword,
+          fullName,
+          institution,
+          role,
+          position: "",
+        });
+        break;
+      default:
+        res.status(400).json({ error: "Invalid role" });
+        return;
+    }
 
     await user.save();
 
@@ -59,16 +96,15 @@ export const login = async (req: Request, res: Response) => {
     // Generate JWT token
     const token = generateToken(user._id.toString(), user.role);
 
-    res.setHeader('Authorization', `Bearer ${token}`);
-    
-    res.json({ 
-      token, 
-      user: { 
-        id: user._id, 
-        role: user.role 
-      } 
-    });
+    res.setHeader("Authorization", `Bearer ${token}`);
 
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        role: user.role,
+      },
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Login failed" });
@@ -103,18 +139,26 @@ export const updateProfile = async (req: Request, res: Response) => {
     }
 
     const updates = Object.keys(req.body);
-    
-     // Define allowed updates based on user role
+
+    // Define allowed updates based on user role
     let allowedUpdates: string[] = [];
 
-    if (user.role === 'student') {
-      allowedUpdates = ['fullName', 'institution', 'faculty', 'group', 'subjectArea', 'educationalProgram', 'degreeLevel', 'thesisTopic'];
-    } else if (user.role === 'reviewer') {
-      allowedUpdates = ['fullName', 'institution', 'positions'];
-    } else if (user.role === 'admin') {
-      allowedUpdates = ['fullName', 'institution', 'position'];
+    if (user.role === "student") {
+      allowedUpdates = [
+        "fullName",
+        "institution",
+        "faculty",
+        "group",
+        "subjectArea",
+        "educationalProgram",
+        "degreeLevel",
+        "thesisTopic",
+      ];
+    } else if (user.role === "reviewer") {
+      allowedUpdates = ["fullName", "institution", "positions"];
+    } else if (user.role === "admin") {
+      allowedUpdates = ["fullName", "institution", "position"];
     }
-
 
     const isValidOperation = updates.every((update) =>
       allowedUpdates.includes(update)
@@ -133,7 +177,7 @@ export const updateProfile = async (req: Request, res: Response) => {
     }
 
     // Apply updates to the Mongoose document
-    updates.forEach(update => {
+    updates.forEach((update) => {
       if (update in userDoc) {
         (userDoc as any)[update] = req.body[update];
       }
@@ -143,7 +187,6 @@ export const updateProfile = async (req: Request, res: Response) => {
     await userDoc.save();
 
     res.json(userDoc);
-
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Profile update failed" });
@@ -176,7 +219,7 @@ export const changePassword = async (req: Request, res: Response) => {
       return;
     }
 
-     // Hash new password
+    // Hash new password
     userDoc.password = await bcrypt.hash(newPassword, 10);
 
     // Save the Mongoose document

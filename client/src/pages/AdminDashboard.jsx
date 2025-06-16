@@ -39,13 +39,14 @@ const AdminDashboard = () => {
         thesisAPI.getApprovedReviewers(),
       ])
 
+ 
       // Filter students from all users
       const studentUsers = allUsers.filter((user) => user.role === "student")
       setStudents(studentUsers)
       setPendingReviewers(pendingData)
       setApprovedReviewers(approvedData)
     } catch (error) {
-      showToast("Failed to fetch data", "error")
+      showToast("Failed to fetch data", error)
     } finally {
       setIsLoading(false)
     }
@@ -53,7 +54,7 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     fetchData()
-  }, [fetchData])
+  }, [])
 
   // Filter students
   useEffect(() => {

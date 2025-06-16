@@ -51,7 +51,7 @@ const userSchema = new Schema<IUserBase>({
   fullName: { type: String, required: true },
   institution: { type: String, required: true },
   role: { type: String, required: true, enum: ['student', 'reviewer', 'admin'] },
-}, { timestamps: true });
+}, { timestamps: true, discriminatorKey: 'kind' });
 
 // Create the base model
 export const User = model<IUserBase>('User', userSchema);

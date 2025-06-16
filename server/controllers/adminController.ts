@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { Thesis } from "../models/Thesis.model";
-import { User, IReviewer } from "../models/User.model";
+import { User, Reviewer, Student, Admin } from "../models/User.model";
 
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
@@ -26,10 +26,23 @@ export const deleteUser = async (req: Request, res: Response) => {
 export const approveReviewer = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    await User.findByIdAndUpdate(id, { isApproved: true });
-    res.json({ message: "Reviewer approved successfully" });
+
+    // Use the Reviewer model to update the document
+    const updatedReviewer = await Reviewer.findByIdAndUpdate(
+      id,
+      { isApproved: true },
+      { new: true } // This option returns the updated document
+    );
+
+
+    if (!updatedReviewer) {
+      res.status(404).json({ error: "Reviewer not found" });
+      return; 
+    }
+
+    res.json({ message: "Reviewer approved successfully", reviewer: updatedReviewer });
+
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: "Failed to approve reviewer" });
   }
 };
@@ -40,7 +53,6 @@ export const rejectReviewer = async (req: Request, res: Response) => {
     await User.findByIdAndDelete(id);
     res.json({ message: "Reviewer rejected and deleted successfully" });
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: "Failed to reject reviewer" });
   }
 };
