@@ -22,9 +22,9 @@ const authAPI = axios.create({
 })
 
 // Auth functions
-const realLogin = async (email, password) => {
+const realLogin = async (email, password, rememberMe) => {
   try {
-    const response = await authAPI.post("/login", { email, password })
+    const response = await authAPI.post("/login", { email, password, rememberMe })
     const { token, user } = response.data
 
     // Store token in localStorage
@@ -99,10 +99,10 @@ export const AuthProvider = ({ children }) => {
     initAuth()
   }, [])
 
-  const login = async (email, password) => {
+  const login = async (email, password, rememberMe) => {
     setLoading(true)
     try {
-      const result = await realLogin(email, password)
+      const result = await realLogin(email, password, rememberMe)
       if (result.success) {
         setUser(result.user)
       }

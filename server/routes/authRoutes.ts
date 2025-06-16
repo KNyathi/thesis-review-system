@@ -5,7 +5,8 @@ import {
   logout,
   getCurrentUser,
    updateProfile,
-  changePassword 
+  changePassword,
+  forgotPassword
 } from '../controllers/authController';
 import { authenticate } from '../middleware/auth';
 
@@ -14,6 +15,7 @@ const authRouter = express.Router();
 // Public routes
 authRouter.post('/register', register);
 authRouter.post('/login', login); //add token on client
+authRouter.post('/forgot-password', forgotPassword);
 
 // Authenticated routes
 authRouter.get('/me', authenticate, getCurrentUser);

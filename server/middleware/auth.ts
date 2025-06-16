@@ -109,10 +109,10 @@ export const hashPassword = async (password: string): Promise<string> => {
 /**
  * 4. Generate JWT Token (for successful login)
  */
-export const generateToken = (userId: string, role: string): string => {
+export const generateToken = (userId: string, role: string, expiresIn: any  = "7d"): string => {
   return jwt.sign(
     { id: userId, role },
     JWT_SECRET,
-    { expiresIn: "7d" } // Token expires in 7 days
+    { expiresIn} // Token expires in 7 days
   );
 };

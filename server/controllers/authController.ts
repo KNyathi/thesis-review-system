@@ -77,7 +77,7 @@ export const register = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, rememberMe } = req.body;
 
     // Find user by email
     const user = await User.findOne({ email });
@@ -93,8 +93,9 @@ export const login = async (req: Request, res: Response) => {
       return;
     }
 
-    // Generate JWT token
-    const token = generateToken(user._id.toString(), user.role);
+    // Generate JWT token with different expiration based on rememberMe
+    const tokenExpiration = rememberMe ? "30d" : "7d"; // 30 days if "Remember Me" is checked, otherwise 7 days
+    const token = generateToken(user._id.toString(), user.role, tokenExpiration);
 
     res.setHeader("Authorization", `Bearer ${token}`);
 
@@ -229,5 +230,33 @@ export const changePassword = async (req: Request, res: Response) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Password change failed" });
+  }
+};
+
+
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      res.status(400).json({ error: "Email and new password are required" });
+      return; 
+    }
+
+    const userDoc = await User.findOne({ email });
+    if (!userDoc) {
+      res.status(404).json({ error: "User not found" });
+      return; 
+    }
+
+    // Hash and update the new password
+    userDoc.password = await bcrypt.hash(newPassword, 10);
+    await userDoc.save();
+
+    res.json({ message: "Password reset successful" });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 };

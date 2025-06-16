@@ -8,6 +8,7 @@ const LoginPage = () => {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false);
   const { login, loading, user } = useAuth()
   const navigate = useNavigate()
   const { toast, showToast, hideToast } = useToast()
@@ -24,7 +25,7 @@ const LoginPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const result = await login(email, password)
+    const result = await login(email, password, rememberMe)
 
     if (result.success) {
       showToast("Successfully logged in!", "success")
@@ -93,10 +94,11 @@ const LoginPage = () => {
 
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center text-gray-400">
-              <input type="checkbox" className="mr-2 rounded border-gray-600 bg-gray-900 text-white focus:ring-white" />
+              <input type="checkbox" checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)} className="mr-2 rounded border-gray-600 bg-gray-900 text-white focus:ring-white" />
               Remember me
             </label>
-            <button type="button" className="text-gray-400 hover:text-white transition-colors">
+            <button type="button" className="text-gray-400 hover:text-white transition-colors" onClick={() => navigate('/forgot-password')}>
               Forgot password?
             </button>
           </div>
