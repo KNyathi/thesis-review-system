@@ -18,11 +18,11 @@
 ### Deployment
 #### 1) Self-hosting (Docker)
    Uses docker-compose to run the containers at once. The commands are as follows:
-   a) Build docker images
+  - a) Build docker images
      ```
      docker-compose build
      ```
-   b) Run containers
+ - b) Run containers
      ```
      docker-compose up
      ```
