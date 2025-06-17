@@ -9,8 +9,10 @@ services:
       - ./server/.env
     environment:
       - NODE_ENV=production
+      - DB_URL=mongodb://mongodb:27017/thesis  
+    depends_on:
+      - mongodb
     
-
   client:
     build: ./client
     ports:
@@ -21,3 +23,16 @@ services:
       - NODE_ENV=production
     depends_on:
       - server
+
+  mongodb:
+      image: mongo:latest
+      ports:
+        - "27017:27017"
+      volumes:
+        - mongodb_data:/data/db
+      environment:
+        - MONGO_INITDB_ROOT_USERNAME=root
+        - MONGO_INITDB_ROOT_PASSWORD=password1234
+
+volumes:
+  mongodb_data:
