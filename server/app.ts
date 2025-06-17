@@ -59,7 +59,6 @@ app.all("*", (req: Request, res: Response, next: NextFunction) => {
 
 
 const filePath = path.join(__dirname, 'uploads/theses');
-console.log('Serving files from:', filePath);
 app.use('/uploads/theses', express.static(filePath));
 
 
