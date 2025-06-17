@@ -104,7 +104,10 @@ export const AuthProvider = ({ children }) => {
     try {
       const result = await realLogin(email, password, rememberMe)
       if (result.success) {
-        setUser(result.user)
+        // Get fresh user data after login
+        const token = localStorage.getItem("token")
+        const userData = await getCurrentUser(token)
+        setUser(userData)
       }
       return result
     } finally {
@@ -130,12 +133,24 @@ export const AuthProvider = ({ children }) => {
     setUser(null)
   }
 
+  // Refreshing user data
+  const refreshUser = async () => {
+    const token = localStorage.getItem("token")
+    if (token) {
+      const userData = await getCurrentUser(token)
+      setUser(userData)
+      return userData
+    }
+    return null
+  }
+
   const value = {
     user,
     login,
     register,
     logout,
     loading,
+    refreshUser,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

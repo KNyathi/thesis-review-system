@@ -17,15 +17,27 @@ const ProtectedRoute = ({ children, role }) => {
     return <Navigate to="/login" replace />
   }
 
-  if (role && user.role !== role) {
-    if (user.role === "reviewer" && !user.isApproved) {
+  // Reviewer approval logic
+  if (user.role === "reviewer") {
+    if (!user.isApproved) {
+      // If trying to access reviewer dashboard but not approved
+      if (role === "reviewer") {
+        return <Navigate to="/pending" replace />
+      }
+      if (window.location.pathname === "/pending") {
+        return children
+      }
       return <Navigate to="/pending" replace />
+    } else {
+      // If approved reviewer tries to access pending page, redirect to dashboard
+      if (window.location.pathname === "/pending") {
+        return <Navigate to="/reviewer" replace />
+      }
     }
-    return <Navigate to={`/${user.role}`} replace />
   }
 
-  if (user.role === "reviewer" && !user.isApproved) {
-    return <Navigate to="/pending" replace />
+  if (role && user.role !== role) {
+    return <Navigate to={`/${user.role}`} replace />
   }
 
   return children
