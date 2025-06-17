@@ -168,7 +168,7 @@ const ReviewerDashboard = () => {
     }
     switch (status) {
       case "submitted":
-        return "Waiting for reviewer assignment"
+        return "Pending Review"
       case "assigned":
         return "Pending Review"
       case "under_review":

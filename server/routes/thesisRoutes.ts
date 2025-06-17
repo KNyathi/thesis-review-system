@@ -1,10 +1,12 @@
 // Example: thesisRoutes.ts
 import express from 'express';
 import { submitThesis, getStudentThesis,
-  downloadThesis } from '../controllers/thesisController';
+  downloadThesis, viewThesis } from '../controllers/thesisController';
 import { authenticate } from '../middleware/auth';
 import { isStudent, isReviewer, isAdmin } from '../middleware/roles';
 import upload from '../utils/multer';
+import fs from 'fs';
+import path from 'path';
 
 const thesisRouter = express.Router();
 
@@ -24,6 +26,9 @@ thesisRouter.get('/thesis/:id/download', authenticate, (req, res, next) => {
     res.status(403).json({ error: 'Access denied' });
   }
 }, downloadThesis);
+
+
+thesisRouter.get('/view-pdf/:id', authenticate, viewThesis);
 
 
 

@@ -57,8 +57,11 @@ app.all("*", (req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
-// Serve static files from the 'uploads' directory
-app.use('/uploads/theses', express.static(path.join(__dirname, 'uploads/theses')));
+
+const filePath = path.join(__dirname, 'uploads/theses');
+console.log('Serving files from:', filePath);
+app.use('/uploads/theses', express.static(filePath));
+
 
 app.use(ErrorMiddleware);
 

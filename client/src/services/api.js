@@ -59,6 +59,13 @@ const realThesisAPI = {
     return response.data;
   },
 
+  viewThesis: async (thesisId) => {
+    const response = await api.get(`/view-pdf/${thesisId}`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+  
   // Admin endpoints
   getAllUsers: async () => {
     const response = await api.get("/users");

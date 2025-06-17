@@ -133,14 +133,88 @@ export const downloadThesis = async (req: Request, res: Response) => {
       return;
     }
 
-    const filePath = path.join(__dirname, "../../", thesis.fileUrl);
+    const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.fileUrl));
 
     if (!fs.existsSync(filePath)) {
       res.status(404).json({ error: "File not found" });
       return;
     }
 
-    res.download(filePath, `${thesis.title}.pdf`);
+    // Set headers to indicate a file download
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${thesis.title}.pdf"`
+    );
+
+    // Stream the file to the response
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+
+    fileStream.on("error", (error) => {
+      console.error("Error streaming file:", error);
+      res.status(500).json({ error: "Download failed" });
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Download failed" });
+  }
+};
+
+
+
+export const viewThesis = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const user = req.user as IUser;
+
+    if (!user) {
+      res.status(401).json({ error: "User not authenticated" });
+      return;
+    }
+
+    const thesis = await Thesis.findById(id);
+    if (!thesis) {
+      res.status(404).json({ error: "Thesis not found" });
+      return;
+    }
+
+    // Verify permissions
+    {/* 
+    const isAllowed =
+      user.role === "admin" ||  user.role === "student" ||
+      (user.role === "reviewer" &&
+        isObjectId(thesis.assignedReviewer) &&
+        isObjectId(user._id) &&
+        thesis.assignedReviewer.equals(user._id));
+
+    if (!isAllowed) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+*/}
+    const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.fileUrl));
+
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "File not found" });
+      return;
+    }
+
+    // Set headers to indicate a file download
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${thesis.title}.pdf"`
+    );
+
+    // Stream the file to the response
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+
+    fileStream.on("error", (error) => {
+      console.error("Error streaming file:", error);
+      res.status(500).json({ error: "Download failed" });
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Download failed" });
