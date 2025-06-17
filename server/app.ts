@@ -9,14 +9,8 @@ import reviewRouter from "./routes/reviewRoutes";
 import thesisRouter from "./routes/thesisRoutes";
 import authRouter from "./routes/authRoutes";
 import adminRouter from "./routes/adminRoutes";
-
-import fs from 'fs';
 import path from 'path';
 
-const uploadsDir = path.join(__dirname, 'uploads/theses');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
 
 //Body parser
 app.use(express.json({ limit: "50mb" }));
@@ -63,6 +57,8 @@ app.all("*", (req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
+// Serve static files from the 'uploads' directory
+app.use('/uploads/theses', express.static(path.join(__dirname, 'uploads/theses')));
 
 app.use(ErrorMiddleware);
 

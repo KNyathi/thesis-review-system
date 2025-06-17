@@ -4,29 +4,30 @@ import { Request } from 'express';
 
 // Configure storage
 const storage = multer.diskStorage({
-  destination: (req: Request, file, cb) => {
-    cb(null, path.join(__dirname, '../../uploads/theses'));
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/theses/');
   },
-  filename: (req: Request, file, cb) => {
-    const studentId = req.user?._id;
-    const timestamp = Date.now();
-    cb(null, `${studentId}-${timestamp}${path.extname(file.originalname)}`);
-  }
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
 });
 
 // File filter for PDF only
-const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  if (file.mimetype === 'application/pdf') {
+const fileFilter = (req: any, file: any, cb: any) => {
+  if (file.mimetype === 'application/pdf') { 
     cb(null, true);
   } else {
-    cb(new Error('Only PDF files are allowed'));
+    cb(new Error('Invalid file type, only PDF is allowed!'), false);
   }
 };
 
-const upload = multer({ 
-  storage,
-  fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+// Configure Multer with file size limit
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB file size limit
+  },
 });
 
 export default upload;

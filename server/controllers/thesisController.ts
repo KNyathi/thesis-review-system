@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { Thesis } from "../models/Thesis.model";
-import { IStudent, IUser } from "../models/User.model";
+import { IStudent, IUser, Student, Reviewer } from "../models/User.model";
 import { Types } from "mongoose";
 import fs from "fs";
 import path from "path";
@@ -12,11 +12,39 @@ function isObjectId(value: unknown): value is Types.ObjectId {
 // Submit Thesis with File Upload
 export const submitThesis = async (req: Request, res: Response) => {
   try {
-    const student = req.user as IStudent;
+    // Check if user is attached to the request and has the necessary properties
+    if (!req.user) {
+      res.status(401).json({ error: "User not authenticated" });
+      return;
+    }
+
+    // Access the user's _id correctly
+    const studentId = req.user._id;
 
     if (!req.file) {
       res.status(400).json({ error: "No file uploaded" });
       return;
+    }
+
+    // Fetch the full student document from the database
+    const student = await Student.findById(studentId);
+    if (!student) {
+      res.status(404).json({ error: "Student not found" });
+      return;
+    }
+
+    const existingThesis = await Thesis.findOne({ student: studentId });
+    if (existingThesis) {
+      await Thesis.findByIdAndDelete(existingThesis._id);
+
+      // Remove the thesis from the reviewer's assignedTheses if it was assigned
+      if (existingThesis.assignedReviewer) {
+        await Reviewer.findByIdAndUpdate(
+          existingThesis.assignedReviewer,
+          { $pull: { assignedTheses: existingThesis._id } },
+          { new: true }
+        );
+      }
     }
 
     const thesis = new Thesis({
@@ -24,6 +52,9 @@ export const submitThesis = async (req: Request, res: Response) => {
       student: student._id,
       fileUrl: `/uploads/theses/${req.file.filename}`,
       status: "submitted",
+      assignedReviewer: null,
+      finalGrade: "",
+      assessment: null,
     });
 
     await thesis.save();
@@ -31,6 +62,8 @@ export const submitThesis = async (req: Request, res: Response) => {
     // Update student's thesis status
     student.thesisStatus = "submitted";
     student.thesisFile = thesis.fileUrl;
+    student.thesisTopic = thesis.title;
+
     await student.save();
 
     res.status(201).json(thesis);
