@@ -35,6 +35,7 @@ export interface IThesis extends Document {
   assignedReviewer: Schema.Types.ObjectId | IReviewer;
   finalGrade?: string;
   assessment?: IAssessment;
+  reviewPdf?: string;
 }
 
 const thesisSchema = new Schema<IThesis>({
@@ -72,6 +73,7 @@ const thesisSchema = new Schema<IThesis>({
       },
     },
   },
+  reviewPdf: { type: String }
 });
 
 export const Thesis = model<IThesis>('Thesis', thesisSchema);

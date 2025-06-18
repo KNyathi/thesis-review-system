@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { Thesis } from "../models/Thesis.model";
 import { User, IReviewer } from "../models/User.model";
+import { generateReviewPDF } from "../utils/pdfGenerator";
+import path from 'path';
 
 export const submitReview = async (req: Request, res: Response) => {
   try {
@@ -24,6 +26,13 @@ export const submitReview = async (req: Request, res: Response) => {
       return;
     }
 
+    // Generate PDF
+    const pdfPath = await generateReviewPDF(thesis, reviewer);
+
+    // Update thesis with PDF path
+    thesis.reviewPdf = pdfPath;
+    await thesis.save();
+
     // Move thesis from assigned to reviewed
     await User.findByIdAndUpdate(reviewer._id, {
       $pull: { assignedTheses: thesisId },
@@ -36,7 +45,12 @@ export const submitReview = async (req: Request, res: Response) => {
       thesisGrade: grade,
     });
 
-    res.json(thesis);
+    res.json({
+      success: true,
+      pdfUrl: `/${path.basename(pdfPath)}`,
+      thesis
+    });
+
   } catch (error) {
     console.error(error);
     console.log("err: ", error)

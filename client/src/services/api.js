@@ -52,6 +52,13 @@ const realThesisAPI = {
     return response.data;
   },
 
+  downloadReviewPdf: async (filename) => {
+    const response = await api.get(`/download-review/${filename}`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
   downloadThesis: async (thesisId) => {
     const response = await api.get(`/thesis/${thesisId}/download`, {
       responseType: "blob",
