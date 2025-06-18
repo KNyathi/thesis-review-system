@@ -14,7 +14,6 @@ import path from 'path';
 
 //Body parser
 app.use(express.json({ limit: "50mb" }));
-console.log("Express router path:", require.resolve("express/lib/router"));
 
 //cookie parse
 app.use(cookieParser());
