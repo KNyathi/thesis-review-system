@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useNavigate } from "react-router-dom"
 import {
   FiUpload,
   FiFile,
@@ -10,113 +10,108 @@ import {
   FiRefreshCw,
   FiLogOut,
   FiAlertCircle,
-} from "react-icons/fi";
-import { Toast, useToast } from "../components/Toast";
-import { useAuth } from "../context/AuthContext";
-import { thesisAPI } from "../services/api";
+  FiEye,
+} from "react-icons/fi"
+import { Toast, useToast } from "../components/Toast"
+import { useAuth } from "../context/AuthContext"
+import { thesisAPI } from "../services/api"
+import StudentThesisDetails from "../components/StudentThesisDetails"
 
 const StudentDashboard = () => {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
-  const [thesis, setThesis] = useState(null);
-  const [file, setFile] = useState(null);
-  const [title, setTitle] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isUploading, setIsUploading] = useState(false);
-  const [showReupload, setShowReupload] = useState(false);
-  const { toast, showToast, hideToast } = useToast();
-  const hasFetched = useRef(false);
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const [thesis, setThesis] = useState(null)
+  const [file, setFile] = useState(null)
+  const [title, setTitle] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isUploading, setIsUploading] = useState(false)
+  const [showReupload, setShowReupload] = useState(false)
+  const [showReviewDetails, setShowReviewDetails] = useState(false)
+  const { toast, showToast, hideToast } = useToast()
+  const hasFetched = useRef(false)
 
   const fetchThesis = useCallback(async () => {
-    if (hasFetched.current) return;
+    if (hasFetched.current) return
 
     try {
-      setIsLoading(true);
-      hasFetched.current = true;
-      const data = await thesisAPI.getMyThesis();
-      setThesis(data);
-      setTitle(data?.title || "");
+      setIsLoading(true)
+      hasFetched.current = true
+      const data = await thesisAPI.getMyThesis()
+      setThesis(data)
+      setTitle(data?.title || "")
     } catch (error) {
       if (error.response?.status !== 404) {
-        showToast("Failed to fetch thesis information", "error");
+        showToast("Failed to fetch thesis information", "error")
       }
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  }, [showToast]);
+  }, [showToast])
 
   useEffect(() => {
-    fetchThesis();
-  }, [fetchThesis]);
+    fetchThesis()
+  }, [fetchThesis])
 
   const handleLogout = () => {
-    logout();
-    navigate("/login", { replace: true });
-  };
+    logout()
+    navigate("/login", { replace: true })
+  }
 
   const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
+    const selectedFile = e.target.files[0]
     if (selectedFile) {
       if (selectedFile.type !== "application/pdf") {
-        showToast("Please select a PDF file", "error");
-        return;
+        showToast("Please select a PDF file", "error")
+        return
       }
       if (selectedFile.size > 10 * 1024 * 1024) {
-        showToast("File size must be less than 10MB", "error");
-        return;
+        showToast("File size must be less than 10MB", "error")
+        return
       }
-      setFile(selectedFile);
+      setFile(selectedFile)
     }
-  };
+  }
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    e.preventDefault()
     if (!file || !title.trim()) {
-      showToast("Please provide both title and file", "error");
-      return;
+      showToast("Please provide both title and file", "error")
+      return
     }
 
     try {
-      setIsUploading(true);
-      const formData = new FormData();
-      formData.append("title", title.trim());
-      formData.append("thesisFile", file);
+      setIsUploading(true)
+      const formData = new FormData()
+      formData.append("title", title.trim())
+      formData.append("thesisFile", file)
 
-      await thesisAPI.submitThesis(formData);
-      showToast(
-        thesis
-          ? "Thesis re-uploaded successfully!"
-          : "Thesis submitted successfully!",
-        "success"
-      );
+      await thesisAPI.submitThesis(formData)
+      showToast(thesis ? "Thesis re-uploaded successfully!" : "Thesis submitted successfully!", "success")
 
-      hasFetched.current = false;
-      await fetchThesis();
-      setFile(null);
-      setShowReupload(false);
+      hasFetched.current = false
+      await fetchThesis()
+      setFile(null)
+      setShowReupload(false)
 
-      const fileInput = document.getElementById("thesisFile");
-      if (fileInput) fileInput.value = "";
+      const fileInput = document.getElementById("thesisFile")
+      if (fileInput) fileInput.value = ""
     } catch (error) {
-      showToast(
-        error.response?.data?.error || "Failed to submit thesis",
-        "error"
-      );
+      showToast(error.response?.data?.error || "Failed to submit thesis", "error")
     } finally {
-      setIsUploading(false);
+      setIsUploading(false)
     }
-  };
+  }
 
   const handleViewPDF = async () => {
     try {
-      const blob = await thesisAPI.viewThesis(thesis?._id);
-      const blobUrl = URL.createObjectURL(blob);
+      const blob = await thesisAPI.viewThesis(thesis?._id)
+      const blobUrl = URL.createObjectURL(blob)
 
       // Open in new tab with proper PDF handling
-      const newWindow = window.open("", "_blank");
+      const newWindow = window.open("", "_blank")
       if (newWindow) {
         // Create a clean HTML document
-        newWindow.document.open();
+        newWindow.document.open()
         newWindow.document.write(`
         <!DOCTYPE html>
         <html>
@@ -131,57 +126,57 @@ const StudentDashboard = () => {
             <iframe src="${blobUrl}"></iframe>
           </body>
         </html>
-      `);
-        newWindow.document.close();
+      `)
+        newWindow.document.close()
 
         // Focus the new window
-        newWindow.focus();
+        newWindow.focus()
       } else {
-        showToast("Popup blocked - please allow popups", "warning");
+        showToast("Popup blocked - please allow popups", "warning")
       }
 
       // Clean up after some time
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
     } catch (error) {
-      showToast("Failed to open thesis", "error");
+      showToast("Failed to open thesis", "error")
     }
-  };
+  }
 
   const getStatusColor = (status) => {
     switch (status) {
       case "submitted":
-        return "text-blue-400";
+        return "text-blue-400"
       case "assigned":
       case "under_review":
-        return "text-orange-400";
+        return "text-orange-400"
       case "evaluated":
-        return "text-green-400";
+        return "text-green-400"
       default:
-        return "text-gray-400";
+        return "text-gray-400"
     }
-  };
+  }
 
   const getStatusText = (status) => {
     switch (status) {
       case "submitted":
-        return "Submitted - Waiting for reviewer assignment";
+        return "Submitted - Waiting for reviewer assignment"
       case "assigned":
-        return "Assigned to reviewer";
+        return "Assigned to reviewer"
       case "under_review":
-        return "Under review";
+        return "Under review"
       case "evaluated":
-        return "Evaluated";
+        return "Evaluated"
       default:
-        return "Not submitted";
+        return "Not submitted"
     }
-  };
+  }
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
       </div>
-    );
+    )
   }
 
   return (
@@ -195,7 +190,10 @@ const StudentDashboard = () => {
             <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
               <span className="text-black font-bold text-sm">T</span>
             </div>
-            <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate("/profile")}
+              className="flex items-center gap-3 hover:bg-gray-800 rounded-lg p-2 transition-colors"
+            >
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                 <span className="text-white font-semibold text-xs">
                   {user?.fullName
@@ -207,12 +205,10 @@ const StudentDashboard = () => {
                 </span>
               </div>
               <div>
-                <p className="text-white font-medium text-sm">
-                  {user?.fullName}
-                </p>
+                <p className="text-white font-medium text-sm">{user?.fullName}</p>
                 <p className="text-gray-400 text-xs capitalize">{user?.role}</p>
               </div>
-            </div>
+            </button>
           </div>
           <button
             onClick={handleLogout}
@@ -231,12 +227,8 @@ const StudentDashboard = () => {
             <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-6">
               <span className="text-black font-bold text-xl">T</span>
             </div>
-            <h1 className="text-2xl font-semibold text-white mb-2">
-              Thesis Submission
-            </h1>
-            <p className="text-gray-400">
-              Upload and manage your graduation thesis
-            </p>
+            <h1 className="text-2xl font-semibold text-white mb-2">Thesis Submission</h1>
+            <p className="text-gray-400">Upload and manage your graduation thesis</p>
           </div>
 
           {thesis && !showReupload ? (
@@ -244,25 +236,15 @@ const StudentDashboard = () => {
             <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
               <div className="flex items-start justify-between mb-6">
                 <div>
-                  <h2 className="text-xl font-semibold text-white mb-2">
-                    {thesis.title}
-                  </h2>
-                  <div
-                    className={`flex items-center gap-2 ${getStatusColor(
-                      thesis.status
-                    )}`}
-                  >
+                  <h2 className="text-xl font-semibold text-white mb-2">{thesis.title}</h2>
+                  <div className={`flex items-center gap-2 ${getStatusColor(thesis.status)}`}>
                     <FiClock className="w-4 h-4" />
-                    <span className="text-sm font-medium">
-                      {getStatusText(thesis.status)}
-                    </span>
+                    <span className="text-sm font-medium">{getStatusText(thesis.status)}</span>
                   </div>
                 </div>
                 <div className="text-right">
                   <p className="text-gray-400 text-sm">Submitted on</p>
-                  <p className="text-white font-medium">
-                    {new Date(thesis.submissionDate).toLocaleDateString()}
-                  </p>
+                  <p className="text-white font-medium">{new Date(thesis.submissionDate).toLocaleDateString()}</p>
                 </div>
               </div>
 
@@ -272,14 +254,11 @@ const StudentDashboard = () => {
                   <div className="flex items-center gap-3">
                     <FiAlertCircle className="w-5 h-5 text-blue-400" />
                     <div>
-                      <p className="text-blue-400 font-medium">
-                        Waiting for Reviewer Assignment
-                      </p>
+                      <p className="text-blue-400 font-medium">Waiting for Reviewer Assignment</p>
                       <p className="text-gray-400 text-sm">
-                        Your thesis has been successfully submitted. An
-                        administrator will assign a reviewer to your thesis
-                        soon. You will be notified once a reviewer has been
-                        assigned and begins the review process.
+                        Your thesis has been successfully submitted. An administrator will assign a reviewer to your
+                        thesis soon. You will be notified once a reviewer has been assigned and begins the review
+                        process.
                       </p>
                     </div>
                   </div>
@@ -292,12 +271,8 @@ const StudentDashboard = () => {
                     <FiUser className="w-5 h-5 text-gray-400" />
                     <div>
                       <p className="text-gray-400 text-sm">Assigned Reviewer</p>
-                      <p className="text-white font-medium">
-                        {thesis.assignedReviewer.fullName}
-                      </p>
-                      <p className="text-gray-400 text-sm">
-                        {thesis.assignedReviewer.institution}
-                      </p>
+                      <p className="text-white font-medium">{thesis.assignedReviewer.fullName}</p>
+                      <p className="text-gray-400 text-sm">{thesis.assignedReviewer.institution}</p>
                     </div>
                   </div>
                 </div>
@@ -308,12 +283,8 @@ const StudentDashboard = () => {
                   <div className="flex items-center gap-3">
                     <FiCheck className="w-5 h-5 text-green-400" />
                     <div>
-                      <p className="text-green-400 font-medium">
-                        Final Grade: {thesis.finalGrade}
-                      </p>
-                      <p className="text-gray-400 text-sm">
-                        Your thesis has been evaluated
-                      </p>
+                      <p className="text-green-400 font-medium">Final Grade: {thesis.finalGrade}</p>
+                      <p className="text-gray-400 text-sm">Your thesis has been evaluated</p>
                     </div>
                   </div>
                 </div>
@@ -339,6 +310,15 @@ const StudentDashboard = () => {
                     <FiDownload className="w-4 h-4" />
                     View Thesis
                   </button>
+                  {thesis.status === "evaluated" && thesis.assessment && (
+                    <button
+                      onClick={() => setShowReviewDetails(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <FiEye className="w-4 h-4" />
+                      View Review
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -350,12 +330,9 @@ const StudentDashboard = () => {
                   <div className="flex items-center gap-3">
                     <FiRefreshCw className="w-5 h-5 text-yellow-400" />
                     <div>
-                      <p className="text-yellow-400 font-medium">
-                        Re-uploading Thesis
-                      </p>
+                      <p className="text-yellow-400 font-medium">Re-uploading Thesis</p>
                       <p className="text-gray-400 text-sm">
-                        This will replace your current thesis file. The old file
-                        will be permanently deleted.
+                        This will replace your current thesis file. The old file will be permanently deleted.
                       </p>
                     </div>
                   </div>
@@ -364,10 +341,7 @@ const StudentDashboard = () => {
 
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div>
-                  <label
-                    htmlFor="title"
-                    className="block text-sm font-medium text-gray-300 mb-2"
-                  >
+                  <label htmlFor="title" className="block text-sm font-medium text-gray-300 mb-2">
                     Thesis Title
                   </label>
                   <input
@@ -382,10 +356,7 @@ const StudentDashboard = () => {
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="thesisFile"
-                    className="block text-sm font-medium text-gray-300 mb-2"
-                  >
+                  <label htmlFor="thesisFile" className="block text-sm font-medium text-gray-300 mb-2">
                     Thesis File (PDF only, max 10MB)
                   </label>
                   <div className="relative">
@@ -403,12 +374,8 @@ const StudentDashboard = () => {
                     >
                       <div className="text-center">
                         <FiUpload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                        <p className="text-gray-400">
-                          {file ? file.name : "Click to select PDF file"}
-                        </p>
-                        <p className="text-gray-500 text-sm mt-1">
-                          PDF only, max 10MB
-                        </p>
+                        <p className="text-gray-400">{file ? file.name : "Click to select PDF file"}</p>
+                        <p className="text-gray-500 text-sm mt-1">PDF only, max 10MB</p>
                       </div>
                     </label>
                   </div>
@@ -419,10 +386,10 @@ const StudentDashboard = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        setShowReupload(false);
-                        setFile(null);
-                        const fileInput = document.getElementById("thesisFile");
-                        if (fileInput) fileInput.value = "";
+                        setShowReupload(false)
+                        setFile(null)
+                        const fileInput = document.getElementById("thesisFile")
+                        if (fileInput) fileInput.value = ""
                       }}
                       className="flex-1 bg-gray-800 text-white font-medium py-3 px-4 rounded-lg hover:bg-gray-700 transition-colors"
                     >
@@ -449,8 +416,11 @@ const StudentDashboard = () => {
           )}
         </div>
       </div>
-    </div>
-  );
-};
 
-export default StudentDashboard;
+      {/* Review Details Modal */}
+      <StudentThesisDetails thesis={thesis} isOpen={showReviewDetails} onClose={() => setShowReviewDetails(false)} />
+    </div>
+  )
+}
+
+export default StudentDashboard

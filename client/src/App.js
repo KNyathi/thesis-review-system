@@ -7,6 +7,7 @@ import PendingApprovalPage from "./pages/PendingApprovalPage"
 import StudentDashboard from "./pages/StudentDashboard"
 import ReviewerDashboard from "./pages/ReviewerDashboard"
 import AdminDashboard from "./pages/AdminDashboard"
+import ProfilePage from "./pages/ProfilePage"
 import ProtectedRoute from "./components/ProtectedRoute"
 
 function App() {
@@ -23,6 +24,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <PendingApprovalPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <ProfilePage />
                 </ProtectedRoute>
               }
             />
