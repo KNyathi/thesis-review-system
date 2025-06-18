@@ -28,7 +28,8 @@
     "mongoose": "^8.15.1",
     "multer": "^2.0.1",
     "pdf-lib": "^1.17.1",
-    "pdfkit": "^0.17.1"
+    "pdfkit": "^0.17.1",
+    "router": "^2.2.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
