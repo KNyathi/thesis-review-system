@@ -180,13 +180,23 @@ const AdminDashboard = () => {
   const handleAssignReviewer = async (studentId, reviewerId) => {
     const student = students.find((s) => s._id === studentId)
     const reviewer = approvedReviewers.find((r) => r._id === reviewerId)
+    
+    const thesis = theses.find((t) => t.student === studentId);
+  
+  if (!thesis) {
+    showToast("No thesis found for this student", "error");
+    return;
+  }
+    const oldReviewerId = student?.reviewer;
     const currentReviewer = student?.reviewer ? approvedReviewers.find((r) => r._id === student.reviewer) : null
 
     if (currentReviewer) {
       // Show reassignment confirmation
       setReassignData({
         studentId,
-        reviewerId,
+        thesisId: thesis?._id,
+        oldReviewerId: oldReviewerId,
+        newReviewerId: reviewerId,
         studentName: student.fullName,
         currentReviewerName: currentReviewer.fullName,
         newReviewerName: reviewer.fullName,
@@ -211,10 +221,15 @@ const AdminDashboard = () => {
 
   const handleConfirmReassign = async () => {
     if (!reassignData) return
-
+ 
     try {
       setAssigningStudent(reassignData.studentId)
-      await thesisAPI.assignReviewer(reassignData.studentId, reassignData.reviewerId)
+      await thesisAPI.reassignReviewer(
+      reassignData.thesisId,
+      reassignData.oldReviewerId,
+      reassignData.newReviewerId
+    );
+
       showToast(
         `Reviewer successfully changed from ${reassignData.currentReviewerName} to ${reassignData.newReviewerName}!`,
         "success",

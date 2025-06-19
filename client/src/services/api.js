@@ -109,6 +109,15 @@ const realThesisAPI = {
     return response.data
   },
 
+  reassignReviewer: async (thesisId, oldReviewerId, newReviewerId) => {
+    const response = await api.patch("/reassign-thesis", {
+      thesisId: thesisId,
+      oldReviewerId: oldReviewerId,
+      newReviewerId: newReviewerId
+    })
+    return response.data
+  },
+
   approveReviewer: async (reviewerId) => {
     const response = await api.patch(`/reviewers/${reviewerId}/approve`)
     return response.data

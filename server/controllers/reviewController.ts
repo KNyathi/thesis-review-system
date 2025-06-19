@@ -1,6 +1,6 @@
 import type { Request, Response } from "express"
 import { Thesis } from "../models/Thesis.model"
-import { User, type IReviewer } from "../models/User.model"
+import { User, type IReviewer, Student, Reviewer } from "../models/User.model"
 import { generateReviewPDF } from "../utils/pdfGenerator"
 import { Types } from "mongoose"
 import path from "path"
@@ -41,16 +41,26 @@ export const submitReview = async (req: Request, res: Response) => {
     await thesis.save()
 
     // ИСПРАВЛЕНО: Правильно перемещаем тезис из assigned в reviewed
-    await User.findByIdAndUpdate(reviewer._id, {
+   const reviewedThesis =  await Reviewer.findByIdAndUpdate(reviewer._id, {
       $pull: { assignedTheses: new Types.ObjectId(thesisId) },
-      $addToSet: { reviewedTheses: new Types.ObjectId(thesisId) },
+      $push: { reviewedTheses: new Types.ObjectId(thesisId) },
     })
 
+    if (!reviewedThesis) {
+      res.status(404).json({ error: "Failed to update reviewed thesis" })
+      return
+    }
+
     // Update student's grade and thesis status
-    await User.findByIdAndUpdate(thesis.student, {
+    const updatedStudent = await Student.findByIdAndUpdate(thesis.student, {
       thesisStatus: "evaluated",
       thesisGrade: grade,
     })
+
+    if (!updatedStudent) {
+      res.status(404).json({ error: "Failed to update user" })
+      return
+    }
 
     res.json({
       success: true,
@@ -121,23 +131,33 @@ export const reReviewThesis = async (req: Request, res: Response) => {
       return
     }
 
-    // Обновить статус тезиса обратно на "assigned"
+    // Обновить статус тезиса обратно на "under_review"
     await Thesis.findByIdAndUpdate(thesisObjectId, {
-      status: "assigned",
+      status: "under_review",
       $unset: { finalGrade: 1, assessment: 1, reviewPdf: 1 },
     })
 
     // Переместить тезис обратно из reviewed в assigned
-    await User.findByIdAndUpdate(reviewer._id, {
+    const reviewedThesis = await Reviewer.findByIdAndUpdate(reviewer._id, {
       $pull: { reviewedTheses: thesisObjectId },
-      $addToSet: { assignedTheses: thesisObjectId },
+      $push: { assignedTheses: thesisObjectId },
     })
 
+    if (!reviewedThesis) {
+      res.status(404).json({ error: "Failed to update reviewed thesis" })
+      return
+    }
+
     // Обновить статус студента
-    await User.findByIdAndUpdate(thesis.student, {
+    const updatedStudent = await Student.findByIdAndUpdate(thesis.student, {
       thesisStatus: "under_review",
       $unset: { thesisGrade: 1 },
     })
+
+    if (!updatedStudent) {
+      res.status(404).json({ error: "Failed to update user" })
+      return
+    }
 
     res.json({ message: "Thesis moved back for re-review successfully" })
   } catch (error) {

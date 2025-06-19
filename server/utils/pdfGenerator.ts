@@ -1,20 +1,39 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fs from 'fs';
 import path from 'path';
+import fontkit from '@pdf-lib/fontkit';
 import { IThesis } from '../models/Thesis.model';
 import { IReviewer, IStudent } from '../models/User.model';
 
 export async function generateReviewPDF(thesis: IThesis, reviewer: IReviewer): Promise<string> {
+  // Ensure reviews directory exists
+  const reviewsDir = path.join(__dirname, '../reviews');
+  if (!fs.existsSync(reviewsDir)) {
+    fs.mkdirSync(reviewsDir, { recursive: true });
+  }
+
   // Load the existing PDF template (if you have one)
   // Or create a new document from scratch
   const pdfDoc = await PDFDocument.create();
   
+  // Register fontkit
+  pdfDoc.registerFontkit(fontkit);
+
   // Add a new page
   const page = pdfDoc.addPage([595, 842]); // A4 size
 
   // Register fonts
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+   const regularFontBytes = fs.readFileSync(
+    path.join(__dirname, '../assets/fonts/Arial_Cyr.ttf')
+  );
+  const boldFontBytes = fs.readFileSync(
+    path.join(__dirname, '../assets/fonts/Arial_Cyr_Bold.ttf') // Bold variant
+  );
+
+  // Embed both fonts
+  const font = await pdfDoc.embedFont(regularFontBytes);
+  const boldFont = await pdfDoc.embedFont(boldFontBytes);
+
 
   // Draw header
   page.drawText('Министерство науки и высшего образования Российской Федерации', {
@@ -127,7 +146,7 @@ export async function generateReviewPDF(thesis: IThesis, reviewer: IReviewer): P
 
   // Save PDF to file
   const pdfBytes = await pdfDoc.save();
-  const outputPath = path.join(__dirname, '../../reviews', `review_${thesis._id}.pdf`);
+  const outputPath = path.join(reviewsDir, `review_${thesis._id}.pdf`);
   fs.writeFileSync(outputPath, pdfBytes);
 
   return outputPath;

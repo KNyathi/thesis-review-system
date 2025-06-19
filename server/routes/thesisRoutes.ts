@@ -3,8 +3,7 @@ import {
   submitThesis,
   getStudentThesis,
   downloadThesis,
-  viewThesis,
-  reReviewThesis,
+  viewThesis
 } from "../controllers/thesisController"
 import { authenticate } from "../middleware/auth"
 import { isStudent, isReviewer, isAdmin } from "../middleware/roles"
@@ -34,7 +33,5 @@ thesisRouter.get(
 
 thesisRouter.get("/view-pdf/:id", authenticate, viewThesis)
 
-// Re-review route for reviewers
-thesisRouter.post("/re-review/:id", authenticate, isReviewer, reReviewThesis)
 
 export default thesisRouter
