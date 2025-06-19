@@ -1,8 +1,8 @@
-import { Request, Response } from "express";
-import { Thesis } from "../models/Thesis.model";
-import { User, IReviewer } from "../models/User.model";
-import { generateReviewPDF } from "../utils/pdfGenerator";
-import path from 'path';
+import type { Request, Response } from "express"
+import { Thesis } from "../models/Thesis.model"
+import { User, type IReviewer } from "../models/User.model"
+import { generateReviewPDF } from "../utils/pdfGenerator"
+import path from "path"
 
 export const submitReview = async (req: Request, res: Response) => {
   try {
@@ -27,11 +27,11 @@ export const submitReview = async (req: Request, res: Response) => {
     }
 
     // Generate PDF
-    const pdfPath = await generateReviewPDF(thesis, reviewer);
+    const pdfPath = await generateReviewPDF(thesis, reviewer)
 
     // Update thesis with PDF path
-    thesis.reviewPdf = pdfPath;
-    await thesis.save();
+    thesis.reviewPdf = pdfPath
+    await thesis.save()
 
     // Move thesis from assigned to reviewed
     await User.findByIdAndUpdate(reviewer._id, {
@@ -48,9 +48,8 @@ export const submitReview = async (req: Request, res: Response) => {
     res.json({
       success: true,
       pdfUrl: `/${path.basename(pdfPath)}`,
-      thesis
-    });
-
+      thesis,
+    })
   } catch (error) {
     console.error(error)
     res.status(500).json({ error: "Failed to submit review" })
@@ -61,12 +60,27 @@ export const getAssignedTheses = async (req: Request, res: Response) => {
   try {
     const reviewer = req.user as IReviewer
 
-    // Fetch theses assigned to the reviewer
+    // Fetch theses assigned to the reviewer with better error handling
     const theses = await Thesis.find({ _id: { $in: reviewer.assignedTheses } })
-      .populate("student", "fullName email institution")
+      .populate({
+        path: "student",
+        select: "fullName email institution",
+        match: { _id: { $exists: true } }, // Only include existing students
+      })
       .lean()
 
-    res.json(theses)
+    // Filter out theses where student population failed (deleted students)
+    const validTheses = theses.filter((thesis) => thesis.student !== null)
+
+    // If some theses had deleted students, clean up the reviewer's assignedTheses
+    if (validTheses.length !== theses.length) {
+      const validThesisIds = validTheses.map((t) => t._id)
+      await User.findByIdAndUpdate(reviewer._id, {
+        assignedTheses: validThesisIds,
+      })
+    }
+
+    res.json(validTheses)
   } catch (error) {
     console.error(error)
     res.status(500).json({ error: "Failed to fetch assigned theses" })
@@ -77,12 +91,27 @@ export const getCompletedReviews = async (req: Request, res: Response) => {
   try {
     const reviewer = req.user as IReviewer
 
-    // Fetch theses reviewed by the reviewer
+    // Fetch theses reviewed by the reviewer with better error handling
     const reviews = await Thesis.find({ _id: { $in: reviewer.reviewedTheses } })
-      .populate("student", "fullName email institution")
+      .populate({
+        path: "student",
+        select: "fullName email institution",
+        match: { _id: { $exists: true } }, // Only include existing students
+      })
       .lean()
 
-    res.json(reviews)
+    // Filter out reviews where student population failed (deleted students)
+    const validReviews = reviews.filter((review) => review.student !== null)
+
+    // If some reviews had deleted students, clean up the reviewer's reviewedTheses
+    if (validReviews.length !== reviews.length) {
+      const validReviewIds = validReviews.map((r) => r._id)
+      await User.findByIdAndUpdate(reviewer._id, {
+        reviewedTheses: validReviewIds,
+      })
+    }
+
+    res.json(validReviews)
   } catch (error) {
     console.error(error)
     res.status(500).json({ error: "Failed to fetch completed reviews" })

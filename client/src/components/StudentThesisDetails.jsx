@@ -1,203 +1,271 @@
-import { FiUser, FiCalendar, FiCheck, FiX } from "react-icons/fi"
-import Modal from "./Modal"
+import { useState } from "react"
+import { FiDownload, FiEye, FiUser, FiCalendar, FiFileText, FiStar, FiAlertCircle } from "react-icons/fi"
+import { Toast, useToast } from "./Toast"
+import { thesisAPI } from "../services/api"
+import ReviewerAssessment from "./ReviewerAssessment"
 
-const StudentThesisDetails = ({ thesis, isOpen, onClose }) => {
-  if (!thesis || !thesis.assessment) {
-    return null
+const StudentThesisDetails = ({ thesis, onClose }) => {
+  const [isLoading, setIsLoading] = useState(false)
+  const [showReview, setShowReview] = useState(false)
+  const { toast, showToast, hideToast } = useToast()
+
+  // Early return if no thesis
+  if (!thesis) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <FiAlertCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-white mb-2">No Thesis Found</h3>
+          <p className="text-gray-400 mb-4">You haven't submitted a thesis yet.</p>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    )
   }
 
-  const { assessment, finalGrade, assignedReviewer } = thesis
-  const { section1, section2 } = assessment
-
-  const gradeLabels = {
-    high: "высокая / high",
-    above_average: "выше среднего / above average",
-    average: "средняя / average",
-    below_average: "ниже среднего / below average",
-    low: "низкая / low",
+  const handleDownload = async () => {
+    try {
+      setIsLoading(true)
+      const blob = await thesisAPI.downloadThesis(thesis._id)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${thesis.title || "thesis"}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      showToast("Download started", "success")
+    } catch (error) {
+      showToast("Failed to download thesis", "error")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const criteriaLabels = [
-    {
-      key: "topicCorrespondence",
-      labelRu: "Соответствие содержания работы утвержденной теме ВКР",
-      labelEn: "Degree to which the contents of the thesis correspond to its declared topic",
-    },
-    {
-      key: "relevanceJustification",
-      labelRu: "Обоснование актуальности темы, корректность постановки цели и задач исследования",
-      labelEn: "Justification for the relevance of the topic; correctness of the set research goals and objectives",
-    },
-    {
-      key: "subjectAreaCorrespondence",
-      labelRu: "Соответствие работы направлению, профилю и специализации подготовки",
-      labelEn: "Degree to which the thesis corresponds to the student's subject area, major, and specialization",
-    },
-    {
-      key: "researchMethodsCorrectness",
-      labelRu: "Корректность выбора использования методов исследования",
-      labelEn: "Correctness of the chosen research methods",
-    },
-    {
-      key: "materialPresentation",
-      labelRu: "Качество, логика и полнота изложения представленных материалов",
-      labelEn: "Quality, logic, and fullness with which the collected material is presented",
-    },
-    {
-      key: "assertionsJustification",
-      labelRu: "О��основанность положений, выносимых на защиту",
-      labelEn: "Degree of justification for the assertions that are presented for defense",
-    },
-    {
-      key: "researchValue",
-      labelRu: "Научная и/или практическая значимость работы",
-      labelEn: "Scientific and/or practical value of the research",
-    },
-    {
-      key: "researchFindingsIntegration",
-      labelRu: "Внедрение результатов работы",
-      labelEn: "Integration of the research findings",
-    },
-  ]
+  const handleViewPDF = async () => {
+    try {
+      setIsLoading(true)
+      const blob = await thesisAPI.viewThesis(thesis._id)
+      const blobUrl = URL.createObjectURL(blob)
+
+      const newWindow = window.open("", "_blank")
+      if (newWindow) {
+        newWindow.document.open()
+        newWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Thesis Viewer</title>
+              <style>
+                body { margin: 0; overflow: hidden; }
+                iframe { width: 100vw; height: 100vh; border: none; }
+              </style>
+            </head>
+            <body>
+              <iframe src="${blobUrl}"></iframe>
+            </body>
+          </html>
+        `)
+        newWindow.document.close()
+        newWindow.focus()
+      } else {
+        showToast("Popup blocked - please allow popups", "warning")
+      }
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
+    } catch (error) {
+      showToast("Failed to open thesis", "error")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "submitted":
+        return "bg-blue-600"
+      case "assigned":
+        return "bg-yellow-600"
+      case "evaluated":
+        return "bg-green-600"
+      default:
+        return "bg-gray-600"
+    }
+  }
+
+  const getStatusText = (status) => {
+    switch (status) {
+      case "submitted":
+        return "Submitted - Waiting for Assignment"
+      case "assigned":
+        return "Assigned to Reviewer"
+      case "evaluated":
+        return "Evaluated"
+      default:
+        return "Unknown Status"
+    }
+  }
+
+  const formatGrade = (grade) => {
+    if (!grade) return "Not graded yet"
+    return grade
+  }
+
+  if (showReview && thesis.status === "evaluated") {
+    return (
+      <div className="h-full">
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={() => setShowReview(false)} className="text-gray-400 hover:text-white transition-colors">
+            ← Back to Details
+          </button>
+        </div>
+        <ReviewerAssessment
+          thesisId={thesis._id}
+          student={{ fullName: "Current Student", institution: "Current Institution" }}
+          mode="view"
+          onClose={() => setShowReview(false)}
+        />
+      </div>
+    )
+  }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Рецензия на ВКР / Thesis Review" size="large">
-      <div className="p-6 space-y-6">
-        {/* Header Information */}
-        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <h3 className="text-lg font-semibold text-white mb-4">{thesis.title}</h3>
-          <div className="grid md:grid-cols-2 gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <FiUser className="w-4 h-4 text-gray-400" />
-              <div>
-                <p className="text-gray-400">Рецензент / Reviewer</p>
-                <p className="text-white font-medium">{assignedReviewer?.fullName}</p>
-                <p className="text-gray-400">{assignedReviewer?.institution}</p>
+    <div className="h-full flex flex-col">
+      <Toast {...toast} onClose={hideToast} />
+
+      {/* Header */}
+      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6 flex-shrink-0">
+        <div className="flex justify-between items-start">
+          <div className="flex-1">
+            <h2 className="text-xl font-semibold text-white mb-4">{thesis.title || "Untitled Thesis"}</h2>
+            <div className="flex items-center gap-4 mb-4">
+              <div className={`px-3 py-1 rounded-full text-white text-sm font-medium ${getStatusColor(thesis.status)}`}>
+                {getStatusText(thesis.status)}
+              </div>
+              {thesis.status === "evaluated" && (
+                <div className="px-3 py-1 bg-green-600 text-white rounded-full text-sm font-medium">
+                  Grade: {formatGrade(thesis.finalGrade)}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-6 text-gray-400">
+              <div className="flex items-center gap-2">
+                <FiCalendar className="w-4 h-4" />
+                <span className="text-sm">
+                  Submitted: {thesis.submissionDate ? new Date(thesis.submissionDate).toLocaleDateString() : "Unknown"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <FiFileText className="w-4 h-4" />
+                <span className="text-sm">PDF Document</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <FiCalendar className="w-4 h-4 text-gray-400" />
-              <div>
-                <p className="text-gray-400">Дата подачи / Submission Date</p>
-                <p className="text-white font-medium">{new Date(thesis.submissionDate).toLocaleDateString()}</p>
-              </div>
-            </div>
           </div>
-        </div>
-
-        {/* Final Grade */}
-        <div className="bg-green-900/20 border border-green-800 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <FiCheck className="w-5 h-5 text-green-400" />
-            <div>
-              <p className="text-green-400 font-medium text-lg">Итоговая оценка / Final Grade: {finalGrade}</p>
-              <p className="text-gray-400 text-sm">Ваша работа была оценена / Your thesis has been evaluated</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Section I: Assessment Criteria */}
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <h3 className="text-lg font-semibold text-white mb-6">РАЗДЕЛ I. Оценка ВКР / Assessment of the thesis</h3>
-          <div className="space-y-4">
-            {criteriaLabels.map((criterion) => (
-              <div
-                key={criterion.key}
-                className="grid md:grid-cols-3 gap-4 py-3 border-b border-gray-700 last:border-b-0"
-              >
-                <div className="md:col-span-2">
-                  <p className="text-white font-medium text-sm">{criterion.labelRu}</p>
-                  <p className="text-gray-400 text-xs">{criterion.labelEn}</p>
-                </div>
-                <div className="flex items-center">
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-900/20 text-blue-400 border border-blue-800">
-                    {gradeLabels[section1[criterion.key]] || section1[criterion.key]}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Section II: Results of Assessment */}
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <h3 className="text-lg font-semibold text-white mb-6">
-            РАЗДЕЛ II. Результирующая часть отзыва / Results of the assessment
-          </h3>
-
-          {/* Questions */}
-          <div className="mb-6">
-            <h4 className="text-white font-medium mb-3">Вопросы / Questions</h4>
-            <div className="space-y-3">
-              {section2.questions?.map((question, index) => (
-                <div key={index} className="bg-gray-700 rounded-lg p-3">
-                  <p className="text-gray-300 text-sm font-medium mb-1">
-                    Вопрос {index + 1} / Question {index + 1}
-                  </p>
-                  <p className="text-white">{question}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Advantages */}
-          <div className="mb-6">
-            <h4 className="text-white font-medium mb-3">Достоинства / Advantages</h4>
-            <div className="bg-gray-700 rounded-lg p-4">
-              <p className="text-white whitespace-pre-wrap">{section2.advantages}</p>
-            </div>
-          </div>
-
-          {/* Disadvantages */}
-          <div className="mb-6">
-            <h4 className="text-white font-medium mb-3">Недостатки, замечания / Disadvantages, critique</h4>
-            <div className="bg-gray-700 rounded-lg p-4">
-              <p className="text-white whitespace-pre-wrap">{section2.disadvantages}</p>
-            </div>
-          </div>
-
-          {/* Conclusion */}
-          <div className="space-y-4">
-            <h4 className="text-white font-medium">Заключение / Conclusion</h4>
-
-            <div className="bg-gray-700 rounded-lg p-4">
-              <h5 className="text-gray-300 text-sm font-medium mb-2">
-                Итоговая оценка ВКР / Final assessment of the thesis
-              </h5>
-              <p className="text-white whitespace-pre-wrap">{section2.conclusion?.finalAssessment}</p>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="bg-gray-700 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  {section2.conclusion?.isComplete ? (
-                    <FiCheck className="w-5 h-5 text-green-400" />
-                  ) : (
-                    <FiX className="w-5 h-5 text-red-400" />
-                  )}
-                  <div>
-                    <p className="text-white font-medium text-sm">Законченная работа / Complete work</p>
-                    <p className="text-gray-400 text-xs">{section2.conclusion?.isComplete ? "Да / Yes" : "Нет / No"}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-gray-700 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <FiUser className="w-5 h-5 text-blue-400" />
-                  <div>
-                    <p className="text-white font-medium text-sm">Заслуживает квалификации / Deserves degree</p>
-                    <p className="text-gray-400 text-xs">
-                      {section2.conclusion?.degreeWorthy || "Не указано / Not specified"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="flex gap-3">
+            <button
+              onClick={handleDownload}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <FiDownload className="w-4 h-4" />
+              Download
+            </button>
+            <button
+              onClick={handleViewPDF}
+              disabled={isLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <FiEye className="w-4 h-4" />
+              View PDF
+            </button>
           </div>
         </div>
       </div>
-    </Modal>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto space-y-6">
+        {/* Thesis Information */}
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <h3 className="text-lg font-semibold text-white mb-4">Thesis Information</h3>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-gray-300 text-sm mb-1">Title</label>
+              <p className="text-white">{thesis.title || "Untitled Thesis"}</p>
+            </div>
+            <div>
+              <label className="block text-gray-300 text-sm mb-1">Status</label>
+              <p className="text-white">{getStatusText(thesis.status)}</p>
+            </div>
+            <div>
+              <label className="block text-gray-300 text-sm mb-1">Submission Date</label>
+              <p className="text-white">
+                {thesis.submissionDate ? new Date(thesis.submissionDate).toLocaleDateString() : "Unknown"}
+              </p>
+            </div>
+            {thesis.status === "evaluated" && (
+              <div>
+                <label className="block text-gray-300 text-sm mb-1">Final Grade</label>
+                <p className="text-white font-medium">{formatGrade(thesis.finalGrade)}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Review Information */}
+        {thesis.status === "assigned" && (
+          <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <FiUser className="w-5 h-5 text-blue-400" />
+              <h3 className="text-lg font-semibold text-white">Review in Progress</h3>
+            </div>
+            <p className="text-gray-300">
+              Your thesis has been assigned to a reviewer and is currently being evaluated. You will be notified once
+              the review is complete.
+            </p>
+          </div>
+        )}
+
+        {thesis.status === "evaluated" && (
+          <div className="bg-green-900/20 border border-green-700 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <FiStar className="w-5 h-5 text-green-400" />
+                <h3 className="text-lg font-semibold text-white">Review Completed</h3>
+              </div>
+              <button
+                onClick={() => setShowReview(true)}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                View Review Details
+              </button>
+            </div>
+            <div className="space-y-2">
+              <p className="text-gray-300">Your thesis has been successfully reviewed and evaluated.</p>
+              <p className="text-white font-medium">Final Grade: {formatGrade(thesis.finalGrade)}</p>
+            </div>
+          </div>
+        )}
+
+        {thesis.status === "submitted" && (
+          <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <FiCalendar className="w-5 h-5 text-yellow-400" />
+              <h3 className="text-lg font-semibold text-white">Waiting for Assignment</h3>
+            </div>
+            <p className="text-gray-300">
+              Your thesis has been submitted successfully and is waiting to be assigned to a reviewer. This process
+              typically takes 1-3 business days.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

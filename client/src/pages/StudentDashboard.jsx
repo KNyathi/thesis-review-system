@@ -11,6 +11,7 @@ import {
   FiLogOut,
   FiAlertCircle,
   FiEye,
+  FiEdit,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
@@ -18,7 +19,7 @@ import { thesisAPI } from "../services/api"
 import StudentThesisDetails from "../components/StudentThesisDetails"
 
 const StudentDashboard = () => {
-  const { user, logout } = useAuth()
+  const { user, logout, refreshUser } = useAuth()
   const navigate = useNavigate()
   const [thesis, setThesis] = useState(null)
   const [file, setFile] = useState(null)
@@ -28,29 +29,75 @@ const StudentDashboard = () => {
   const [showReupload, setShowReupload] = useState(false)
   const [showReviewDetails, setShowReviewDetails] = useState(false)
   const { toast, showToast, hideToast } = useToast()
-  const hasFetched = useRef(false)
 
-  const fetchThesis = useCallback(async () => {
-    if (hasFetched.current) return
+  // Use ref to prevent infinite loops
+  const fetchedRef = useRef(false)
+  const lastUserUpdateRef = useRef(null)
 
-    try {
-      setIsLoading(true)
-      hasFetched.current = true
-      const data = await thesisAPI.getMyThesis()
-      setThesis(data)
-      setTitle(data?.title || "")
-    } catch (error) {
-      if (error.response?.status !== 404) {
-        showToast("Failed to fetch thesis information", "error")
+  const fetchThesis = useCallback(
+    async (forceRefresh = false) => {
+      try {
+        setIsLoading(true)
+
+        // Only refresh user data if forced or if user data seems stale
+        if (forceRefresh || !lastUserUpdateRef.current || Date.now() - lastUserUpdateRef.current > 30000) {
+          // 30 seconds
+          await refreshUser()
+          lastUserUpdateRef.current = Date.now()
+        }
+
+        const data = await thesisAPI.getMyThesis()
+        setThesis(data)
+        setTitle(data?.title || "")
+      } catch (error) {
+        if (error.response?.status !== 404) {
+          console.error("Error fetching thesis:", error)
+          showToast("Failed to fetch thesis information", "error")
+        }
+        // 404 is expected when no thesis exists
+        setThesis(null)
+      } finally {
+        setIsLoading(false)
+        fetchedRef.current = true
       }
-    } finally {
-      setIsLoading(false)
-    }
-  }, [showToast])
+    },
+    [showToast, refreshUser],
+  )
 
+  // Initial fetch - only once
   useEffect(() => {
-    fetchThesis()
-  }, [fetchThesis])
+    if (user && !fetchedRef.current) {
+      fetchThesis(true)
+    }
+  }, [user, fetchThesis])
+
+  // Update title when user data changes (after profile update)
+  useEffect(() => {
+    if (user?.thesisTopic && !thesis && fetchedRef.current) {
+      setTitle(user.thesisTopic)
+    }
+  }, [user?.thesisTopic, thesis])
+
+  // Visibility change listener - throttled
+  useEffect(() => {
+    let timeoutId = null
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user && fetchedRef.current) {
+        // Debounce to prevent rapid calls
+        if (timeoutId) clearTimeout(timeoutId)
+        timeoutId = setTimeout(() => {
+          fetchThesis(true)
+        }, 1000)
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      if (timeoutId) clearTimeout(timeoutId)
+    }
+  }, [fetchThesis, user])
 
   const handleLogout = () => {
     logout()
@@ -88,8 +135,8 @@ const StudentDashboard = () => {
       await thesisAPI.submitThesis(formData)
       showToast(thesis ? "Thesis re-uploaded successfully!" : "Thesis submitted successfully!", "success")
 
-      hasFetched.current = false
-      await fetchThesis()
+      // Force refresh after successful upload
+      await fetchThesis(true)
       setFile(null)
       setShowReupload(false)
 
@@ -171,13 +218,16 @@ const StudentDashboard = () => {
     }
   }
 
-  if (isLoading) {
+  if (isLoading && !fetchedRef.current) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
+
+  // Get the current thesis title - prioritize uploaded thesis title, then user profile topic
+  const currentThesisTitle = thesis?.title || user?.thesisTopic || ""
 
   return (
     <div className="min-h-screen bg-black">
@@ -204,7 +254,7 @@ const StudentDashboard = () => {
                     .slice(0, 2) || "U"}
                 </span>
               </div>
-              <div>
+              <div className="text-left">
                 <p className="text-white font-medium text-sm">{user?.fullName}</p>
                 <p className="text-gray-400 text-xs capitalize">{user?.role}</p>
               </div>
@@ -230,6 +280,39 @@ const StudentDashboard = () => {
             <h1 className="text-2xl font-semibold text-white mb-2">Thesis Submission</h1>
             <p className="text-gray-400">Upload and manage your graduation thesis</p>
           </div>
+
+          {/* Show thesis topic even without uploaded file */}
+          {currentThesisTitle && !thesis && (
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-800 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-white mb-2">{currentThesisTitle}</h2>
+                  <div className="flex items-center gap-2 text-gray-400">
+                    <FiEdit className="w-4 h-4" />
+                    <span className="text-sm">Title set in profile - ready for file upload</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate("/profile")}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                >
+                  <FiEdit className="w-4 h-4" />
+                  Edit in Profile
+                </button>
+              </div>
+              <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <FiAlertCircle className="w-5 h-5 text-blue-400" />
+                  <div>
+                    <p className="text-blue-400 font-medium">Ready for Upload</p>
+                    <p className="text-gray-400 text-sm">
+                      You have set your thesis title. Now upload your thesis file to complete the submission.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {thesis && !showReupload ? (
             // Existing thesis display
@@ -353,6 +436,18 @@ const StudentDashboard = () => {
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent transition-all"
                     required
                   />
+                  {user?.thesisTopic && title !== user.thesisTopic && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Profile title: "{user.thesisTopic}" -
+                      <button
+                        type="button"
+                        onClick={() => setTitle(user.thesisTopic)}
+                        className="text-blue-400 hover:text-blue-300 ml-1"
+                      >
+                        Use profile title
+                      </button>
+                    </p>
+                  )}
                 </div>
 
                 <div>

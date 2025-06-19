@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   FiUsers,
@@ -13,6 +13,8 @@ import {
   FiShield,
   FiTrash2,
   FiAlertTriangle,
+  FiMoreHorizontal,
+  FiRefreshCw,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
@@ -37,42 +39,116 @@ const AdminDashboard = () => {
   const [processingReviewer, setProcessingReviewer] = useState(null)
   const [deletingUser, setDeletingUser] = useState(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showReassignModal, setShowReassignModal] = useState(false)
   const [userToDelete, setUserToDelete] = useState(null)
+  const [reassignData, setReassignData] = useState(null)
+  const [openDropdown, setOpenDropdown] = useState(null)
   const { toast, showToast, hideToast } = useToast()
 
+  // Use ref to prevent infinite loops
+  const fetchedRef = useRef(false)
+  const retryCountRef = useRef(0)
+  const maxRetries = 3
+
   const fetchData = useCallback(async () => {
+    // Prevent multiple simultaneous calls
+    if (fetchedRef.current && retryCountRef.current === 0) {
+      return
+    }
+
     try {
       setIsLoading(true)
-      const [allUsersData, allTheses, pendingData, approvedData] = await Promise.all([
-        thesisAPI.getAllUsers(),
-        thesisAPI.getAllTheses(),
-        thesisAPI.getPendingReviewers(),
-        thesisAPI.getApprovedReviewers(),
+      retryCountRef.current += 1
+
+      // Fetch data with proper error handling and timeout
+      const fetchWithTimeout = (promise, timeout = 10000) => {
+        return Promise.race([
+          promise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Request timeout")), timeout)),
+        ])
+      }
+
+      const [allUsersResult, allThesesResult, pendingResult, approvedResult] = await Promise.allSettled([
+        fetchWithTimeout(thesisAPI.getAllUsers()),
+        fetchWithTimeout(thesisAPI.getAllTheses()),
+        fetchWithTimeout(thesisAPI.getPendingReviewers()),
+        fetchWithTimeout(thesisAPI.getApprovedReviewers()),
       ])
 
+      // Extract values from settled promises with fallbacks
+      const users = allUsersResult.status === "fulfilled" ? allUsersResult.value : []
+      const thesesData = allThesesResult.status === "fulfilled" ? allThesesResult.value : []
+      const pending = pendingResult.status === "fulfilled" ? pendingResult.value : []
+      const approved = approvedResult.status === "fulfilled" ? approvedResult.value : []
+
       // Filter students from all users
-      const studentUsers = allUsersData.filter((user) => user.role === "student")
+      const studentUsers = users.filter((user) => user.role === "student")
       setStudents(studentUsers)
-      setAllUsers(allUsersData)
-      setTheses(allTheses)
-      setPendingReviewers(pendingData)
-      setApprovedReviewers(approvedData)
+      setAllUsers(users)
+      setTheses(thesesData)
+      setPendingReviewers(pending)
+      setApprovedReviewers(approved)
+
+      // Check if any requests failed
+      const failedRequests = [allUsersResult, allThesesResult, pendingResult, approvedResult].filter(
+        (result) => result.status === "rejected",
+      )
+
+      if (failedRequests.length > 0) {
+        console.warn("Some data requests failed:", failedRequests)
+        if (retryCountRef.current < maxRetries) {
+          showToast(`Some data could not be loaded. Retrying... (${retryCountRef.current}/${maxRetries})`, "warning")
+          // Retry after a delay
+          setTimeout(() => {
+            fetchData()
+          }, 2000)
+          return
+        } else {
+          showToast("Some data could not be loaded after multiple attempts", "error")
+        }
+      }
+
+      fetchedRef.current = true
+      retryCountRef.current = 0
     } catch (error) {
-      showToast("Failed to fetch data", "error")
+      console.error("Error fetching data:", error)
+      if (retryCountRef.current < maxRetries) {
+        showToast(`Failed to fetch data. Retrying... (${retryCountRef.current}/${maxRetries})`, "warning")
+        setTimeout(() => {
+          fetchData()
+        }, 2000)
+      } else {
+        showToast("Failed to fetch data after multiple attempts", "error")
+        retryCountRef.current = 0
+      }
     } finally {
       setIsLoading(false)
     }
   }, [showToast])
 
   useEffect(() => {
-    fetchData()
-  }, [fetchData])
+    if (user && user.role === "admin" && !fetchedRef.current) {
+      fetchData()
+    }
+  }, [user, fetchData])
+
+  // Remove the visibility change listener to prevent infinite loops
+  // useEffect(() => {
+  //   const handleVisibilityChange = () => {
+  //     if (!document.hidden && user && user.role === "admin") {
+  //       fetchData()
+  //     }
+  //   }
+
+  //   document.addEventListener("visibilitychange", handleVisibilityChange)
+  //   return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  // }, [fetchData, user])
 
   // Filter students
   useEffect(() => {
     let filtered = [...students]
 
-    if (filterOption === "under_review") {
+    if (filterOption === "assigned") {
       filtered = filtered.filter((student) => student.reviewer)
     } else if (filterOption === "not_assigned") {
       filtered = filtered.filter((student) => !student.reviewer)
@@ -102,13 +178,54 @@ const AdminDashboard = () => {
   }
 
   const handleAssignReviewer = async (studentId, reviewerId) => {
+    const student = students.find((s) => s._id === studentId)
+    const reviewer = approvedReviewers.find((r) => r._id === reviewerId)
+    const currentReviewer = student?.reviewer ? approvedReviewers.find((r) => r._id === student.reviewer) : null
+
+    if (currentReviewer) {
+      // Show reassignment confirmation
+      setReassignData({
+        studentId,
+        reviewerId,
+        studentName: student.fullName,
+        currentReviewerName: currentReviewer.fullName,
+        newReviewerName: reviewer.fullName,
+      })
+      setShowReassignModal(true)
+    } else {
+      // Direct assignment
+      try {
+        setAssigningStudent(studentId)
+        await thesisAPI.assignReviewer(studentId, reviewerId)
+        showToast("Reviewer assigned successfully!", "success")
+        // Refresh data after successful assignment
+        fetchedRef.current = false
+        await fetchData()
+      } catch (error) {
+        showToast("Failed to assign reviewer", "error")
+      } finally {
+        setAssigningStudent(null)
+      }
+    }
+  }
+
+  const handleConfirmReassign = async () => {
+    if (!reassignData) return
+
     try {
-      setAssigningStudent(studentId)
-      await thesisAPI.assignReviewer(studentId, reviewerId)
-      showToast("Reviewer assigned successfully!", "success")
+      setAssigningStudent(reassignData.studentId)
+      await thesisAPI.assignReviewer(reassignData.studentId, reassignData.reviewerId)
+      showToast(
+        `Reviewer successfully changed from ${reassignData.currentReviewerName} to ${reassignData.newReviewerName}!`,
+        "success",
+      )
+      // Refresh data after successful reassignment
+      fetchedRef.current = false
       await fetchData()
+      setShowReassignModal(false)
+      setReassignData(null)
     } catch (error) {
-      showToast("Failed to assign reviewer", "error")
+      showToast("Failed to reassign reviewer", "error")
     } finally {
       setAssigningStudent(null)
     }
@@ -119,6 +236,8 @@ const AdminDashboard = () => {
       setProcessingReviewer(reviewerId)
       await thesisAPI.approveReviewer(reviewerId)
       showToast("Reviewer approved successfully!", "success")
+      // Refresh data after successful approval
+      fetchedRef.current = false
       await fetchData()
     } catch (error) {
       showToast("Failed to approve reviewer", "error")
@@ -132,6 +251,8 @@ const AdminDashboard = () => {
       setProcessingReviewer(reviewerId)
       await thesisAPI.declineReviewer(reviewerId)
       showToast("Reviewer declined", "success")
+      // Refresh data after successful decline
+      fetchedRef.current = false
       await fetchData()
     } catch (error) {
       showToast("Failed to decline reviewer", "error")
@@ -146,7 +267,9 @@ const AdminDashboard = () => {
     try {
       setDeletingUser(userToDelete._id)
       await thesisAPI.deleteUser(userToDelete._id)
-      showToast("User deleted successfully!", "success")
+      showToast(`User ${userToDelete.fullName} deleted successfully!`, "success")
+      // Refresh data after successful deletion
+      fetchedRef.current = false
       await fetchData()
       setShowDeleteModal(false)
       setUserToDelete(null)
@@ -160,6 +283,11 @@ const AdminDashboard = () => {
   const openDeleteModal = (user) => {
     setUserToDelete(user)
     setShowDeleteModal(true)
+    setOpenDropdown(null)
+  }
+
+  const toggleDropdown = (userId) => {
+    setOpenDropdown(openDropdown === userId ? null : userId)
   }
 
   const getStatusColor = (status, hasUploaded, assignedReviewer) => {
@@ -211,10 +339,36 @@ const AdminDashboard = () => {
     }
   }
 
-  if (isLoading) {
+  // Check if user is admin
+  if (!user || user.role !== "admin") {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold text-white mb-4">Access Denied</h1>
+          <p className="text-gray-400 mb-6">You don't have permission to access this page.</p>
+          <button
+            onClick={() => navigate(`/${user?.role || "login"}`)}
+            className="px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (isLoading && !fetchedRef.current) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Loading admin dashboard...</p>
+          {retryCountRef.current > 0 && (
+            <p className="text-yellow-400 text-sm mt-2">
+              Retry attempt {retryCountRef.current}/{maxRetries}
+            </p>
+          )}
+        </div>
       </div>
     )
   }
@@ -244,19 +398,32 @@ const AdminDashboard = () => {
                     .slice(0, 2) || "A"}
                 </span>
               </div>
-              <div>
+              <div className="text-left">
                 <p className="text-white font-medium text-sm">{user?.fullName}</p>
                 <p className="text-gray-400 text-xs capitalize">{user?.role}</p>
               </div>
             </button>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
-          >
-            <FiLogOut className="w-4 h-4" />
-            Logout
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                fetchedRef.current = false
+                retryCountRef.current = 0
+                fetchData()
+              }}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            >
+              <FiRefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+            >
+              <FiLogOut className="w-4 h-4" />
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
@@ -381,8 +548,8 @@ const AdminDashboard = () => {
                               )}
                             </div>
                           </div>
-                          <div className="flex gap-2">
-                            {!student.reviewer && student.thesisFile && (
+                          <div className="flex items-center gap-2">
+                            {student.thesisFile && (
                               <div className="relative">
                                 <select
                                   onChange={(e) => {
@@ -395,7 +562,11 @@ const AdminDashboard = () => {
                                   className="bg-white text-black font-medium py-2 px-4 rounded-lg hover:bg-gray-100 transition-colors text-sm disabled:opacity-50"
                                 >
                                   <option value="">
-                                    {assigningStudent === student._id ? "Assigning..." : "Assign Reviewer"}
+                                    {assigningStudent === student._id
+                                      ? "Processing..."
+                                      : student.reviewer
+                                        ? "Reassign Reviewer"
+                                        : "Assign Reviewer"}
                                   </option>
                                   {approvedReviewers.map((reviewer) => (
                                     <option key={reviewer._id} value={reviewer._id}>
@@ -405,6 +576,25 @@ const AdminDashboard = () => {
                                 </select>
                               </div>
                             )}
+                            <div className="relative">
+                              <button
+                                onClick={() => toggleDropdown(student._id)}
+                                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                              >
+                                <FiMoreHorizontal className="w-4 h-4" />
+                              </button>
+                              {openDropdown === student._id && (
+                                <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[120px]">
+                                  <button
+                                    onClick={() => openDeleteModal(student)}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-red-400 hover:bg-gray-700 transition-colors text-sm"
+                                  >
+                                    <FiTrash2 className="w-4 h-4" />
+                                    Delete User
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -454,7 +644,7 @@ const AdminDashboard = () => {
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleApproveReviewer(reviewer._id)}
                           disabled={processingReviewer === reviewer._id}
@@ -475,6 +665,25 @@ const AdminDashboard = () => {
                           <FiX className="w-4 h-4" />
                           Decline
                         </button>
+                        <div className="relative">
+                          <button
+                            onClick={() => toggleDropdown(reviewer._id)}
+                            className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                          >
+                            <FiMoreHorizontal className="w-4 h-4" />
+                          </button>
+                          {openDropdown === reviewer._id && (
+                            <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[120px]">
+                              <button
+                                onClick={() => openDeleteModal(reviewer)}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-red-400 hover:bg-gray-700 transition-colors text-sm"
+                              >
+                                <FiTrash2 className="w-4 h-4" />
+                                Delete User
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -560,13 +769,25 @@ const AdminDashboard = () => {
                         </div>
                         <div className="flex gap-2">
                           {userItem._id !== user._id && (
-                            <button
-                              onClick={() => openDeleteModal(userItem)}
-                              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
-                            >
-                              <FiTrash2 className="w-4 h-4" />
-                              Delete
-                            </button>
+                            <div className="relative">
+                              <button
+                                onClick={() => toggleDropdown(userItem._id)}
+                                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                              >
+                                <FiMoreHorizontal className="w-4 h-4" />
+                              </button>
+                              {openDropdown === userItem._id && (
+                                <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[120px]">
+                                  <button
+                                    onClick={() => openDeleteModal(userItem)}
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-red-400 hover:bg-gray-700 transition-colors text-sm"
+                                  >
+                                    <FiTrash2 className="w-4 h-4" />
+                                    Delete User
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -631,8 +852,9 @@ const AdminDashboard = () => {
           )}
 
           <p className="text-gray-300 mb-6">
-            Are you sure you want to delete this user? This will permanently remove their account and all associated
-            data.
+            Are you sure you want to delete user{" "}
+            <span className="font-medium text-white">{userToDelete?.fullName}</span>? This will permanently remove their
+            account and all associated data.
           </p>
 
           <div className="flex gap-3">
@@ -662,6 +884,79 @@ const AdminDashboard = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Reassign Reviewer Confirmation Modal */}
+      <Modal
+        isOpen={showReassignModal}
+        onClose={() => {
+          setShowReassignModal(false)
+          setReassignData(null)
+        }}
+        title="Confirm Reviewer Reassignment"
+        size="medium"
+      >
+        <div className="p-6">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-12 h-12 bg-yellow-600 rounded-full flex items-center justify-center">
+              <FiRefreshCw className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">Reassign Reviewer</h3>
+              <p className="text-gray-400">This will change the assigned reviewer</p>
+            </div>
+          </div>
+
+          {reassignData && (
+            <div className="bg-gray-800 rounded-lg p-4 mb-6">
+              <p className="text-white mb-2">
+                <span className="font-medium">Student:</span> {reassignData.studentName}
+              </p>
+              <p className="text-gray-300 mb-2">
+                <span className="font-medium">Current Reviewer:</span> {reassignData.currentReviewerName}
+              </p>
+              <p className="text-gray-300">
+                <span className="font-medium">New Reviewer:</span> {reassignData.newReviewerName}
+              </p>
+            </div>
+          )}
+
+          <p className="text-gray-300 mb-6">
+            Are you sure you want to change the reviewer from{" "}
+            <span className="font-medium text-white">{reassignData?.currentReviewerName}</span> to{" "}
+            <span className="font-medium text-white">{reassignData?.newReviewerName}</span> for student{" "}
+            <span className="font-medium text-white">{reassignData?.studentName}</span>?
+          </p>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setShowReassignModal(false)
+                setReassignData(null)
+              }}
+              className="flex-1 bg-gray-700 text-white font-medium py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmReassign}
+              disabled={assigningStudent}
+              className="flex-1 bg-yellow-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {assigningStudent ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <FiRefreshCw className="w-5 h-5" />
+                  Reassign Reviewer
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Click outside to close dropdowns */}
+      {openDropdown && <div className="fixed inset-0 z-5" onClick={() => setOpenDropdown(null)} />}
     </div>
   )
 }

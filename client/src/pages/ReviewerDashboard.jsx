@@ -1,17 +1,17 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   FiFile,
   FiClock,
   FiCheck,
   FiUser,
-  FiEdit,
   FiDownload,
   FiEye,
   FiLogOut,
   FiFilter,
   FiCalendar,
   FiBook,
+  FiRefreshCw,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
@@ -34,50 +34,77 @@ const ReviewerDashboard = () => {
   const [filterOption, setFilterOption] = useState("all")
   const [sortOption, setSortOption] = useState("newest")
   const { toast, showToast, hideToast } = useToast()
-  const hasFetched = useRef(false)
 
   const fetchStudents = useCallback(async () => {
-    if (hasFetched.current) return
-
     try {
       setIsLoading(true)
-      hasFetched.current = true
 
-      const [assigned, completed] = await Promise.all([thesisAPI.getAssignedTheses(), thesisAPI.getCompletedReviews()])
+      const [assigned, completed] = await Promise.all([
+        thesisAPI.getAssignedTheses().catch(() => []),
+        thesisAPI.getCompletedReviews().catch(() => []),
+      ])
 
-      setAssignedStudents(
-        assigned.map((thesis) => ({
+      console.log("Assigned theses:", assigned)
+      console.log("Completed reviews:", completed)
+
+      // Filter out theses with missing student data and add proper null checks
+      const validAssigned = assigned
+        .filter((thesis) => thesis && thesis.student && thesis.student.fullName)
+        .filter((thesis) => thesis.status !== "evaluated") // Only show non-evaluated theses in assigned
+        .map((thesis) => ({
           ...thesis.student,
           thesis: thesis,
           thesisId: thesis._id,
-          thesisTitle: thesis.title,
+          thesisTitle: thesis.title || "Untitled Thesis",
           submissionDate: thesis.submissionDate,
           status: thesis.status,
           hasUploaded: true,
-        })),
-      )
+        }))
 
-      setCompletedStudents(
-        completed.map((thesis) => ({
+      const validCompleted = completed
+        .filter((thesis) => thesis && thesis.student && thesis.student.fullName)
+        .filter((thesis) => thesis.status === "evaluated") // Only show evaluated theses in completed
+        .map((thesis) => ({
           ...thesis.student,
           thesis: thesis,
           thesisId: thesis._id,
-          thesisTitle: thesis.title,
+          thesisTitle: thesis.title || "Untitled Thesis",
           submissionDate: thesis.submissionDate,
           status: thesis.status,
           finalGrade: thesis.finalGrade,
           hasUploaded: true,
-        })),
-      )
+        }))
+
+      setAssignedStudents(validAssigned)
+      setCompletedStudents(validCompleted)
+
+      // Show warning if some data was filtered out
+      if (assigned.length !== validAssigned.length || completed.length !== validCompleted.length) {
+        showToast("Some student data could not be loaded (possibly deleted users)", "warning")
+      }
     } catch (error) {
+      console.error("Error fetching students:", error)
       showToast("Failed to fetch students", "error")
     } finally {
       setIsLoading(false)
     }
   }, [showToast])
 
+  // Initial fetch
   useEffect(() => {
     fetchStudents()
+  }, []) // Remove fetchStudents from dependencies to prevent infinite loop
+
+  // Visibility change listener
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchStudents()
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
   }, [fetchStudents])
 
   // Filter and sort students
@@ -117,7 +144,7 @@ const ReviewerDashboard = () => {
   const handleCloseModal = () => {
     setIsModalOpen(false)
     setSelectedStudent(null)
-    hasFetched.current = false
+    // Refresh data after modal closes
     fetchStudents()
   }
 
@@ -142,6 +169,17 @@ const ReviewerDashboard = () => {
       showToast("Failed to download thesis", "error")
     } finally {
       setDownloadingId(null)
+    }
+  }
+
+  const handleReReview = async (student) => {
+    try {
+      // Move thesis back to assigned status for re-review
+      await thesisAPI.reReviewThesis(student.thesisId)
+      showToast("Thesis moved back for re-review", "success")
+      fetchStudents() // Refresh the data
+    } catch (error) {
+      showToast("Failed to move thesis for re-review", "error")
     }
   }
 
@@ -197,6 +235,16 @@ const ReviewerDashboard = () => {
     }
   }
 
+  const getInitials = (fullName) => {
+    if (!fullName || typeof fullName !== "string") return "?"
+    return fullName
+      .split(" ")
+      .map((name) => name[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -216,7 +264,10 @@ const ReviewerDashboard = () => {
             <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-teal-600 rounded-full flex items-center justify-center">
               <FiBook className="w-4 h-4 text-white" />
             </div>
-            <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate("/profile")}
+              className="flex items-center gap-3 hover:bg-gray-800 rounded-lg p-2 transition-colors"
+            >
               <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                 <span className="text-white font-semibold text-xs">
                   {user?.fullName
@@ -227,11 +278,11 @@ const ReviewerDashboard = () => {
                     .slice(0, 2) || "U"}
                 </span>
               </div>
-              <div>
+              <div className="text-left">
                 <p className="text-white font-medium text-sm">{user?.fullName}</p>
                 <p className="text-gray-400 text-xs capitalize">{user?.role}</p>
               </div>
-            </div>
+            </button>
           </div>
           <button
             onClick={handleLogout}
@@ -323,14 +374,7 @@ const ReviewerDashboard = () => {
                               student.hasUploaded,
                             )} rounded-full flex items-center justify-center`}
                           >
-                            <span className="text-white font-semibold text-sm">
-                              {student.fullName
-                                .split(" ")
-                                .map((name) => name[0])
-                                .join("")
-                                .toUpperCase()
-                                .slice(0, 2)}
-                            </span>
+                            <span className="text-white font-semibold text-sm">{getInitials(student.fullName)}</span>
                           </div>
                           <div>
                             <h3 className="text-lg font-semibold text-white">{student.fullName}</h3>
@@ -407,14 +451,7 @@ const ReviewerDashboard = () => {
                             student.hasUploaded,
                           )} rounded-full flex items-center justify-center`}
                         >
-                          <span className="text-white font-semibold text-sm">
-                            {student.fullName
-                              .split(" ")
-                              .map((name) => name[0])
-                              .join("")
-                              .toUpperCase()
-                              .slice(0, 2)}
-                          </span>
+                          <span className="text-white font-semibold text-sm">{getInitials(student.fullName)}</span>
                         </div>
                         <div>
                           <h3 className="text-lg font-semibold text-white">{student.fullName}</h3>
@@ -457,11 +494,18 @@ const ReviewerDashboard = () => {
                         Download
                       </button>
                       <button
-                        onClick={() => handleStudentClick(student, "edit")}
+                        onClick={() => handleStudentClick(student, "view")}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
                       >
-                        <FiEdit className="w-4 h-4" />
-                        Review Again
+                        <FiEye className="w-4 h-4" />
+                        View Review
+                      </button>
+                      <button
+                        onClick={() => handleReReview(student)}
+                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
+                      >
+                        <FiRefreshCw className="w-4 h-4" />
+                        Re-Review
                       </button>
                     </div>
                   </div>
@@ -482,7 +526,7 @@ const ReviewerDashboard = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
-        title={`${reviewMode === "edit" ? "Edit Review" : "Review Thesis"} - ${selectedStudent?.fullName}`}
+        title={`${reviewMode === "edit" ? "Edit Review" : reviewMode === "view" ? "View Review" : "Review Thesis"} - ${selectedStudent?.fullName}`}
         size="full"
       >
         {selectedStudent && (
