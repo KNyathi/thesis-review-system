@@ -28,7 +28,7 @@
      ```
      
 #### 2) Render (Both Client and Server), Vercel (MongoDB)
-  - Client Url: https://thesis-review-system-1.onrender.com
+  - Client Url: https://thesis-review-system.vercel.app/register
   - Server Url: https://thesis-review-system.onrender.com
   - MongoDB Atlas: 
    
