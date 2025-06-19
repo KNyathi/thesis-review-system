@@ -14,8 +14,6 @@
     "start:prod": "node dist/server.js"
   },
   "keywords": [
-    "example",
-    "heroku"
   ],
   "author": "Khayelihle Nyathi",
   "license": "ISC",
