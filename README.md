@@ -30,7 +30,7 @@
 #### 2) Render (Both Client and Server), Vercel (MongoDB)
   - Client Url: https://thesis-review-system-1.onrender.com
   - Server Url: https://thesis-review-system.onrender.com
-  - MongoDB Atlas:
+  - MongoDB Atlas: 
    
 ## The Client is in the client directory (developed with ReactJS) and The Server is in the server directory (developed with NodeJS, Typescript, MongoDB) and they are both connected using Axios.
 ## Assessment of thesis using Machine-learning is also implemented through backend.
