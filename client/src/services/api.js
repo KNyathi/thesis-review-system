@@ -1,6 +1,6 @@
 import axios from "axios"
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:8000/api/v1"
 
 // Axios instance with default config
 const api = axios.create({
@@ -52,11 +52,16 @@ const realThesisAPI = {
     return response.data
   },
 
+  reReviewThesis: async (thesisId) => {
+    const response = await api.post(`/re-review/${thesisId}`)
+    return response.data
+  },
+
   downloadReviewPdf: async (filename) => {
     const response = await api.get(`/download-review/${filename}`, {
       responseType: "blob",
-    });
-    return response.data;
+    })
+    return response.data
   },
 
   downloadThesis: async (thesisId) => {
@@ -93,7 +98,6 @@ const realThesisAPI = {
   getApprovedReviewers: async () => {
     const response = await api.get("/users")
     const users = response.data
-
     return users.filter((user) => user.role === "reviewer" && user.isApproved)
   },
 

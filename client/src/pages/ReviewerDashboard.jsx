@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   FiFile,
@@ -35,77 +35,90 @@ const ReviewerDashboard = () => {
   const [sortOption, setSortOption] = useState("newest")
   const { toast, showToast, hideToast } = useToast()
 
+  // ИСПРАВЛЕНО: Используем ref для предотвращения бесконечных циклов
+  const fetchedRef = useRef(false)
+  const isFetchingRef = useRef(false)
+
+  // ИСПРАВЛЕНО: Убираем зависимости, которые могут вызывать бесконечные циклы
   const fetchStudents = useCallback(async () => {
+    // Предотвращаем одновременные запросы
+    if (isFetchingRef.current) {
+      return
+    }
+
     try {
+      isFetchingRef.current = true
       setIsLoading(true)
 
-      const [assigned, completed] = await Promise.all([
-        thesisAPI.getAssignedTheses().catch(() => []),
-        thesisAPI.getCompletedReviews().catch(() => []),
+      const [assigned, completed] = await Promise.allSettled([
+        thesisAPI.getAssignedTheses(),
+        thesisAPI.getCompletedReviews(),
       ])
 
-      console.log("Assigned theses:", assigned)
-      console.log("Completed reviews:", completed)
+      // Обработка назначенных тезисов
+      const assignedData = assigned.status === "fulfilled" ? assigned.value : []
+      const completedData = completed.status === "fulfilled" ? completed.value : []
 
-      // Filter out theses with missing student data and add proper null checks
-      const validAssigned = assigned
-        .filter((thesis) => thesis && thesis.student && thesis.student.fullName)
-        .filter((thesis) => thesis.status !== "evaluated") // Only show non-evaluated theses in assigned
-        .map((thesis) => ({
-          ...thesis.student,
-          thesis: thesis,
-          thesisId: thesis._id,
-          thesisTitle: thesis.title || "Untitled Thesis",
-          submissionDate: thesis.submissionDate,
-          status: thesis.status,
-          hasUploaded: true,
-        }))
+      console.log("Assigned theses:", assignedData)
+      console.log("Completed reviews:", completedData)
 
-      const validCompleted = completed
+      // Обработка всех тезисов
+      const allTheses = [...assignedData, ...completedData]
+
+      // Убираем дубликаты по ID
+      const uniqueTheses = allTheses.filter(
+        (thesis, index, self) => index === self.findIndex((t) => t._id === thesis._id),
+      )
+
+      // Разделяем на назначенные и завершенные
+      const validAssigned = []
+      const validCompleted = []
+
+      uniqueTheses
         .filter((thesis) => thesis && thesis.student && thesis.student.fullName)
-        .filter((thesis) => thesis.status === "evaluated") // Only show evaluated theses in completed
-        .map((thesis) => ({
-          ...thesis.student,
-          thesis: thesis,
-          thesisId: thesis._id,
-          thesisTitle: thesis.title || "Untitled Thesis",
-          submissionDate: thesis.submissionDate,
-          status: thesis.status,
-          finalGrade: thesis.finalGrade,
-          hasUploaded: true,
-        }))
+        .forEach((thesis) => {
+          const studentData = {
+            ...thesis.student,
+            thesis: thesis,
+            thesisId: thesis._id,
+            thesisTitle: thesis.title || "Untitled Thesis",
+            submissionDate: thesis.submissionDate,
+            status: thesis.status,
+            finalGrade: thesis.finalGrade,
+            hasUploaded: !!thesis.fileUrl,
+          }
+
+          // Если работа оценена (есть финальная оценка) или статус "evaluated", то она завершена
+          if (thesis.finalGrade || thesis.status === "evaluated") {
+            validCompleted.push(studentData)
+          } else {
+            // Иначе она все еще назначена для рецензирования
+            validAssigned.push(studentData)
+          }
+        })
 
       setAssignedStudents(validAssigned)
       setCompletedStudents(validCompleted)
+      fetchedRef.current = true
 
-      // Show warning if some data was filtered out
-      if (assigned.length !== validAssigned.length || completed.length !== validCompleted.length) {
-        showToast("Some student data could not be loaded (possibly deleted users)", "warning")
+      if (assigned.status === "rejected" || completed.status === "rejected") {
+        showToast("Some data could not be loaded", "warning")
       }
     } catch (error) {
       console.error("Error fetching students:", error)
       showToast("Failed to fetch students", "error")
     } finally {
       setIsLoading(false)
+      isFetchingRef.current = false
     }
-  }, [showToast])
+  }, []) // ИСПРАВЛЕНО: Убрали showToast из зависимостей
 
-  // Initial fetch
+  // ИСПРАВЛЕНО: Загружаем данные только при монтировании компонента
   useEffect(() => {
-    fetchStudents()
-  }, []) // Remove fetchStudents from dependencies to prevent infinite loop
-
-  // Visibility change listener
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        fetchStudents()
-      }
+    if (user && user.role === "reviewer" && !fetchedRef.current) {
+      fetchStudents()
     }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
-  }, [fetchStudents])
+  }, [user]) // ИСПРАВЛЕНО: Убрали fetchStudents из зависимостей
 
   // Filter and sort students
   useEffect(() => {
@@ -144,7 +157,7 @@ const ReviewerDashboard = () => {
   const handleCloseModal = () => {
     setIsModalOpen(false)
     setSelectedStudent(null)
-    // Refresh data after modal closes
+    // ИСПРАВЛЕНО: Обновляем данные только после закрытия модального окна
     fetchStudents()
   }
 
@@ -174,13 +187,18 @@ const ReviewerDashboard = () => {
 
   const handleReReview = async (student) => {
     try {
-      // Move thesis back to assigned status for re-review
       await thesisAPI.reReviewThesis(student.thesisId)
       showToast("Thesis moved back for re-review", "success")
-      fetchStudents() // Refresh the data
+      fetchStudents() // Обновляем данные
     } catch (error) {
       showToast("Failed to move thesis for re-review", "error")
     }
+  }
+
+  // ИСПРАВЛЕНО: Ручное обновление
+  const handleRefresh = () => {
+    fetchedRef.current = false
+    fetchStudents()
   }
 
   const getCircleColor = (status, hasUploaded) => {
@@ -245,10 +263,13 @@ const ReviewerDashboard = () => {
       .slice(0, 2)
   }
 
-  if (isLoading) {
+  if (isLoading && !fetchedRef.current) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Loading reviewer dashboard...</p>
+        </div>
       </div>
     )
   }
@@ -284,13 +305,22 @@ const ReviewerDashboard = () => {
               </div>
             </button>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
-          >
-            <FiLogOut className="w-4 h-4" />
-            Logout
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleRefresh}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            >
+              <FiRefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+            >
+              <FiLogOut className="w-4 h-4" />
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
@@ -385,14 +415,12 @@ const ReviewerDashboard = () => {
                           <p className="text-white font-medium mb-1">{student.thesisTitle || "No thesis title yet"}</p>
                           <p className="text-gray-400 text-sm mb-2">{student.institution}</p>
                           <div className="flex items-center gap-4 text-sm">
-                            {student.hasUploaded ? (
+                            {student.hasUploaded && student.submissionDate ? (
                               <div className="flex items-center gap-2 text-gray-400">
                                 <FiClock className="w-4 h-4" />
                                 <span>Submitted {new Date(student.submissionDate).toLocaleDateString()}</span>
                               </div>
-                            ) : (
-                              ""
-                            )}
+                            ) : null}
                             <div
                               className={`flex items-center gap-2 ${getStatusColor(
                                 student.status,
@@ -462,10 +490,12 @@ const ReviewerDashboard = () => {
                         <p className="text-white font-medium mb-1">{student.thesisTitle}</p>
                         <p className="text-gray-400 text-sm mb-2">{student.institution}</p>
                         <div className="flex items-center gap-4 text-sm">
-                          <div className="flex items-center gap-2 text-gray-400">
-                            <FiClock className="w-4 h-4" />
-                            <span>Submitted {new Date(student.submissionDate).toLocaleDateString()}</span>
-                          </div>
+                          {student.submissionDate && (
+                            <div className="flex items-center gap-2 text-gray-400">
+                              <FiClock className="w-4 h-4" />
+                              <span>Submitted {new Date(student.submissionDate).toLocaleDateString()}</span>
+                            </div>
+                          )}
                           <div className="flex items-center gap-2 text-green-400">
                             <FiCheck className="w-4 h-4" />
                             <span className="font-medium">Review Completed</span>

@@ -14,6 +14,7 @@ import {
   FiTrash2,
   FiAlertTriangle,
   FiInfo,
+  FiPlus, // Add this import
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
@@ -67,7 +68,7 @@ const ProfilePage = () => {
         educationalProgram: user.educationalProgram || "",
         degreeLevel: user.degreeLevel || "bachelors",
         thesisTopic: user.thesisTopic || "",
-        positions: user.positions || [],
+        positions: user.positions && user.positions.length > 0 ? user.positions : [""], // Ensure at least one empty position
         position: user.position || "",
       }
       setProfileData(userData)
@@ -80,13 +81,14 @@ const ProfilePage = () => {
     setProfileData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handlePositionsChange = (e) => {
-    const positions = e.target.value
-      .split(",")
-      .map((pos) => pos.trim())
-      .filter(Boolean)
-    setProfileData((prev) => ({ ...prev, positions }))
-  }
+  // Remove this function:
+  // const handlePositionsChange = (e) => {
+  //   const positions = e.target.value
+  //     .split(",")
+  //     .map((pos) => pos.trim())
+  //     .filter(Boolean)
+  //   setProfileData((prev) => ({ ...prev, positions }))
+  // }
 
   // Check if any changes were made
   const hasChanges = () => {
@@ -446,14 +448,56 @@ const ProfilePage = () => {
                 {user.role === "reviewer" && (
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">Positions</label>
-                    <input
-                      type="text"
-                      value={profileData.positions.join(", ")}
-                      onChange={handlePositionsChange}
-                      disabled={!isEditing}
-                      placeholder="Enter positions separated by commas"
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
-                    />
+                    <div className="space-y-2">
+                      {profileData.positions.map((position, index) => (
+                        <div key={index} className="flex gap-2">
+                          <input
+                            type="text"
+                            value={position}
+                            onChange={(e) => {
+                              const newPositions = [...profileData.positions]
+                              newPositions[index] = e.target.value
+                              setProfileData((prev) => ({ ...prev, positions: newPositions }))
+                            }}
+                            disabled={!isEditing}
+                            placeholder="Enter position"
+                            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
+                          />
+                          {isEditing && profileData.positions.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newPositions = profileData.positions.filter((_, i) => i !== index)
+                                setProfileData((prev) => ({ ...prev, positions: newPositions }))
+                              }}
+                              className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                            >
+                              <FiX className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+
+                      {isEditing && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProfileData((prev) => ({
+                              ...prev,
+                              positions: [...prev.positions, ""],
+                            }))
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                          <FiPlus className="w-4 h-4" />
+                          Add Position
+                        </button>
+                      )}
+
+                      {profileData.positions.length === 0 && (
+                        <p className="text-gray-500 text-sm">No positions added</p>
+                      )}
+                    </div>
                   </div>
                 )}
 

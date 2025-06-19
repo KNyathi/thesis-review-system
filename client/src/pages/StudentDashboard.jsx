@@ -16,6 +16,7 @@ import {
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
 import { thesisAPI } from "../services/api"
+import Modal from "../components/Modal"
 import StudentThesisDetails from "../components/StudentThesisDetails"
 
 const StudentDashboard = () => {
@@ -27,7 +28,7 @@ const StudentDashboard = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
   const [showReupload, setShowReupload] = useState(false)
-  const [showReviewDetails, setShowReviewDetails] = useState(false)
+  const [showThesisDetails, setShowThesisDetails] = useState(false)
   const { toast, showToast, hideToast } = useToast()
 
   // Use ref to prevent infinite loops
@@ -77,27 +78,6 @@ const StudentDashboard = () => {
       setTitle(user.thesisTopic)
     }
   }, [user?.thesisTopic, thesis])
-
-  // Visibility change listener - throttled
-  useEffect(() => {
-    let timeoutId = null
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden && user && fetchedRef.current) {
-        // Debounce to prevent rapid calls
-        if (timeoutId) clearTimeout(timeoutId)
-        timeoutId = setTimeout(() => {
-          fetchThesis(true)
-        }, 1000)
-      }
-    }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
-      if (timeoutId) clearTimeout(timeoutId)
-    }
-  }, [fetchThesis, user])
 
   const handleLogout = () => {
     logout()
@@ -189,8 +169,19 @@ const StudentDashboard = () => {
     }
   }
 
-  const getStatusColor = (status) => {
-    switch (status) {
+  // Manual refresh function
+  const handleRefresh = () => {
+    fetchThesis(true)
+  }
+
+  // ИСПРАВЛЕНО: Правильная логика определения статуса
+  const getStatusColor = (thesis) => {
+    // Если есть финальная оценка, значит работа оценена
+    if (thesis?.finalGrade) {
+      return "text-green-400"
+    }
+
+    switch (thesis?.status) {
       case "submitted":
         return "text-blue-400"
       case "assigned":
@@ -203,8 +194,13 @@ const StudentDashboard = () => {
     }
   }
 
-  const getStatusText = (status) => {
-    switch (status) {
+  const getStatusText = (thesis) => {
+    // Если есть финальная оценка, значит работа оценена
+    if (thesis?.finalGrade) {
+      return "Evaluated"
+    }
+
+    switch (thesis?.status) {
       case "submitted":
         return "Submitted - Waiting for reviewer assignment"
       case "assigned":
@@ -221,7 +217,10 @@ const StudentDashboard = () => {
   if (isLoading && !fetchedRef.current) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Loading student dashboard...</p>
+        </div>
       </div>
     )
   }
@@ -260,13 +259,22 @@ const StudentDashboard = () => {
               </div>
             </button>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
-          >
-            <FiLogOut className="w-4 h-4" />
-            Logout
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleRefresh}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            >
+              <FiRefreshCw className="w-4 h-4" />
+              Refresh
+            </button>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+            >
+              <FiLogOut className="w-4 h-4" />
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
@@ -320,9 +328,9 @@ const StudentDashboard = () => {
               <div className="flex items-start justify-between mb-6">
                 <div>
                   <h2 className="text-xl font-semibold text-white mb-2">{thesis.title}</h2>
-                  <div className={`flex items-center gap-2 ${getStatusColor(thesis.status)}`}>
+                  <div className={`flex items-center gap-2 ${getStatusColor(thesis)}`}>
                     <FiClock className="w-4 h-4" />
-                    <span className="text-sm font-medium">{getStatusText(thesis.status)}</span>
+                    <span className="text-sm font-medium">{getStatusText(thesis)}</span>
                   </div>
                 </div>
                 <div className="text-right">
@@ -332,7 +340,7 @@ const StudentDashboard = () => {
               </div>
 
               {/* Special message for students waiting for reviewer assignment */}
-              {thesis.status === "submitted" && !thesis.assignedReviewer && (
+              {thesis.status === "submitted" && !thesis.assignedReviewer && !thesis.finalGrade && (
                 <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4 mb-6">
                   <div className="flex items-center gap-3">
                     <FiAlertCircle className="w-5 h-5 text-blue-400" />
@@ -348,7 +356,7 @@ const StudentDashboard = () => {
                 </div>
               )}
 
-              {thesis.assignedReviewer && (
+              {thesis.assignedReviewer && !thesis.finalGrade && (
                 <div className="bg-gray-800 rounded-lg p-4 mb-6">
                   <div className="flex items-center gap-3">
                     <FiUser className="w-5 h-5 text-gray-400" />
@@ -379,13 +387,16 @@ const StudentDashboard = () => {
                   <span className="text-sm">PDF Document</span>
                 </div>
                 <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowReupload(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
-                  >
-                    <FiRefreshCw className="w-4 h-4" />
-                    Re-upload Thesis
-                  </button>
+                  {/* Показываем кнопку re-upload только если работа не оценена */}
+                  {!thesis.finalGrade && (
+                    <button
+                      onClick={() => setShowReupload(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+                    >
+                      <FiRefreshCw className="w-4 h-4" />
+                      Re-upload Thesis
+                    </button>
+                  )}
                   <button
                     onClick={handleViewPDF}
                     className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-100 transition-colors"
@@ -393,9 +404,9 @@ const StudentDashboard = () => {
                     <FiDownload className="w-4 h-4" />
                     View Thesis
                   </button>
-                  {thesis.status === "evaluated" && thesis.assessment && (
+                  {thesis.finalGrade && thesis.assessment && (
                     <button
-                      onClick={() => setShowReviewDetails(true)}
+                      onClick={() => setShowThesisDetails(true)}
                       className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                     >
                       <FiEye className="w-4 h-4" />
@@ -512,8 +523,10 @@ const StudentDashboard = () => {
         </div>
       </div>
 
-      {/* Review Details Modal */}
-      <StudentThesisDetails thesis={thesis} isOpen={showReviewDetails} onClose={() => setShowReviewDetails(false)} />
+      {/* Thesis Details Modal - только для просмотра деталей своего тезиса */}
+      <Modal isOpen={showThesisDetails} onClose={() => setShowThesisDetails(false)} title="Thesis Details" size="full">
+        <StudentThesisDetails thesis={thesis} onClose={() => setShowThesisDetails(false)} />
+      </Modal>
     </div>
   )
 }

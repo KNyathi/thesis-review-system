@@ -11,7 +11,7 @@ export const useAuth = () => {
   return context
 }
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:8000/api/v1"
 
 // Create axios instance
 const authAPI = axios.create({
