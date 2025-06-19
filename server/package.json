@@ -3,12 +3,15 @@
   "version": "1.0.0",
   "description": "",
   "main": "server.js",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node-dev --respawn --transpile-only --max-old-space-size=4096 server.ts",
     "build": "tsc",
     "start": "node --loader ts-node/esm server.ts",
-    "start:prod": "npm run build && node dist/server.js"
+    "start:prod": "node dist/server.js"
   },
   "keywords": [],
   "author": "Khayelihle Nyathi",
@@ -25,7 +28,8 @@
     "mongoose": "^8.15.1",
     "multer": "^2.0.1",
     "pdf-lib": "^1.17.1",
-    "pdfkit": "^0.17.1"
+    "pdfkit": "^0.17.1",
+    "router": "^2.2.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
