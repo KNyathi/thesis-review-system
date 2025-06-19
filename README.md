@@ -28,8 +28,8 @@
      ```
      
 #### 2) Render (Both Client and Server), Vercel (MongoDB)
-  - Client Url: https://thesis-review-system.vercel.app/register
-  - Server Url: https://thesis-review-system.onrender.com
+  - Client Url: https://thesis-review-system-bfaz.vercel.app
+  - Server Url: https://thesis-review-system.onrender.com/api/v1
   - MongoDB Atlas: 
    
 ## The Client is in the client directory (developed with ReactJS) and The Server is in the server directory (developed with NodeJS, Typescript, MongoDB) and they are both connected using Axios.
