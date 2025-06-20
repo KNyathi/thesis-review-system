@@ -105,6 +105,29 @@ const StudentDashboard = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // 1. First check profile completeness
+    const requiredProfileFields = [
+      "faculty",
+      "group",
+      "subjectArea",
+      "educationalProgram",
+    ];
+
+    const missingFields = requiredProfileFields.filter(
+      (field) => !user[field] || user[field].trim() === ""
+    );
+
+    if (missingFields.length > 0) {
+      showToast(
+        `Please complete your profile first (missing: ${missingFields.join(
+          ", "
+        )})`,
+        "error"
+      );
+      return;
+    }
+
     if (!file || !title.trim()) {
       showToast("Please provide both title and file", "error");
       return;

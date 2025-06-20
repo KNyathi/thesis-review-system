@@ -2,8 +2,11 @@ import { useState, useEffect, useCallback } from "react";
 import { FiDownload, FiSave, FiUser, FiEye, FiPlus, FiX } from "react-icons/fi";
 import { Toast, useToast } from "./Toast";
 import { thesisAPI } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 
 const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
+  const { user } = useAuth();
+
   const [thesis, setThesis] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -27,15 +30,21 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
   const [disadvantages, setDisadvantages] = useState("");
   const [finalAssessment, setFinalAssessment] = useState("");
   const [isComplete, setIsComplete] = useState(false);
-  const [degreeWorthy, setDegreeWorthy] = useState("");
+  const [degreeWorthy, setDegreeWorthy] = useState(false);
   const [finalGrade, setFinalGrade] = useState("");
 
   const gradeOptions = [
-    { value: "high", label: "высокая / high" },
-    { value: "above_average", label: "выше среднего / above average" },
-    { value: "average", label: "средняя / average" },
-    { value: "below_average", label: "ниже среднего / below average" },
-    { value: "low", label: "низкая / low" },
+    { value: "высокая / high", label: "высокая / high" },
+    {
+      value: "выше среднего / above average",
+      label: "выше среднего / above average",
+    },
+    { value: "средняя / average", label: "средняя / average" },
+    {
+      value: "ниже среднего / below average",
+      label: "ниже среднего / below average",
+    },
+    { value: "низкая / low", label: "низкая / low" },
   ];
 
   const finalGradeOptions = [
@@ -273,6 +282,36 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
   const handleSubmitReview = async () => {
     if (!canSubmitReview()) {
       showToast("Please complete all sections before submitting", "error");
+      return;
+    }
+
+    //REVIEWER CANNOT SUBMIT A REVIEW WITHOUT COMPLETE PROFILE INFO (REQUIRED IN PDF CREATION)
+    // 1. First check profile completeness
+    const requiredProfileFields = [
+      { name: "positions", type: "array" }, // Specify field types
+      { name: "fullName", type: "string" },
+      { name: "institution", type: "string" },
+    ];
+
+    const missingFields = requiredProfileFields.filter((field) => {
+      const value = user[field.name];
+
+      if (field.type === "array") {
+        return !value || value.length === 0; // Check for empty array
+      } else if (field.type === "string") {
+        return !value || (typeof value === "string" && value.trim() === "");
+      }
+
+      return !value; // Default check
+    });
+
+    if (missingFields.length > 0) {
+      showToast(
+        `Please complete your profile first (missing: ${missingFields
+          .map((f) => f.name)
+          .join(", ")})`,
+        "error"
+      );
       return;
     }
 
@@ -555,25 +594,19 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
               </div>
 
               <div>
-                <label className="block text-gray-300 text-sm mb-2">
-                  Автор заслуживает присуждения квалификации / The author is
-                  deserving of being awarded a degree
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={degreeWorthy}
+                    onChange={(e) => setDegreeWorthy(e.target.checked)}
+                    disabled={isReadOnly}
+                    className="w-4 h-4 text-white bg-gray-700 border-gray-600 rounded focus:ring-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <span className="text-gray-300 text-sm">
+                    Автор заслуживает присуждения квалификации / The author is
+                    deserving of being awarded a degree
+                  </span>
                 </label>
-                <select
-                  value={degreeWorthy || ""}
-                  onChange={(e) => setDegreeWorthy(e.target.value)}
-                  disabled={isReadOnly}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="">
-                    Выберите квалификацию / Select degree
-                  </option>
-                  {degreeOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
               </div>
             </div>
           </div>

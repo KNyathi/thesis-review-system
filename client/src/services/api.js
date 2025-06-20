@@ -53,7 +53,7 @@ const realThesisAPI = {
       responseType: "blob",
     });
 
-    console.log("responsE: ", response?.data) //THE RESPONSE HERE IS THE CREATED PDF FILE (TO BE SIGNED)
+    //THE RESPONSE HERE IS THE CREATED PDF FILE (TO BE SIGNED)
     return response.data;
   },
 

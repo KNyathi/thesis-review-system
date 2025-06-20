@@ -51,6 +51,27 @@ export const submitReview = async (req: Request, res: Response) => {
       return;
     }
 
+    // Update student's grade and thesis status
+    const updatedStudent = await Student.findByIdAndUpdate(thesis.student, {
+      thesisGrade: grade,
+    });
+
+    if (!updatedStudent) {
+      res.status(404).json({ error: "Failed to update user" });
+      return;
+    }
+
+    // Update reviewer's records
+    const reviewedThesis = await Reviewer.findByIdAndUpdate(reviewer._id, {
+      $pull: { assignedTheses: new Types.ObjectId(thesisId) },
+      $push: { reviewedTheses: new Types.ObjectId(thesisId) },
+    });
+
+    if (!reviewedThesis) {
+      res.status(404).json({ error: "Failed to update reviewed thesis" });
+      return;
+    }
+
     // Set headers to indicate a file download
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
@@ -63,23 +84,7 @@ export const submitReview = async (req: Request, res: Response) => {
     fileStream.pipe(res);
 
     fileStream.on("error", (error) => {
-      console.error("Error streaming file:", error);
       res.status(500).json({ error: "Download failed" });
-    });
-
-    // Update student's grade and thesis status
-    const updatedStudent = await Student.findByIdAndUpdate(thesis.student, {
-      thesisGrade: grade,
-    });
-
-    if (!updatedStudent) {
-      res.status(404).json({ error: "Failed to update user" });
-      return;
-    }
-
-    res.json({
-      success: true,
-      thesis,
     });
   } catch (error) {
     console.error("Error in submitReview:", error);
@@ -218,17 +223,6 @@ export const signedReview = async (req: Request, res: Response) => {
       `signed_review_${thesisId}.pdf`
     );
     fs.renameSync(file.path, signedPath);
-
-    // Update reviewer's records
-    const reviewedThesis = await Reviewer.findByIdAndUpdate(reviewer._id, {
-      $pull: { assignedTheses: new Types.ObjectId(thesisId) },
-      $push: { reviewedTheses: new Types.ObjectId(thesisId) },
-    });
-
-    if (!reviewedThesis) {
-      res.status(404).json({ error: "Failed to update reviewed thesis" });
-      return;
-    }
 
     // Update student's grade and thesis status
     const updatedStudent = await Student.findByIdAndUpdate(thesis.student, {
