@@ -213,3 +213,58 @@ export const viewThesis = async (req: Request, res: Response) => {
   }
 }
 
+
+
+// Download Thesis
+export const downloadSignedReview = async (req: Request, res: Response) => {
+  try {
+    const { thesisId } = req.params
+    const user = req.user as IUser
+
+    // Validate thesisId
+    if (!Types.ObjectId.isValid(thesisId)) {
+      res.status(400).json({ error: "Invalid thesis ID" });
+      return; 
+    }
+
+    if (!user) {
+      res.status(401).json({ error: "User not authenticated" })
+      return
+    }
+
+    const thesis = await Thesis.findById(thesisId)
+    if (!thesis) {
+      res.status(404).json({ error: "Thesis not found" })
+      return
+    }
+
+   // Check if review exists and is signed
+    if (thesis.status !== "evaluated" || !thesis.reviewPdf) {
+      res.status(404).json({ error: "Signed review not available" });
+      return 
+    }
+
+    const filePath = path.join(__dirname, "../../server/reviews/signed", path.basename(thesis.reviewPdf))
+
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "File not found" })
+      return
+    }
+
+    // Set headers to indicate a file download
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", `attachment; filename="${thesis.title}_signed.pdf"`)
+
+    // Stream the file to the response
+    const fileStream = fs.createReadStream(filePath)
+    fileStream.pipe(res)
+
+    fileStream.on("error", (error) => {
+      console.error("Error streaming file:", error)
+      res.status(500).json({ error: "Download failed" })
+    })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: "Download failed" })
+  }
+}

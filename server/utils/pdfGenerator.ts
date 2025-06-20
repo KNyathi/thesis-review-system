@@ -7,7 +7,7 @@ import { IReviewer, IStudent } from '../models/User.model';
 
 export async function generateReviewPDF(thesis: IThesis, reviewer: IReviewer): Promise<string> {
   // Ensure reviews directory exists
-  const reviewsDir = path.join(__dirname, '../reviews');
+  const reviewsDir = path.join(__dirname, '../reviews/unsigned');
   if (!fs.existsSync(reviewsDir)) {
     fs.mkdirSync(reviewsDir, { recursive: true });
   }
@@ -146,7 +146,7 @@ export async function generateReviewPDF(thesis: IThesis, reviewer: IReviewer): P
 
   // Save PDF to file
   const pdfBytes = await pdfDoc.save();
-  const outputPath = path.join(reviewsDir, `review_${thesis._id}.pdf`);
+  const outputPath = path.join(reviewsDir, `unsigned_review_${thesis._id}.pdf`);
   fs.writeFileSync(outputPath, pdfBytes);
 
   return outputPath;

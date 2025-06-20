@@ -3,7 +3,8 @@ import {
   submitThesis,
   getStudentThesis,
   downloadThesis,
-  viewThesis
+  viewThesis,
+  downloadSignedReview
 } from "../controllers/thesisController"
 import { authenticate } from "../middleware/auth"
 import { isStudent, isReviewer, isAdmin } from "../middleware/roles"
@@ -32,6 +33,8 @@ thesisRouter.get(
 )
 
 thesisRouter.get("/view-pdf/:id", authenticate, viewThesis)
+
+thesisRouter.get("/download-signed-review/:thesisId", authenticate, downloadSignedReview)
 
 
 export default thesisRouter
