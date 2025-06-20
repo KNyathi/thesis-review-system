@@ -43,8 +43,15 @@ export async function generateReviewPDF(thesis: IThesis, reviewer: IReviewer): P
     font: boldFont,
   });
 
+   page.drawText('ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ АВТОНОМНОЕ ОБРАЗОВАТЕЛЬНОЕ УЧРЕЖДЕНИЕ ВЫСШЕГО ОБРАЗОВАНИЯ', {
+    x: 50,
+    y: 780,
+    size: 12,
+    font: boldFont,
+  });
+
   // Draw university info
-  page.drawText('НАЦИОНАЛЬНЫЙ ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО', {
+  page.drawText('НАЦИОНАЛЬНЫЙ ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО ITMO University', {
     x: 50,
     y: 780,
     size: 12,
@@ -67,7 +74,48 @@ export async function generateReviewPDF(thesis: IThesis, reviewer: IReviewer): P
     size: 10,
     font,
   });
-  // Continue with all student fields...
+  
+   page.drawText(`Факультет / институт / кластер / Faculty / Institute / Cluster: ${student.faculty}`, {
+    x: 50,
+    y: 700,
+    size: 10,
+    font,
+  });
+
+  page.drawText(`Группа / Group : ${student.group}`, {
+    x: 50,
+    y: 700,
+    size: 10,
+    font,
+  });
+
+  page.drawText(`Направление подготовки / Subject area : ${student.subjectArea}`, {
+    x: 50,
+    y: 700,
+    size: 10,
+    font,
+  });
+
+  page.drawText(`Образовательная программа / Educational program : ${student.educationalProgram}`, {
+    x: 50,
+    y: 700,
+    size: 10,
+    font,
+  });
+
+  page.drawText(`Квалификация / Degree level : ${student.degreeLevel}`, {
+    x: 50,
+    y: 700,
+    size: 10,
+    font,
+  });
+
+  page.drawText(`Тема ВКР / Thesis topic : ${student.thesisTopic}`, {
+    x: 50,
+    y: 700,
+    size: 10,
+    font,
+  });
 
   // Reviewer information
   page.drawText(`Рецензент / Reviewer: ${reviewer.fullName}, ${reviewer.institution}, ${reviewer.positions.join(', ')}`, {

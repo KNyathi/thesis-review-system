@@ -18,7 +18,7 @@ export interface IStudent extends IUserBase {
   group: string;
   subjectArea: string;
   educationalProgram: string;
-  degreeLevel: 'bachelors' | 'masters';
+  degreeLevel: 'bachelors' | 'masters' | 'specialist';
   thesisTopic?: string;
   thesisStatus?: 'not_submitted' | 'submitted' | 'under_review' | 'evaluated';
   thesisGrade?: string;
@@ -62,7 +62,7 @@ const studentSchema = new Schema<IStudent>({
   group: { type: String },
   subjectArea: { type: String },
   educationalProgram: { type: String },
-  degreeLevel: { type: String, enum: ['bachelors', 'masters'] },
+  degreeLevel: { type: String, enum: ['bachelors', 'masters', 'specialist'] },
   thesisTopic: { type: String },
   thesisStatus: { type: String, enum: ['not_submitted', 'submitted', 'under_review', 'evaluated'], default: 'not_submitted' },
   thesisGrade: { type: String },

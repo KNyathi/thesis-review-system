@@ -371,7 +371,7 @@ const ProfilePage = () => {
                           value={profileData.faculty}
                           onChange={handleChange}
                           disabled={!isEditing}
-                          placeholder="Enter faculty"
+                          placeholder="e.g. инcтитут прикладных компьютерных наук"
                           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
                         />
                       </div>
@@ -383,7 +383,7 @@ const ProfilePage = () => {
                           value={profileData.group}
                           onChange={handleChange}
                           disabled={!isEditing}
-                          placeholder="Enter group"
+                          placeholder="e.g. M4255"
                           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
                         />
                       </div>
@@ -397,7 +397,7 @@ const ProfilePage = () => {
                         value={profileData.subjectArea}
                         onChange={handleChange}
                         disabled={!isEditing}
-                        placeholder="Enter subject area"
+                        placeholder="e.g. 27.04.05 Инноватика"
                         className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
                       />
                     </div>
@@ -410,7 +410,7 @@ const ProfilePage = () => {
                         value={profileData.educationalProgram}
                         onChange={handleChange}
                         disabled={!isEditing}
-                        placeholder="Enter educational program"
+                        placeholder="e.g. Искусственный интеллект"
                         className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
                       />
                     </div>
@@ -426,6 +426,7 @@ const ProfilePage = () => {
                       >
                         <option value="bachelors">Bachelors</option>
                         <option value="masters">Masters</option>
+                        <option value="specialist">Specialist</option>
                       </select>
                     </div>
 
