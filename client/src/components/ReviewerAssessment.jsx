@@ -263,8 +263,6 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
       validQuestions &&
       validAdvantages &&
       validDisadvantages &&
-      finalAssessment &&
-      finalAssessment.trim() !== "" &&
       degreeWorthy && // Keep as is if this is a boolean
       (typeof degreeWorthy === "string" ? degreeWorthy.trim() !== "" : true)
     );
@@ -327,7 +325,7 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
             advantages: advantages || "",
             disadvantages: disadvantages || "",
             conclusion: {
-              finalAssessment: finalAssessment || "",
+              finalAssessment: "",
               isComplete,
               degreeWorthy: degreeWorthy || "",
             },
@@ -565,14 +563,7 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
               <label className="block text-gray-300 text-sm mb-2">
                 Итоговая оценка ВКР / Final assessment of the thesis
               </label>
-              <textarea
-                value={finalAssessment || ""}
-                onChange={(e) => setFinalAssessment(e.target.value)}
-                placeholder="Введите итоговую оценку / Enter final assessment"
-                rows={3}
-                disabled={isReadOnly}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              />
+           
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
