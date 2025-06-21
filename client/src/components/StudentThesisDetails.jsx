@@ -2,12 +2,12 @@ import { useState } from "react"
 import { FiDownload, FiEye, FiUser, FiCalendar, FiFileText, FiStar, FiAlertCircle } from "react-icons/fi"
 import { Toast, useToast } from "./Toast"
 import { thesisAPI } from "../services/api"
-import ReviewerAssessment from "./ReviewerAssessment"
+import SignedReviewViewer from "./SignedReviewViewer"
 
 const StudentThesisDetails = ({ thesis, onClose }) => {
   const [isLoading, setIsLoading] = useState(false)
-  const [showReview, setShowReview] = useState(false)
   const { toast, showToast, hideToast } = useToast()
+  const [showSignedReview, setShowSignedReview] = useState(false)
 
   // Early return if no thesis
   if (!thesis) {
@@ -86,8 +86,15 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
     }
   }
 
-  const getStatusColor = (status) => {
-    switch (status) {
+  // ИСПРАВЛЕНО: Используем правильную логику для определения статуса
+  const getStatusColor = (thesis) => {
+    if (thesis?.finalGrade && thesis?.status === "evaluated") {
+      return "bg-green-600"
+    }
+    if (thesis?.finalGrade && thesis?.status === "under_review") {
+      return "bg-yellow-600"
+    }
+    switch (thesis?.status) {
       case "submitted":
         return "bg-blue-600"
       case "assigned":
@@ -99,8 +106,14 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
     }
   }
 
-  const getStatusText = (status) => {
-    switch (status) {
+  const getStatusText = (thesis) => {
+    if (thesis?.finalGrade && thesis?.status === "evaluated") {
+      return "Evaluated - Review completed and signed"
+    }
+    if (thesis?.finalGrade && thesis?.status === "under_review") {
+      return "Review completed - Waiting for signature"
+    }
+    switch (thesis?.status) {
       case "submitted":
         return "Submitted - Waiting for Assignment"
       case "assigned":
@@ -117,22 +130,8 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
     return grade
   }
 
-  if (showReview && thesis.status === "evaluated") {
-    return (
-      <div className="h-full">
-        <div className="flex items-center justify-between mb-4">
-          <button onClick={() => setShowReview(false)} className="text-gray-400 hover:text-white transition-colors">
-            ← Back to Details
-          </button>
-        </div>
-        <ReviewerAssessment
-          thesisId={thesis._id}
-          student={{ fullName: "Current Student", institution: "Current Institution" }}
-          mode="view"
-          onClose={() => setShowReview(false)}
-        />
-      </div>
-    )
+  const handleViewSignedReview = () => {
+    setShowSignedReview(true)
   }
 
   return (
@@ -145,10 +144,10 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
           <div className="flex-1">
             <h2 className="text-xl font-semibold text-white mb-4">{thesis.title || "Untitled Thesis"}</h2>
             <div className="flex items-center gap-4 mb-4">
-              <div className={`px-3 py-1 rounded-full text-white text-sm font-medium ${getStatusColor(thesis.status)}`}>
-                {getStatusText(thesis.status)}
+              <div className={`px-3 py-1 rounded-full text-white text-sm font-medium ${getStatusColor(thesis)}`}>
+                {getStatusText(thesis)}
               </div>
-              {thesis.status === "evaluated" && (
+              {thesis.finalGrade && (
                 <div className="px-3 py-1 bg-green-600 text-white rounded-full text-sm font-medium">
                   Grade: {formatGrade(thesis.finalGrade)}
                 </div>
@@ -174,7 +173,7 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
               className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FiDownload className="w-4 h-4" />
-              Download
+              Download Thesis
             </button>
             <button
               onClick={handleViewPDF}
@@ -182,8 +181,17 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
               className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FiEye className="w-4 h-4" />
-              View PDF
+              View Thesis
             </button>
+            {thesis.status === "evaluated" && thesis.finalGrade && (
+              <button
+                onClick={handleViewSignedReview}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <FiEye className="w-4 h-4" />
+                View Signed Review
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -200,7 +208,7 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
             </div>
             <div>
               <label className="block text-gray-300 text-sm mb-1">Status</label>
-              <p className="text-white">{getStatusText(thesis.status)}</p>
+              <p className="text-white">{getStatusText(thesis)}</p>
             </div>
             <div>
               <label className="block text-gray-300 text-sm mb-1">Submission Date</label>
@@ -208,7 +216,7 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
                 {thesis.submissionDate ? new Date(thesis.submissionDate).toLocaleDateString() : "Unknown"}
               </p>
             </div>
-            {thesis.status === "evaluated" && (
+            {thesis.finalGrade && (
               <div>
                 <label className="block text-gray-300 text-sm mb-1">Final Grade</label>
                 <p className="text-white font-medium">{formatGrade(thesis.finalGrade)}</p>
@@ -231,22 +239,31 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
           </div>
         )}
 
-        {thesis.status === "evaluated" && (
-          <div className="bg-green-900/20 border border-green-700 rounded-lg p-6">
+        {thesis.finalGrade && thesis.status === "under_review" && (
+          <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <FiStar className="w-5 h-5 text-yellow-400" />
+                <h3 className="text-lg font-semibold text-white">Review Completed - Waiting for Signature</h3>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-gray-300">Your thesis has been reviewed and graded, waiting for reviewer signature.</p>
+              <p className="text-white font-medium">Final Grade: {formatGrade(thesis.finalGrade)}</p>
+            </div>
+          </div>
+        )}
+
+        {thesis.status === "evaluated" && thesis.finalGrade && (
+          <div className="bg-green-900/20 border border-green-800 rounded-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <FiStar className="w-5 h-5 text-green-400" />
-                <h3 className="text-lg font-semibold text-white">Review Completed</h3>
+                <h3 className="text-lg font-semibold text-white">Review Completed and Signed</h3>
               </div>
-              <button
-                onClick={() => setShowReview(true)}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                View Review Details
-              </button>
             </div>
             <div className="space-y-2">
-              <p className="text-gray-300">Your thesis has been successfully reviewed and evaluated.</p>
+              <p className="text-gray-300">Your thesis has been successfully reviewed, graded, and signed.</p>
               <p className="text-white font-medium">Final Grade: {formatGrade(thesis.finalGrade)}</p>
             </div>
           </div>
@@ -265,6 +282,15 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
           </div>
         )}
       </div>
+      {/* Signed Review Modal */}
+      {showSignedReview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowSignedReview(false)} />
+          <div className="relative bg-gray-900 rounded-lg border border-gray-800 w-full max-w-6xl max-h-[90vh] overflow-hidden">
+            <SignedReviewViewer thesisId={thesis._id} onClose={() => setShowSignedReview(false)} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

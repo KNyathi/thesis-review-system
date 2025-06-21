@@ -1,24 +1,43 @@
 import { useNavigate } from "react-router-dom"
-import { useEffect } from "react"
+import { useEffect, useState, useRef } from "react"
 import { FiClock, FiLogOut, FiMail, FiUser, FiRefreshCw } from "react-icons/fi"
 import { useAuth } from "../context/AuthContext"
 
 const PendingApprovalPage = () => {
   const { user, logout, refreshUser } = useAuth()
   const navigate = useNavigate()
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const hasCheckedOnMount = useRef(false)
 
-  // Refresh user data when component mounts to fix the missing user info bug
+  // Check approval status only ONCE when component mounts
   useEffect(() => {
+    if (hasCheckedOnMount.current) return
+
     const checkApprovalStatus = async () => {
-      const updatedUser = await refreshUser()
-      // If user is now approved, redirect to reviewer dashboard
-      if (updatedUser && updatedUser.role === "reviewer" && updatedUser.isApproved) {
-        navigate("/reviewer", { replace: true })
+      try {
+        hasCheckedOnMount.current = true
+        const updatedUser = await refreshUser()
+        // If user is now approved, redirect to reviewer dashboard
+        if (updatedUser && updatedUser.role === "reviewer" && updatedUser.isApproved) {
+          navigate("/reviewer", { replace: true })
+        }
+      } catch (error) {
+        console.error("Failed to check approval status:", error)
       }
     }
 
-    checkApprovalStatus()
-  }, [refreshUser, navigate])
+    // Only check if we have a user and they're a reviewer
+    if (user && user.role === "reviewer" && !user.isApproved) {
+      checkApprovalStatus()
+    }
+  }, [])
+
+  // Separate effect to handle navigation when user status changes
+  useEffect(() => {
+    if (user && user.role === "reviewer" && user.isApproved) {
+      navigate("/reviewer", { replace: true })
+    }
+  }, [user, navigate])
 
   const handleLogout = () => {
     logout()
@@ -26,10 +45,34 @@ const PendingApprovalPage = () => {
   }
 
   const handleRefreshStatus = async () => {
-    const updatedUser = await refreshUser()
-    if (updatedUser && updatedUser.role === "reviewer" && updatedUser.isApproved) {
-      navigate("/reviewer", { replace: true })
+    if (isRefreshing) return
+
+    setIsRefreshing(true)
+    try {
+      const updatedUser = await refreshUser()
+      if (updatedUser && updatedUser.role === "reviewer" && updatedUser.isApproved) {
+        navigate("/reviewer", { replace: true })
+      }
+    } catch (error) {
+      console.error("Failed to refresh status:", error)
+    } finally {
+      setIsRefreshing(false)
     }
+  }
+
+  // Show loading state while user data is being fetched
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="text-white">Loading...</div>
+      </div>
+    )
+  }
+
+  // Redirect non-reviewers
+  if (user.role !== "reviewer") {
+    navigate("/login", { replace: true })
+    return null
   }
 
   return (
@@ -98,10 +141,11 @@ const PendingApprovalPage = () => {
         <div className="space-y-3">
           <button
             onClick={handleRefreshStatus}
-            className="w-full bg-blue-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black transition-all flex items-center justify-center gap-2"
+            disabled={isRefreshing}
+            className="w-full bg-blue-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <FiRefreshCw className="w-5 h-5" />
-            Check Approval Status
+            <FiRefreshCw className={`w-5 h-5 ${isRefreshing ? "animate-spin" : ""}`} />
+            {isRefreshing ? "Checking..." : "Check Approval Status"}
           </button>
 
           <button

@@ -120,27 +120,22 @@ export async function generateReviewPDF(
     11,
     font
   );
-
   // Then draw the university name below it
-  page.drawText("НАЦИОНАЛЬНЫЙ ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО", {
-    x:
-      centerX -
-      boldFont.widthOfTextAtSize(
-        "НАЦИОНАЛЬНЫЙ ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО",
-        11
-      ) /
-        2,
-    y: finalY - 4, // Space between lines
-    size: 11,
-    font: boldFont,
-  });
-
-  page.drawText("ITMO University", {
-    x: centerX - boldFont.widthOfTextAtSize("ITMO University", 11) / 2,
-    y: 730, // Space between lines
-    size: 11,
-    font: boldFont,
-  });
+  page.drawText(
+    "НАЦИОНАЛЬНЫЙ ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО ITMO University",
+    {
+      x:
+        centerX -
+        boldFont.widthOfTextAtSize(
+          "НАЦИОНАЛЬНЫЙ ИССЛЕДОВАТЕЛЬСКИЙ УНИВЕРСИТЕТ ИТМО ITMO University",
+          11
+        ) /
+          2,
+      y: finalY - 5, // Space between lines
+      size: 11,
+      font: boldFont,
+    }
+  );
 
   // Draw title - centered
   page.drawText(
@@ -153,7 +148,7 @@ export async function generateReviewPDF(
           11
         ) /
           2,
-      y: 700, // Adjusted y position for better spacing
+      y: 715, // Adjusted y position for better spacing
       size: 11,
       font: boldFont,
     }
@@ -166,7 +161,7 @@ export async function generateReviewPDF(
   }
 
   // Student information section
-  const startY = 670;
+  const startY = 700;
   const lineHeight = 15;
 
   // Helper function to draw mixed bold/regular text
@@ -314,19 +309,18 @@ export async function generateReviewPDF(
     },
   ];
 
-  const studentInfoBottomY = startY - 8 * lineHeight - 20;
+  const studentInfoBottomY = startY - 8 * lineHeight - 30;
 
   // Assessment table configuration
   let currentPage = page;
-  let currentTableYStart = studentInfoBottomY - 20;
+  let currentTableYStart = studentInfoBottomY - 40;
   const column1X = 50; // Criteria column start
-  const column2X = 400; // Score column start
-  const columnWidth = 350; // Width of first column
-  const column2Width = 180; // Width of score column
+  const column2X = 350; // Score column start
+  const columnWidth = 300; // Width of first column
+  const column2Width = 50; // Width of score column
   const lineThickness = 1;
-  const minRowHeight = 20; // Minimum row height
-  const padding = 6; // Cell padding
-  const headerRowHeight = 25; // Separate height for header row
+  const minRowHeight = 25; // Minimum row height
+  const padding = 5; // Cell padding
 
   // Calculate required space for each row
   const calculateRowHeight = (
@@ -349,11 +343,11 @@ export async function generateReviewPDF(
       }
     }
 
-    return Math.max(minRowHeight, lineCount * 14 + padding * 2); // 12px per line
+    return Math.max(minRowHeight, lineCount * 12 + padding * 2); // 12px per line
   };
 
   // Calculate total table height
-  let tableHeight = headerRowHeight;
+  let tableHeight = 0;
   const rowHeights: number[] = [];
 
   criteria.forEach((item) => {
@@ -377,48 +371,24 @@ export async function generateReviewPDF(
   }
 
   // Draw table title
-  // First calculate the width of the title text
-  const sectionTitle = "РАЗДЕЛ I. Оценка BKP/Assessment of the thesis";
-  const titleWidth = boldFont.widthOfTextAtSize(sectionTitle, 11);
-
-  // Draw centered table title
-  currentPage.drawText(sectionTitle, {
-    x: centerX - titleWidth / 2, // Center calculation
+  currentPage.drawText("РАЗДЕЛ I. Оценка BKP/Assessment of the thesis", {
+    x: column1X,
     y: currentTableYStart + 20,
     size: 11,
     font: boldFont,
   });
 
-  // Draw table headers on their own row
-  const headerY = currentTableYStart - headerRowHeight;
-
-  // Header background
-  currentPage.drawRectangle({
-    x: column1X,
-    y: headerY,
-    width: columnWidth + column2Width,
-    height: headerRowHeight,
-    color: rgb(1, 1, 1), // Light gray background for header
-    opacity: 1,
-  });
-
-  // Criteria header (centered in its column)
-  const criteriaHeaderWidth = boldFont.widthOfTextAtSize(
-    "Критерии оценивания",
-    10
-  );
+  // Draw table headers
   currentPage.drawText("Критерии оценивания", {
-    x: column1X + (columnWidth - criteriaHeaderWidth) / 2, // Center in column
-    y: headerY + headerRowHeight / 2 - 5, // Vertically center
+    x: column1X + padding,
+    y: currentTableYStart - 15,
     size: 10,
     font: boldFont,
   });
 
-  // Score header (centered in its column)
-  const scoreHeaderWidth = boldFont.widthOfTextAtSize("Оценка", 10);
   currentPage.drawText("Оценка", {
-    x: column2X + (column2Width - scoreHeaderWidth) / 2, // Center in column
-    y: headerY + headerRowHeight / 2 - 5, // Vertically center
+    x: column2X + padding,
+    y: currentTableYStart - 15,
     size: 10,
     font: boldFont,
   });
@@ -432,39 +402,37 @@ export async function generateReviewPDF(
   });
 
   // Draw each row with dynamic height
-  let currentY = currentTableYStart - headerRowHeight; // Start below header
+  let currentY = currentTableYStart;
   criteria.forEach((item, index) => {
     const rowHeight = rowHeights[index];
     currentY -= rowHeight;
 
-    // Draw cell background (lighter opacity for better readability)
+    // Draw cell background (optional for better readability)
     currentPage.drawRectangle({
       x: column1X,
       y: currentY,
       width: columnWidth + column2Width,
       height: rowHeight,
-      color: index % 2 === 0 ? rgb(1, 1, 1) : rgb(1, 1, 1),
-      opacity: 1,
+      color: index % 2 === 0 ? rgb(0.95, 0.95, 0.95) : rgb(1, 1, 1),
+      opacity: 0.5,
     });
 
-    // Draw criteria text with wrapping and better positioning
+    // Draw criteria text with wrapping
     currentPage.drawText(item.text, {
       x: column1X + padding,
-      y: currentY + rowHeight - padding - 8, // Adjusted positioning
+      y: currentY + rowHeight - padding - 10, // Position text at top of cell
       size: 10,
       font,
       maxWidth: columnWidth - padding * 2,
-      lineHeight: 14, // Increased from 12
+      lineHeight: 12,
     });
 
-    // Draw score value (perfectly centered)
+    // Draw score value (centered vertically)
     currentPage.drawText(item.value.toString(), {
-      x:
-        column2X +
-        (column2Width - font.widthOfTextAtSize(item.value.toString(), 10)) / 2,
-      y: currentY + rowHeight / 2 - 5,
+      x: column2X + padding,
+      y: currentY + rowHeight / 2 - 5, // Center vertically
       size: 10,
-      font: boldFont, // Made scores bold for better visibility
+      font,
     });
 
     // Draw horizontal line
@@ -476,32 +444,53 @@ export async function generateReviewPDF(
     });
   });
 
-  // Draw vertical borders (extended through header)
+  // Draw vertical borders
   currentPage.drawLine({
     start: { x: column1X, y: currentTableYStart },
-    end: { x: column1X, y: currentY },
+    end: { x: column1X, y: currentTableYStart - tableHeight },
     thickness: lineThickness,
     color: rgb(0, 0, 0),
   });
 
   currentPage.drawLine({
     start: { x: column2X, y: currentTableYStart },
-    end: { x: column2X, y: currentY },
+    end: { x: column2X, y: currentTableYStart - tableHeight },
     thickness: lineThickness,
     color: rgb(0, 0, 0),
   });
 
   currentPage.drawLine({
     start: { x: column1X + columnWidth + column2Width, y: currentTableYStart },
-    end: { x: column1X + columnWidth + column2Width, y: currentY },
+    end: {
+      x: column1X + columnWidth + column2Width,
+      y: currentTableYStart - tableHeight,
+    },
     thickness: lineThickness,
     color: rgb(0, 0, 0),
   });
 
-  const tableBottomY = currentY;
+  // Draw bottom border
+  currentPage.drawLine({
+    start: { x: column1X, y: currentTableYStart - tableHeight },
+    end: {
+      x: column1X + columnWidth + column2Width,
+      y: currentTableYStart - tableHeight,
+    },
+    thickness: lineThickness,
+    color: rgb(0, 0, 0),
+  });
 
-  // Section 2: Results - with more space after table
-  currentY = tableBottomY - 50; // Increased from 40 to 50
+  const tableBottomY = currentTableYStart - tableHeight;
+
+  // Section 2: Results
+  currentY = tableBottomY - 40; // Space after the table
+
+  // Check if we need a new page before starting Section 2
+  if (currentY < 150) {
+    // If less than 150px left on page
+    currentPage = pdfDoc.addPage([595, 842]);
+    currentY = 800; // Reset to top of new page
+  }
 
   // Section 2 Header
   currentPage.drawText(
@@ -525,42 +514,21 @@ export async function generateReviewPDF(
   currentY -= 20;
 
   thesis.assessment!.section2.questions.forEach((question, i) => {
-    // Calculate how much space this question will need
-    const questionText = `${i + 1}. ${question}`;
-    const words = questionText.split(" ");
-    let lineCount = 1;
-    let currentLineWidth = 0;
-
-    for (const word of words) {
-      const wordWidth = font.widthOfTextAtSize(word + " ", 10);
-      if (currentLineWidth + wordWidth > 500) {
-        lineCount++;
-        currentLineWidth = wordWidth;
-      } else {
-        currentLineWidth += wordWidth;
-      }
-    }
-
-    const questionHeight = lineCount * 15; // 12 lineHeight + 3 padding
-
-    // Check if we need a new page before drawing
-    if (currentY - questionHeight < 50) {
+    // Check if we need a new page
+    if (currentY < 100) {
       currentPage = pdfDoc.addPage([595, 842]);
       currentY = 800;
     }
 
-    // Draw the question with wrapping
-    currentPage.drawText(questionText, {
+    currentPage.drawText(`${i + 1}. ${question}`, {
       x: 50,
       y: currentY,
       size: 10,
       font,
-      maxWidth: 500,
+      maxWidth: 500, // Add text wrapping
       lineHeight: 12,
     });
-
-    // Update Y position based on actual lines used
-    currentY -= questionHeight;
+    currentY -= 15;
   });
 
   // Advantages/Disadvantages section - with extra space before
@@ -576,54 +544,30 @@ export async function generateReviewPDF(
   );
   currentY -= 25;
 
-  // Advantages section with proper text wrapping
+  // Advantages
   currentPage.drawText("Достоинства / Advantages:", {
     x: 50,
     y: currentY,
     size: 10,
     font: boldFont,
   });
-  currentY -= 20; // Space after header
+  currentY -= 20;
 
   thesis.assessment!.section2.advantages.forEach((advantage, index) => {
-    const itemText = `${index + 1}. ${advantage}`;
-
-    // Calculate required height for this advantage
-    const words = itemText.split(" ");
-    let lineCount = 1;
-    let currentLineWidth = 0;
-
-    for (const word of words) {
-      const wordWidth = font.widthOfTextAtSize(word + " ", 10);
-      if (currentLineWidth + wordWidth > 490) {
-        lineCount++;
-        currentLineWidth = wordWidth;
-      } else {
-        currentLineWidth += wordWidth;
-      }
-    }
-
-    const itemHeight = lineCount * 15; // 12 lineHeight + 3 padding
-
-    // Check page space before drawing
-    if (currentY - itemHeight < 50) {
-      // 50px bottom margin
+    if (currentY < 100) {
       currentPage = pdfDoc.addPage([595, 842]);
       currentY = 800;
     }
 
-    // Draw the advantage with text wrapping
-    currentPage.drawText(itemText, {
-      x: 60, // Indented
+    currentPage.drawText(`${index + 1}. ${advantage}`, {
+      x: 60,
       y: currentY,
       size: 10,
       font,
-      maxWidth: 490,
+      maxWidth: 490, // Slightly less due to indentation
       lineHeight: 12,
     });
-
-    // Update vertical position
-    currentY -= itemHeight;
+    currentY -= 15;
   });
 
   // Disadvantages - with extra space
@@ -637,44 +581,20 @@ export async function generateReviewPDF(
   currentY -= 20;
 
   thesis.assessment!.section2.disadvantages.forEach((disadvantage, index) => {
-    const itemText = `${index + 1}. ${disadvantage}`;
-
-    // Calculate how many lines this item will need
-    const words = itemText.split(" ");
-    let lineCount = 1;
-    let currentLineWidth = 0;
-
-    for (const word of words) {
-      const wordWidth = font.widthOfTextAtSize(word + " ", 10);
-      if (currentLineWidth + wordWidth > 490) {
-        lineCount++;
-        currentLineWidth = wordWidth;
-      } else {
-        currentLineWidth += wordWidth;
-      }
-    }
-
-    const itemHeight = lineCount * 15; // 12 lineHeight + 3 padding
-
-    // Check if we need a new page before drawing
-    if (currentY - itemHeight < 50) {
-      // 50px bottom margin
+    if (currentY < 100) {
       currentPage = pdfDoc.addPage([595, 842]);
       currentY = 800;
     }
 
-    // Draw the disadvantage with wrapping
-    currentPage.drawText(itemText, {
-      x: 60, // Indented slightly
+    currentPage.drawText(`${index + 1}. ${disadvantage}`, {
+      x: 60,
       y: currentY,
       size: 10,
       font,
-      maxWidth: 490, // Slightly less due to indentation
+      maxWidth: 490,
       lineHeight: 12,
     });
-
-    // Update Y position based on actual lines used
-    currentY -= itemHeight;
+    currentY -= 15;
   });
 
   // Conclusion section - with extra space
@@ -691,6 +611,19 @@ export async function generateReviewPDF(
     size: 12,
     font: boldFont,
   });
+  currentY -= 25;
+
+  // Final grade
+  currentPage.drawText(
+    `Итоговая оценка ВКР - ${thesis.finalGrade}. / Final Assessment of the thesis - ${thesis.finalGrade}.`,
+    {
+      x: 50,
+      y: currentY,
+      size: 10,
+      font,
+    }
+  );
+  currentY -= 20;
 
   // Conclusion text (Russian)
   const isCompleteTextRu = thesis.assessment!.section2.conclusion.isComplete
@@ -700,6 +633,19 @@ export async function generateReviewPDF(
     ? "Да"
     : "Нет";
 
+  currentPage.drawText(
+    `Заключение: Считаю что данная выпускная квалификационная работа является законченной работой - ${isCompleteTextRu}, а её автор заслуживает присуждения квалификации ${student.degreeLevel} - ${isDeservingTextRu}`,
+    {
+      x: 50,
+      y: currentY,
+      size: 10,
+      font,
+      maxWidth: 500,
+      lineHeight: 12,
+    }
+  );
+  currentY -= 20;
+
   // Conclusion text (English)
   const isCompleteTextEn = thesis.assessment!.section2.conclusion.isComplete
     ? "Yes"
@@ -708,163 +654,20 @@ export async function generateReviewPDF(
     ? "Yes"
     : "No";
 
-  currentY -= 20;
-
-
-  // Helper function for wrapped text with bold capability
- const drawWrappedText = (
-  page: PDFPage,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-  size: number,
-  font: PDFFont,
-  boldFont: PDFFont,
-  boldParts: string[] = [],
-  lineHeight = 15
-) => {
-  const words = text.split(' ');
-  let currentLine = '';
-  let currentY = y;
-
-  // Modified regex to match all occurrences
-  const boldRegex = new RegExp(`(${boldParts.map(escapeRegExp).join('|')})`, 'gi');
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    const testWidth = font.widthOfTextAtSize(testLine, size);
-
-    if (testWidth > maxWidth && currentLine) {
-      // Draw the current line with all bold parts
-      drawMixedFontLine(page, currentLine, x, currentY, size, font, boldFont, boldRegex);
-      currentY -= lineHeight;
-      currentLine = word;
-    } else {
-      currentLine = testLine;
+  currentPage.drawText(
+    `Conclusion: I believe that the present graduation thesis is complete - ${isCompleteTextEn}, and its author is deserving of being awarded a ${student.degreeLevel} degree - ${isDeservingTextEn}`,
+    {
+      x: 50,
+      y: currentY,
+      size: 10,
+      font,
+      maxWidth: 500,
+      lineHeight: 12,
     }
-  }
-
-  // Draw the last line
-  if (currentLine) {
-    drawMixedFontLine(page, currentLine, x, currentY, size, font, boldFont, boldRegex);
-  }
-
-  return currentY - lineHeight;
-};
-
-// Helper to escape regex special characters
-function escapeRegExp(string: any) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// Improved mixed font line drawing
-const drawMixedFontLine = (
-  page: PDFPage,
-  text: string,
-  x: number,
-  y: number,
-  size: number,
-  font: PDFFont,
-  boldFont: PDFFont,
-  boldRegex: RegExp
-) => {
-  let currentX = x;
-  let lastIndex = 0;
-  let match;
-  
-  // Reset regex state
-  boldRegex.lastIndex = 0;
-
-  while ((match = boldRegex.exec(text)) !== null) {
-    // Draw normal text before the bold part
-    if (match.index > lastIndex) {
-      const normalText = text.substring(lastIndex, match.index);
-      page.drawText(normalText, {
-        x: currentX,
-        y,
-        size,
-        font
-      });
-      currentX += font.widthOfTextAtSize(normalText, size);
-    }
-
-    // Draw bold text (all occurrences)
-    const boldText = match[0];
-    page.drawText(boldText, {
-      x: currentX,
-      y,
-      size,
-      font: boldFont
-    });
-    currentX += boldFont.widthOfTextAtSize(boldText, size);
-    lastIndex = match.index + match[0].length;
-  }
-
-  // Draw remaining normal text
-  if (lastIndex < text.length) {
-    const remainingText = text.substring(lastIndex);
-    page.drawText(remainingText, {
-      x: currentX,
-      y,
-      size,
-      font
-    });
-  }
-};
-
-  if (!thesis.finalGrade) {
-    throw new Error("Thesis final grade is required");
-  }
-
-  // Draw final grade with wrapping and bold grade
-  const gradeText = `Итоговая оценка ВКР - ${thesis.finalGrade}. / Final Assessment of the thesis - ${thesis.finalGrade}.`;
-  currentY = drawWrappedText(
-    currentPage,
-    gradeText,
-    50,
-    currentY,
-    500, // maxWidth
-    10, // size
-    font,
-    boldFont,
-    ["Итоговая оценка", thesis.finalGrade, "Final Assessment", thesis.finalGrade] // parts to bold
   );
-
-  currentY -= 10;
-  // Draw Russian conclusion with wrapping and bold parts
-  const russianConclusion = `Заключение: Считаю, что данная выпускная квалификационная работа является законченной работой - ${isCompleteTextRu}, а её автор заслуживает присуждения квалификации ${student.degreeLevel} - ${isDeservingTextRu}`;
-  currentY = drawWrappedText(
-    currentPage,
-    russianConclusion,
-    50,
-    currentY,
-    500,
-    10,
-    font,
-    boldFont,
-    ["Заключение:", isCompleteTextRu, student.degreeLevel, isDeservingTextRu]
-  );
-
-  currentY -= 5;
-
-  // Draw English conclusion with wrapping and bold parts
-  const englishConclusion = `Conclusion: I believe that the present graduation thesis is complete - ${isCompleteTextEn}, and its author is deserving of being awarded a ${student.degreeLevel} degree - ${isDeservingTextEn}`;
-  currentY = drawWrappedText(
-    currentPage,
-    englishConclusion,
-    50,
-    currentY,
-    500,
-    10,
-    font,
-    boldFont,
-    ["Conclusion:", isCompleteTextEn, student.degreeLevel, isDeservingTextEn]
-  );
-
-  currentY -= 30;
 
   //Signature functionality
+
   const drawSignatureBlocks = (
     currentPage: PDFPage,
     currentY: number, // Track vertical position
@@ -928,14 +731,22 @@ const drawMixedFontLine = (
       // Right column - Name and role
       currentPage.drawText(signature.name, {
         x: signatureConfig.rightX,
-        y: yPos,
+        y: yPos + 5,
         size: 10,
         font: boldFont,
       });
 
+      // Add date field for each signature
+      currentPage.drawLine({
+        start: { x: signatureConfig.rightX + 150, y: yPos },
+        end: { x: signatureConfig.rightX + 250, y: yPos },
+        thickness: 1,
+        color: rgb(0, 0, 0),
+      });
+
       currentPage.drawText(signature.role, {
         x: signatureConfig.rightX,
-        y: yPos - 10,
+        y: yPos - signatureConfig.roleYOffset,
         size: 8,
         font: font,
       });

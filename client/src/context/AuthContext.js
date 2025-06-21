@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react"
+import { createContext, useContext, useState, useEffect, useCallback } from "react"
 import axios from "axios"
 
 const AuthContext = createContext()
@@ -77,7 +77,7 @@ const getCurrentUser = async (token) => {
     return response.data
   } catch (error) {
     localStorage.removeItem("token")
-    return null
+    throw error
   }
 }
 
@@ -90,8 +90,13 @@ export const AuthProvider = ({ children }) => {
     const initAuth = async () => {
       const token = localStorage.getItem("token")
       if (token) {
-        const userData = await getCurrentUser(token)
-        setUser(userData)
+        try {
+          const userData = await getCurrentUser(token)
+          setUser(userData)
+        } catch (error) {
+          console.error("Failed to get current user:", error)
+          localStorage.removeItem("token")
+        }
       }
       setLoading(false)
     }
@@ -128,21 +133,27 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem("token")
     setUser(null)
-  }
+  }, [])
 
-  // Refreshing user data
-  const refreshUser = async () => {
+  // Refreshing user data - use useCallback to prevent infinite loops
+  const refreshUser = useCallback(async () => {
     const token = localStorage.getItem("token")
     if (token) {
-      const userData = await getCurrentUser(token)
-      setUser(userData)
-      return userData
+      try {
+        const userData = await getCurrentUser(token)
+        setUser(userData)
+        return userData
+      } catch (error) {
+        console.error("Failed to refresh user:", error)
+        logout()
+        return null
+      }
     }
     return null
-  }
+  }, [logout])
 
   const value = {
     user,
