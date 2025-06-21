@@ -76,13 +76,13 @@ const AdminDashboard = () => {
       ])
 
       // Extract values from settled promises with fallbacks
-      const users = allUsersResult.status === "fulfilled" ? allUsersResult.value : []
-      const thesesData = allThesesResult.status === "fulfilled" ? allThesesResult.value : []
-      const pending = pendingResult.status === "fulfilled" ? pendingResult.value : []
-      const approved = approvedResult.status === "fulfilled" ? approvedResult.value : []
+      const users = allUsersResult.status === "fulfilled" && allUsersResult.value ? allUsersResult.value : []
+      const thesesData = allThesesResult.status === "fulfilled" && allThesesResult.value ? allThesesResult.value : []
+      const pending = pendingResult.status === "fulfilled" && pendingResult.value ? pendingResult.value : []
+      const approved = approvedResult.status === "fulfilled" && approvedResult.value ? approvedResult.value : []
 
-      // Filter students from all users
-      const studentUsers = users.filter((user) => user.role === "student")
+      // Filter students from all users with additional safety check
+      const studentUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "student") : []
       setStudents(studentUsers)
       setAllUsers(users)
       setTheses(thesesData)
@@ -132,18 +132,6 @@ const AdminDashboard = () => {
     }
   }, [user, fetchData])
 
-  // Remove the visibility change listener to prevent infinite loops
-  // useEffect(() => {
-  //   const handleVisibilityChange = () => {
-  //     if (!document.hidden && user && user.role === "admin") {
-  //       fetchData()
-  //     }
-  //   }
-
-  //   document.addEventListener("visibilitychange", handleVisibilityChange)
-  //   return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
-  // }, [fetchData, user])
-
   // Filter students
   useEffect(() => {
     let filtered = [...students]
@@ -180,14 +168,14 @@ const AdminDashboard = () => {
   const handleAssignReviewer = async (studentId, reviewerId) => {
     const student = students.find((s) => s._id === studentId)
     const reviewer = approvedReviewers.find((r) => r._id === reviewerId)
-    
-    const thesis = theses.find((t) => t.student === studentId);
-  
-  if (!thesis) {
-    showToast("No thesis found for this student", "error");
-    return;
-  }
-    const oldReviewerId = student?.reviewer;
+
+    const thesis = theses.find((t) => t.student === studentId)
+
+    if (!thesis) {
+      showToast("No thesis found for this student", "error")
+      return
+    }
+    const oldReviewerId = student?.reviewer
     const currentReviewer = student?.reviewer ? approvedReviewers.find((r) => r._id === student.reviewer) : null
 
     if (currentReviewer) {
@@ -221,14 +209,10 @@ const AdminDashboard = () => {
 
   const handleConfirmReassign = async () => {
     if (!reassignData) return
- 
+
     try {
       setAssigningStudent(reassignData.studentId)
-      await thesisAPI.reassignReviewer(
-      reassignData.thesisId,
-      reassignData.oldReviewerId,
-      reassignData.newReviewerId
-    );
+      await thesisAPI.reassignReviewer(reassignData.thesisId, reassignData.oldReviewerId, reassignData.newReviewerId)
 
       showToast(
         `Reviewer successfully changed from ${reassignData.currentReviewerName} to ${reassignData.newReviewerName}!`,

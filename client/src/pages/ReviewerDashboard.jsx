@@ -12,12 +12,14 @@ import {
   FiCalendar,
   FiBook,
   FiRefreshCw,
+  FiEdit,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
 import { thesisAPI } from "../services/api"
 import Modal from "../components/Modal"
 import ReviewerAssessment from "../components/ReviewerAssessment"
+import SignedReviewViewer from "../components/SignedReviewViewer"
 
 const ReviewerDashboard = () => {
   const { user, logout } = useAuth()
@@ -34,12 +36,12 @@ const ReviewerDashboard = () => {
   const [filterOption, setFilterOption] = useState("all")
   const [sortOption, setSortOption] = useState("newest")
   const { toast, showToast, hideToast } = useToast()
+  const [showSignedReview, setShowSignedReview] = useState(false)
+  const [selectedThesisForSignedReview, setSelectedThesisForSignedReview] = useState(null)
 
-  // ИСПРАВЛЕНО: Используем ref для предотвращения бесконечных циклов
   const fetchedRef = useRef(false)
   const isFetchingRef = useRef(false)
 
-  // ИСПРАВЛЕНО: Убираем зависимости, которые могут вызывать бесконечные циклы
   const fetchStudents = useCallback(async () => {
     // Предотвращаем одновременные запросы
     if (isFetchingRef.current) {
@@ -55,22 +57,18 @@ const ReviewerDashboard = () => {
         thesisAPI.getCompletedReviews(),
       ])
 
-      // Обработка назначенных тезисов
       const assignedData = assigned.status === "fulfilled" ? assigned.value : []
       const completedData = completed.status === "fulfilled" ? completed.value : []
 
       console.log("Assigned theses:", assignedData)
       console.log("Completed reviews:", completedData)
 
-      // Обработка всех тезисов
       const allTheses = [...assignedData, ...completedData]
 
-      // Убираем дубликаты по ID
       const uniqueTheses = allTheses.filter(
         (thesis, index, self) => index === self.findIndex((t) => t._id === thesis._id),
       )
 
-      // Разделяем на назначенные и завершенные
       const validAssigned = []
       const validCompleted = []
 
@@ -86,13 +84,12 @@ const ReviewerDashboard = () => {
             status: thesis.status,
             finalGrade: thesis.finalGrade,
             hasUploaded: !!thesis.fileUrl,
+            hasSignedReview: thesis.hasSignedReview || false,
           }
 
-          // Если работа оценена (есть финальная оценка) или статус "evaluated", то она завершена
           if (thesis.finalGrade || thesis.status === "evaluated") {
             validCompleted.push(studentData)
           } else {
-            // Иначе она все еще назначена для рецензирования
             validAssigned.push(studentData)
           }
         })
@@ -111,14 +108,13 @@ const ReviewerDashboard = () => {
       setIsLoading(false)
       isFetchingRef.current = false
     }
-  }, []) // ИСПРАВЛЕНО: Убрали showToast из зависимостей
+  }, []) 
 
-  // ИСПРАВЛЕНО: Загружаем данные только при монтировании компонента
   useEffect(() => {
     if (user && user.role === "reviewer" && !fetchedRef.current) {
       fetchStudents()
     }
-  }, [user]) // ИСПРАВЛЕНО: Убрали fetchStudents из зависимостей
+  }, [user]) 
 
   // Filter and sort students
   useEffect(() => {
@@ -157,7 +153,6 @@ const ReviewerDashboard = () => {
   const handleCloseModal = () => {
     setIsModalOpen(false)
     setSelectedStudent(null)
-    // ИСПРАВЛЕНО: Обновляем данные только после закрытия модального окна
     fetchStudents()
   }
 
@@ -189,13 +184,12 @@ const ReviewerDashboard = () => {
     try {
       await thesisAPI.reReviewThesis(student.thesisId)
       showToast("Thesis moved back for re-review", "success")
-      fetchStudents() // Обновляем данные
+      fetchStudents() 
     } catch (error) {
       showToast("Failed to move thesis for re-review", "error")
     }
   }
 
-  // ИСПРАВЛЕНО: Ручное обновление
   const handleRefresh = () => {
     fetchedRef.current = false
     fetchStudents()
@@ -261,6 +255,15 @@ const ReviewerDashboard = () => {
       .join("")
       .toUpperCase()
       .slice(0, 2)
+  }
+
+  const handleViewSignedReview = (student) => {
+    setSelectedThesisForSignedReview(student.thesisId)
+    setShowSignedReview(true)
+  }
+
+  const handleSignReview = (student) => {
+    navigate(`/sign/${student.thesisId}`)
   }
 
   if (isLoading && !fetchedRef.current) {
@@ -521,7 +524,7 @@ const ReviewerDashboard = () => {
                         ) : (
                           <FiDownload className="w-4 h-4" />
                         )}
-                        Download
+                        Download Thesis
                       </button>
                       <button
                         onClick={() => handleStudentClick(student, "view")}
@@ -530,6 +533,23 @@ const ReviewerDashboard = () => {
                         <FiEye className="w-4 h-4" />
                         View Review
                       </button>
+                      {student.hasSignedReview || student.status === "evaluated" ? (
+                        <button
+                          onClick={() => handleViewSignedReview(student)}
+                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                        >
+                          <FiEye className="w-4 h-4" />
+                          View Signed Review
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleSignReview(student)}
+                          className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
+                        >
+                          <FiEdit className="w-4 h-4" />
+                          Sign Review
+                        </button>
+                      )}
                       <button
                         onClick={() => handleReReview(student)}
                         className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
@@ -565,6 +585,26 @@ const ReviewerDashboard = () => {
             student={selectedStudent}
             mode={reviewMode}
             onClose={handleCloseModal}
+          />
+        )}
+      </Modal>
+      {/* Signed Review Modal */}
+      <Modal
+        isOpen={showSignedReview}
+        onClose={() => {
+          setShowSignedReview(false)
+          setSelectedThesisForSignedReview(null)
+        }}
+        title="Signed Review"
+        size="full"
+      >
+        {selectedThesisForSignedReview && (
+          <SignedReviewViewer
+            thesisId={selectedThesisForSignedReview}
+            onClose={() => {
+              setShowSignedReview(false)
+              setSelectedThesisForSignedReview(null)
+            }}
           />
         )}
       </Modal>
