@@ -13,6 +13,8 @@ import {
   FiBook,
   FiRefreshCw,
   FiEdit,
+  FiUserCheck,
+  FiInfo,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
@@ -43,7 +45,7 @@ const ReviewerDashboard = () => {
   const isFetchingRef = useRef(false)
 
   const fetchStudents = useCallback(async () => {
-    // Предотвращаем одновременные запросы
+    // Preventing simultaneous requests
     if (isFetchingRef.current) {
       return
     }
@@ -85,6 +87,8 @@ const ReviewerDashboard = () => {
             finalGrade: thesis.finalGrade,
             hasUploaded: !!thesis.fileUrl,
             hasSignedReview: thesis.hasSignedReview || false,
+            reviewedBy: thesis.reviewedBy,
+            previousReviewedBy: thesis.previousReviewedBy,
           }
 
           if (thesis.finalGrade || thesis.status === "evaluated") {
@@ -108,13 +112,13 @@ const ReviewerDashboard = () => {
       setIsLoading(false)
       isFetchingRef.current = false
     }
-  }, []) 
+  }, [showToast])
 
   useEffect(() => {
     if (user && user.role === "reviewer" && !fetchedRef.current) {
       fetchStudents()
     }
-  }, [user]) 
+  }, [user, fetchStudents])
 
   // Filter and sort students
   useEffect(() => {
@@ -184,7 +188,7 @@ const ReviewerDashboard = () => {
     try {
       await thesisAPI.reReviewThesis(student.thesisId)
       showToast("Thesis moved back for re-review", "success")
-      fetchStudents() 
+      fetchStudents()
     } catch (error) {
       showToast("Failed to move thesis for re-review", "error")
     }
@@ -264,6 +268,10 @@ const ReviewerDashboard = () => {
 
   const handleSignReview = (student) => {
     navigate(`/sign/${student.thesisId}`)
+  }
+
+  const isPreviouslyReviewed = (student) => {
+    return student.previousReviewedBy && student.previousReviewedBy !== user?._id
   }
 
   if (isLoading && !fetchedRef.current) {
@@ -417,6 +425,15 @@ const ReviewerDashboard = () => {
                         <div className="ml-13">
                           <p className="text-white font-medium mb-1">{student.thesisTitle || "No thesis title yet"}</p>
                           <p className="text-gray-400 text-sm mb-2">{student.institution}</p>
+
+                          {/* Previous reviewer info */}
+                          {isPreviouslyReviewed(student) && (
+                            <div className="flex items-center gap-2 mb-2 p-2 bg-blue-900/20 border border-blue-800 rounded">
+                              <FiInfo className="w-4 h-4 text-blue-400" />
+                              <span className="text-blue-300 text-sm">Previously reviewed by another reviewer</span>
+                            </div>
+                          )}
+
                           <div className="flex items-center gap-4 text-sm">
                             {student.hasUploaded && student.submissionDate ? (
                               <div className="flex items-center gap-2 text-gray-400">
@@ -492,6 +509,17 @@ const ReviewerDashboard = () => {
                       <div className="ml-13">
                         <p className="text-white font-medium mb-1">{student.thesisTitle}</p>
                         <p className="text-gray-400 text-sm mb-2">{student.institution}</p>
+
+                        {/* Previous reviewer info for completed reviews */}
+                        {isPreviouslyReviewed(student) && (
+                          <div className="flex items-center gap-2 mb-2 p-2 bg-orange-900/20 border border-orange-800 rounded">
+                            <FiUserCheck className="w-4 h-4 text-orange-400" />
+                            <span className="text-orange-300 text-sm">
+                              This thesis was reassigned to you after being reviewed by another reviewer
+                            </span>
+                          </div>
+                        )}
+
                         <div className="flex items-center gap-4 text-sm">
                           {student.submissionDate && (
                             <div className="flex items-center gap-2 text-gray-400">
@@ -553,6 +581,9 @@ const ReviewerDashboard = () => {
                       <button
                         onClick={() => handleReReview(student)}
                         className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
+                        title={
+                          isPreviouslyReviewed(student) ? "Re-review this reassigned thesis" : "Re-review this thesis"
+                        }
                       >
                         <FiRefreshCw className="w-4 h-4" />
                         Re-Review

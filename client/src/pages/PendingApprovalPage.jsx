@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 import { FiClock, FiLogOut, FiMail, FiUser, FiRefreshCw } from "react-icons/fi"
 import { useAuth } from "../context/AuthContext"
 
@@ -7,32 +7,15 @@ const PendingApprovalPage = () => {
   const { user, logout, refreshUser } = useAuth()
   const navigate = useNavigate()
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const hasCheckedOnMount = useRef(false)
 
-  // Check approval status only ONCE when component mounts
+  // Redirect non-reviewers immediately
   useEffect(() => {
-    if (hasCheckedOnMount.current) return
-
-    const checkApprovalStatus = async () => {
-      try {
-        hasCheckedOnMount.current = true
-        const updatedUser = await refreshUser()
-        // If user is now approved, redirect to reviewer dashboard
-        if (updatedUser && updatedUser.role === "reviewer" && updatedUser.isApproved) {
-          navigate("/reviewer", { replace: true })
-        }
-      } catch (error) {
-        console.error("Failed to check approval status:", error)
-      }
+    if (user && user.role !== "reviewer") {
+      navigate("/login", { replace: true })
     }
+  }, [user, navigate])
 
-    // Only check if we have a user and they're a reviewer
-    if (user && user.role === "reviewer" && !user.isApproved) {
-      checkApprovalStatus()
-    }
-  }, [])
-
-  // Separate effect to handle navigation when user status changes
+  // Check if approved reviewer should be redirected
   useEffect(() => {
     if (user && user.role === "reviewer" && user.isApproved) {
       navigate("/reviewer", { replace: true })
@@ -69,9 +52,8 @@ const PendingApprovalPage = () => {
     )
   }
 
-  // Redirect non-reviewers
+  // Don't render anything for non-reviewers, uses redirect instead
   if (user.role !== "reviewer") {
-    navigate("/login", { replace: true })
     return null
   }
 

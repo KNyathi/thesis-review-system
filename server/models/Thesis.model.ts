@@ -38,6 +38,8 @@ export interface IThesis extends Document {
   reviewPdf?: string
   signedReviewPath?: string
   signedDate?: Date
+  reviewedBy?: Schema.Types.ObjectId | IReviewer // Current reviewer 
+  previousReviewedBy?: Schema.Types.ObjectId | IReviewer // Previous reviewer 
 }
 
 const thesisSchema = new Schema<IThesis>({
@@ -78,6 +80,8 @@ const thesisSchema = new Schema<IThesis>({
   reviewPdf: { type: String },
   signedReviewPath: { type: String },
   signedDate: { type: Date },
+  reviewedBy: { type: Schema.Types.ObjectId, ref: "User" },
+  previousReviewedBy: { type: Schema.Types.ObjectId, ref: "User" },
 })
 
 export const Thesis = model<IThesis>("Thesis", thesisSchema)

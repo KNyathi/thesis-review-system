@@ -2,7 +2,7 @@ import type { Request, Response } from "express"
 import { Thesis } from "../models/Thesis.model"
 import { type IReviewer, Student, Reviewer } from "../models/User.model"
 import { generateReviewPDF } from "../utils/pdfGenerator"
-import { Types } from "mongoose"
+import { Types, type Schema } from "mongoose"
 import path from "path"
 import fs from "fs"
 
@@ -25,13 +25,14 @@ export const submitReview = async (req: Request, res: Response) => {
       return
     }
 
-    // Update the thesis with the review details 
+    // Update the thesis with the review details
     const updatedThesis = await Thesis.findByIdAndUpdate(
       thesisId,
       {
         finalGrade: grade,
         assessment: assessment,
         status: "under_review", // Keep as under_review until signed
+        reviewedBy: reviewer._id, // Track who reviewed it
       },
       { new: true },
     )
@@ -49,11 +50,11 @@ export const submitReview = async (req: Request, res: Response) => {
 
     const pdfPath = await generateReviewPDF(updatedThesis, reviewer)
 
-    // Update thesis 
+    // Update thesis
     updatedThesis.reviewPdf = pdfPath
     await updatedThesis.save()
 
-    // Update student's grade 
+    // Update student's grade
     await Student.findByIdAndUpdate(thesis.student, {
       thesisGrade: grade,
       thesisStatus: "under_review",
@@ -84,6 +85,7 @@ export const getAssignedTheses = async (req: Request, res: Response) => {
     // Fetch theses assigned to the reviewer
     const theses = await Thesis.find({ _id: { $in: reviewer.assignedTheses } })
       .populate("student", "fullName email institution")
+      .populate("reviewedBy", "fullName email") // Populate previous reviewer info
       .lean()
 
     res.json(theses)
@@ -97,9 +99,15 @@ export const getCompletedReviews = async (req: Request, res: Response) => {
   try {
     const reviewer = req.user as IReviewer
 
-    // Fetch theses reviewed by the reviewer
-    const reviews = await Thesis.find({ _id: { $in: reviewer.reviewedTheses } })
+    // Fetch theses reviewed by the reviewer or assigned to them for reassigned theses
+    const reviews = await Thesis.find({
+      $or: [
+        { _id: { $in: reviewer.reviewedTheses } },
+        { _id: { $in: reviewer.assignedTheses }, finalGrade: { $exists: true } },
+      ],
+    })
       .populate("student", "fullName email institution")
+      .populate("reviewedBy", "fullName email") // Populate previous reviewer info
       .lean()
 
     res.json(reviews)
@@ -129,8 +137,12 @@ export const reReviewThesis = async (req: Request, res: Response) => {
       return
     }
 
-    // Check reviewer access
-    if (!reviewer.reviewedTheses.some((id) => id.equals(thesisObjectId))) {
+    // Check reviewer access, allow if thesis is in reviewer's assignedTheses or reviewedTheses
+    const hasAccess =
+      reviewer.reviewedTheses.some((id) => new Types.ObjectId(id).equals(thesisObjectId)) ||
+      reviewer.assignedTheses.some((id) => new Types.ObjectId(id).equals(thesisObjectId))
+
+    if (!hasAccess) {
       res.status(403).json({ error: "Access denied" })
       return
     }
@@ -146,17 +158,33 @@ export const reReviewThesis = async (req: Request, res: Response) => {
       fs.unlinkSync(thesis.reviewPdf)
     }
 
-    // Reset thesis to under_review and clear review data
+    // Handle both ObjectId and populated IReviewer cases for previousReviewerId
+    let previousReviewerId: Types.ObjectId | undefined
+    if (thesis.reviewedBy) {
+      // Convert to string first, then to ObjectId to handle both cases
+      const reviewedByStr = thesis.reviewedBy.toString()
+      previousReviewerId = new Types.ObjectId(reviewedByStr)
+    }
+
+    // Reset thesis to under_review and clear review data, but keep track of previous reviewer
     await Thesis.findByIdAndUpdate(thesisObjectId, {
       status: "under_review",
-      $unset: { finalGrade: 1, assessment: 1, reviewPdf: 1, signedReviewPath: 1, signedDate: 1 },
+      previousReviewedBy: previousReviewerId, // Store previous reviewer
+      $unset: { finalGrade: 1, assessment: 1, reviewPdf: 1, signedReviewPath: 1, signedDate: 1, reviewedBy: 1 },
     })
 
-    // Move thesis back from reviewed to assigned
+    // Ensure thesis is in current reviewer's assignedTheses
     await Reviewer.findByIdAndUpdate(reviewer._id, {
+      $addToSet: { assignedTheses: thesisObjectId }, // Use $addToSet to avoid duplicates
       $pull: { reviewedTheses: thesisObjectId },
-      $push: { assignedTheses: thesisObjectId },
     })
+
+    // If there was a previous reviewer, remove from their reviewedTheses
+    if (previousReviewerId && !previousReviewerId.equals(new Types.ObjectId(reviewer._id))) {
+      await Reviewer.findByIdAndUpdate(previousReviewerId, {
+        $pull: { reviewedTheses: thesisObjectId },
+      })
+    }
 
     // Update student status
     await Student.findByIdAndUpdate(thesis.student, {
@@ -189,8 +217,12 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
       return
     }
 
-    // Check if reviewer has access
-    if (!reviewer.reviewedTheses.some((id) => id.equals(new Types.ObjectId(thesisId)))) {
+    // Check if reviewer has access, allow if in assignedTheses or reviewedTheses
+    const hasAccess =
+      reviewer.reviewedTheses.some((id) => new Types.ObjectId(id).equals(new Types.ObjectId(thesisId))) ||
+      reviewer.assignedTheses.some((id) => new Types.ObjectId(id).equals(new Types.ObjectId(thesisId)))
+
+    if (!hasAccess) {
       res.status(403).json({ error: "Access denied" })
       return
     }
@@ -245,7 +277,11 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
       return
     }
 
-    if (!reviewer.reviewedTheses.some((id) => id.equals(new Types.ObjectId(thesisId)))) {
+    const hasAccess =
+      reviewer.reviewedTheses.some((id) => new Types.ObjectId(id).equals(new Types.ObjectId(thesisId))) ||
+      reviewer.assignedTheses.some((id) => new Types.ObjectId(id).equals(new Types.ObjectId(thesisId)))
+
+    if (!hasAccess) {
       res.status(403).json({ error: "Access denied" })
       return
     }
@@ -273,6 +309,7 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
       signedReviewPath: signedReviewPath,
       reviewPdf: signedReviewPath,
       signedDate: new Date(),
+      reviewedBy: reviewer._id, // Ensure current reviewer is marked as the one who signed
     })
 
     // Update student status to evaluated
@@ -312,11 +349,13 @@ export const getSignedReview = async (req: Request, res: Response) => {
     const studentId =
       typeof thesis.student === "object" && thesis.student !== null && "_id" in thesis.student
         ? (thesis.student as any)._id.toString()
-        : thesis.student?.toString()
+        : (thesis.student as Schema.Types.ObjectId).toString()
 
     const isStudent = user.role === "student" && studentId === user._id.toString()
     const isReviewer =
-      user.role === "reviewer" && user.reviewedTheses.some((id: any) => id.equals(new Types.ObjectId(thesisId)))
+      user.role === "reviewer" &&
+      (user.reviewedTheses.some((id: any) => new Types.ObjectId(id).equals(new Types.ObjectId(thesisId))) ||
+        user.assignedTheses.some((id: any) => new Types.ObjectId(id).equals(new Types.ObjectId(thesisId))))
     const isAdmin = user.role === "admin"
 
     if (!isStudent && !isReviewer && !isAdmin) {
@@ -376,11 +415,13 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
     const studentId =
       typeof thesis.student === "object" && thesis.student !== null && "_id" in thesis.student
         ? (thesis.student as any)._id.toString()
-        : thesis.student?.toString()
+        : (thesis.student as Schema.Types.ObjectId).toString()
 
     const isStudent = user.role === "student" && studentId === user._id.toString()
     const isReviewer =
-      user.role === "reviewer" && user.reviewedTheses.some((id: any) => id.equals(new Types.ObjectId(thesisId)))
+      user.role === "reviewer" &&
+      (user.reviewedTheses.some((id: any) => new Types.ObjectId(id).equals(new Types.ObjectId(thesisId))) ||
+        user.assignedTheses.some((id: any) => new Types.ObjectId(id).equals(new Types.ObjectId(thesisId))))
     const isAdmin = user.role === "admin"
 
     if (!isStudent && !isReviewer && !isAdmin) {
@@ -439,6 +480,7 @@ export const signedReview = async (req: Request, res: Response) => {
       thesisId,
       {
         status: "evaluated",
+        reviewedBy: reviewer._id,
       },
       { new: true },
     )

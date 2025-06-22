@@ -26,11 +26,10 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
     researchFindingsIntegration: "",
   })
 
-  // Section II: Results of assessment - Initialize as strings
+  // Section II: Results of assessment - Initialize as arrays
   const [questions, setQuestions] = useState(["", ""])
-  const [advantages, setAdvantages] = useState("")
-  const [disadvantages, setDisadvantages] = useState("")
-  const [finalAssessment, setFinalAssessment] = useState("")
+  const [advantages, setAdvantages] = useState([""])
+  const [disadvantages, setDisadvantages] = useState([""])
   const [isComplete, setIsComplete] = useState(false)
   const [degreeWorthy, setDegreeWorthy] = useState(false)
   const [finalGrade, setFinalGrade] = useState("")
@@ -124,12 +123,26 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
             setAssessmentCriteria(section1)
           }
 
-          // Section II - Ensure all values are strings
+          // Section II - Handle arrays properly
           if (assessment.section2) {
-            setQuestions(assessment.section2.questions || ["", ""])
-            setAdvantages(assessment.section2.advantages || "")
-            setDisadvantages(assessment.section2.disadvantages || "")
-            setFinalAssessment(assessment.section2.conclusion?.finalAssessment || "")
+            setQuestions(
+              assessment.section2.questions && assessment.section2.questions.length > 0
+                ? assessment.section2.questions
+                : ["", ""],
+            )
+
+            setAdvantages(
+              assessment.section2.advantages && assessment.section2.advantages.length > 0
+                ? assessment.section2.advantages
+                : [""],
+            )
+
+            setDisadvantages(
+              assessment.section2.disadvantages && assessment.section2.disadvantages.length > 0
+                ? assessment.section2.disadvantages
+                : [""],
+            )
+
             setIsComplete(assessment.section2.conclusion?.isComplete || false)
             setDegreeWorthy(assessment.section2.conclusion?.degreeWorthy || "")
           }
@@ -144,7 +157,7 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
     } finally {
       setIsLoading(false)
     }
-  }, [thesisId, showToast])
+  }, [thesisId, showToast, assessmentCriteria])
 
   useEffect(() => {
     fetchThesisDetails()
@@ -225,18 +238,46 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
     }
   }
 
+  const handleAdvantageChange = (index, value) => {
+    const newAdvantages = [...advantages]
+    newAdvantages[index] = value
+    setAdvantages(newAdvantages)
+  }
+
+  const addAdvantage = () => {
+    setAdvantages([...advantages, ""])
+  }
+
+  const removeAdvantage = (index) => {
+    if (advantages.length > 1) {
+      setAdvantages(advantages.filter((_, i) => i !== index))
+    }
+  }
+
+  const handleDisadvantageChange = (index, value) => {
+    const newDisadvantages = [...disadvantages]
+    newDisadvantages[index] = value
+    setDisadvantages(newDisadvantages)
+  }
+
+  const addDisadvantage = () => {
+    setDisadvantages([...disadvantages, ""])
+  }
+
+  const removeDisadvantage = (index) => {
+    if (disadvantages.length > 1) {
+      setDisadvantages(disadvantages.filter((_, i) => i !== index))
+    }
+  }
+
   const isSection1Complete = () => {
     return Object.values(assessmentCriteria).every((value) => value && value.trim() !== "")
   }
 
   const isSection2Complete = () => {
     const validQuestions = questions.filter((q) => q && q.trim() !== "").length >= 2
-    const validAdvantages = Array.isArray(advantages)
-      ? advantages.some((adv) => adv && adv.trim() !== "")
-      : advantages && advantages.trim() !== ""
-    const validDisadvantages = Array.isArray(disadvantages)
-      ? disadvantages.some((dis) => dis && dis.trim() !== "")
-      : disadvantages && disadvantages.trim() !== ""
+    const validAdvantages = advantages.filter((adv) => adv && adv.trim() !== "").length >= 1
+    const validDisadvantages = disadvantages.filter((dis) => dis && dis.trim() !== "").length >= 1
 
     return (
       validQuestions &&
@@ -288,10 +329,9 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
           section1: assessmentCriteria,
           section2: {
             questions: questions.filter((q) => q && q.trim() !== ""),
-            advantages: advantages || "",
-            disadvantages: disadvantages || "",
+            advantages: advantages.filter((adv) => adv && adv.trim() !== ""),
+            disadvantages: disadvantages.filter((dis) => dis && dis.trim() !== ""),
             conclusion: {
-              finalAssessment: "",
               isComplete,
               degreeWorthy: degreeWorthy || "",
             },
@@ -299,7 +339,7 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
         },
       }
 
-      const response = await thesisAPI.submitReview(thesisId, reviewData)
+      await thesisAPI.submitReview(thesisId, reviewData)
       showToast(
         mode === "edit"
           ? "Review updated successfully! Redirecting to sign..."
@@ -321,7 +361,7 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
     }
   }
 
-  // Check if this is a completed review (read-only mode)
+  // Check if this is a completed review, read-only mode
   const isReadOnly = thesis && thesis.status === "evaluated"
 
   if (isLoading) {
@@ -472,41 +512,104 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
           </div>
 
           {/* Advantages */}
-          <div className="mb-6">
-            <label className="block text-gray-300 text-sm mb-2">Достоинства / Advantages</label>
-            <textarea
-              value={advantages || ""}
-              onChange={(e) => setAdvantages(e.target.value)}
-              placeholder="Укажите достоинства работы / Specify advantages of the work"
-              rows={4}
-              disabled={isReadOnly}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-            />
+          <div className="space-y-4 mb-6">
+            <div>
+              <h4 className="text-white font-medium mb-2">Достоинства / Advantages</h4>
+              <p className="text-gray-400 text-sm mb-4">
+                Необходимо указать не менее 1 достоинства. / You must include at least 1 advantage.
+              </p>
+            </div>
+
+            {advantages.map((advantage, index) => (
+              <div key={index} className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-gray-300 text-sm mb-1">
+                    Достоинство {index + 1} / Advantage {index + 1}
+                  </label>
+                  <textarea
+                    value={advantage || ""}
+                    onChange={(e) => handleAdvantageChange(index, e.target.value)}
+                    placeholder="Укажите достоинство работы / Specify advantage of the work"
+                    rows={3}
+                    disabled={isReadOnly}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+                {advantages.length > 1 && !isReadOnly && (
+                  <button
+                    type="button"
+                    onClick={() => removeAdvantage(index)}
+                    className="mt-6 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    <FiX className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+
+            {!isReadOnly && (
+              <button
+                type="button"
+                onClick={addAdvantage}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+              >
+                <FiPlus className="w-4 h-4" />
+                Добавить достоинство / Add advantage
+              </button>
+            )}
           </div>
 
           {/* Disadvantages */}
-          <div className="mb-6">
-            <label className="block text-gray-300 text-sm mb-2">Недостатки, замечания / Disadvantages, critique</label>
-            <textarea
-              value={disadvantages || ""}
-              onChange={(e) => setDisadvantages(e.target.value)}
-              placeholder="Укажите недостатки и замечания / Specify disadvantages and critique"
-              rows={4}
-              disabled={isReadOnly}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-            />
+          <div className="space-y-4 mb-6">
+            <div>
+              <h4 className="text-white font-medium mb-2">Недостатки, замечания / Disadvantages, critique</h4>
+              <p className="text-gray-400 text-sm mb-4">
+                Необходимо указать не менее 1 недостатка. / You must include at least 1 disadvantage.
+              </p>
+            </div>
+
+            {disadvantages.map((disadvantage, index) => (
+              <div key={index} className="flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-gray-300 text-sm mb-1">
+                    Недостаток {index + 1} / Disadvantage {index + 1}
+                  </label>
+                  <textarea
+                    value={disadvantage || ""}
+                    onChange={(e) => handleDisadvantageChange(index, e.target.value)}
+                    placeholder="Укажите недостатки и замечания / Specify disadvantages and critique"
+                    rows={3}
+                    disabled={isReadOnly}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+                {disadvantages.length > 1 && !isReadOnly && (
+                  <button
+                    type="button"
+                    onClick={() => removeDisadvantage(index)}
+                    className="mt-6 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    <FiX className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+
+            {!isReadOnly && (
+              <button
+                type="button"
+                onClick={addDisadvantage}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
+              >
+                <FiPlus className="w-4 h-4" />
+                Добавить недостаток / Add disadvantage
+              </button>
+            )}
           </div>
 
           {/* Conclusion */}
           <div className="space-y-4">
             <h4 className="text-white font-medium">Заключение / Conclusion</h4>
-
-            <div>
-              <label className="block text-gray-300 text-sm mb-2">
-                Итоговая оценка ВКР / Final assessment of the thesis
-              </label>
-           
-            </div>
 
             <div className="grid md:grid-cols-2 gap-4">
               <div>

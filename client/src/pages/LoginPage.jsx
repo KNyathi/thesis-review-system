@@ -8,15 +8,16 @@ const LoginPage = () => {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false)
   const { login, loading, user } = useAuth()
   const navigate = useNavigate()
   const { toast, showToast, hideToast } = useToast()
 
   useEffect(() => {
     if (user) {
+      // Handle different user roles and approval status
       if (user.role === "reviewer" && !user.isApproved) {
-        navigate("/pending", { replace: true })
+        navigate("/pending-approval", { replace: true })
       } else {
         navigate(`/${user.role}`, { replace: true })
       }
@@ -31,7 +32,7 @@ const LoginPage = () => {
       showToast("Successfully logged in!", "success")
       // Navigation will be handled by useEffect
     } else {
-      showToast("Login failed", result.error)
+      showToast(result.error || "Login failed", "error")
     }
   }
 
@@ -94,11 +95,19 @@ const LoginPage = () => {
 
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center text-gray-400">
-              <input type="checkbox" checked={rememberMe}
-            onChange={(e) => setRememberMe(e.target.checked)} className="mr-2 rounded border-gray-600 bg-gray-900 text-white focus:ring-white" />
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="mr-2 rounded border-gray-600 bg-gray-900 text-white focus:ring-white"
+              />
               Remember me
             </label>
-            <button type="button" className="text-gray-400 hover:text-white transition-colors" onClick={() => navigate('/forgot-password')}>
+            <button
+              type="button"
+              className="text-gray-400 hover:text-white transition-colors"
+              onClick={() => navigate("/forgot-password")}
+            >
               Forgot password?
             </button>
           </div>

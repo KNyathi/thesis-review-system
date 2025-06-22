@@ -23,7 +23,16 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/pending-approval" element={<PendingApprovalPage />} />
+
+            {/* Pending approval route - accessible to unapproved reviewers */}
+            <Route
+              path="/pending-approval"
+              element={
+                <ProtectedRoute>
+                  <PendingApprovalPage />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Protected routes */}
             <Route

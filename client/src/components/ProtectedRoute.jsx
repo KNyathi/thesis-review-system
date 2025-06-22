@@ -1,7 +1,7 @@
 import { Navigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
 
-const ProtectedRoute = ({ children, role }) => {
+const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, loading } = useAuth()
 
   // Show loading spinner while authentication is being processed
@@ -17,26 +17,24 @@ const ProtectedRoute = ({ children, role }) => {
     return <Navigate to="/login" replace />
   }
 
-  // Reviewer approval logic
+  // Special handling for reviewers
   if (user.role === "reviewer") {
     if (!user.isApproved) {
-      // If trying to access reviewer dashboard but not approved
-      if (role === "reviewer") {
-        return <Navigate to="/pending" replace />
-      }
-      if (window.location.pathname === "/pending") {
+      // Allow access to pending page
+      if (window.location.pathname === "/pending-approval") {
         return children
       }
-      return <Navigate to="/pending" replace />
+      return <Navigate to="/pending-approval" replace />
     } else {
       // If approved reviewer tries to access pending page, redirect to dashboard
-      if (window.location.pathname === "/pending") {
+      if (window.location.pathname === "/pending-approval") {
         return <Navigate to="/reviewer" replace />
       }
     }
   }
 
-  if (role && user.role !== role) {
+  // Check role-based access
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to={`/${user.role}`} replace />
   }
 
