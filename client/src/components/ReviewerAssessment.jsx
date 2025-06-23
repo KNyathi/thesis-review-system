@@ -144,7 +144,9 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
             )
 
             setIsComplete(assessment.section2.conclusion?.isComplete || false)
-            setDegreeWorthy(assessment.section2.conclusion?.degreeWorthy || "")
+            setDegreeWorthy(
+              assessment.section2.conclusion?.isDeserving || assessment.section2.conclusion?.degreeWorthy || false,
+            )
           }
         }
 
@@ -280,11 +282,7 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
     const validDisadvantages = disadvantages.filter((dis) => dis && dis.trim() !== "").length >= 1
 
     return (
-      validQuestions &&
-      validAdvantages &&
-      validDisadvantages &&
-      degreeWorthy &&
-      (typeof degreeWorthy === "string" ? degreeWorthy.trim() !== "" : true)
+      validQuestions && validAdvantages && validDisadvantages && degreeWorthy !== null && degreeWorthy !== undefined
     )
   }
 
@@ -333,7 +331,8 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
             disadvantages: disadvantages.filter((dis) => dis && dis.trim() !== ""),
             conclusion: {
               isComplete,
-              degreeWorthy: degreeWorthy || "",
+              isDeserving: degreeWorthy,
+              degreeWorthy: degreeWorthy,
             },
           },
         },
@@ -633,7 +632,9 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
                   <input
                     type="checkbox"
                     checked={degreeWorthy}
-                    onChange={(e) => setDegreeWorthy(e.target.checked)}
+                    onChange={(e) => {
+                      setDegreeWorthy(e.target.checked)
+                    }}
                     disabled={isReadOnly}
                     className="w-4 h-4 text-white bg-gray-700 border-gray-600 rounded focus:ring-white disabled:opacity-50 disabled:cursor-not-allowed"
                   />
