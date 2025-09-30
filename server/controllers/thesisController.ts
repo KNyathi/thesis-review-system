@@ -1,12 +1,22 @@
 import type { Request, Response } from "express"
-import { Thesis } from "../models/Thesis.model"
-import { type IStudent, type IUser, Student, Reviewer } from "../models/User.model"
-import { Types } from "mongoose"
+import { ThesisModel } from "../models/Thesis.model"
+import { UserModel, Student, Reviewer, IUser, IStudent, IReviewer } from "../models/User.model"
 import fs from "fs"
 import path from "path"
+import { Pool } from 'pg';
 
-function isObjectId(value: unknown): value is Types.ObjectId {
-  return value instanceof Types.ObjectId
+const pool = new Pool({
+  connectionString: process.env.DB_URL
+});
+
+const thesisModel = new ThesisModel(pool);
+const userModel = new UserModel(pool);
+
+// Define authenticated user type
+interface AuthenticatedUser {
+  id: string;
+  role: string;
+  email: string;
 }
 
 // Submit Thesis with File Upload
@@ -18,8 +28,7 @@ export const submitThesis = async (req: Request, res: Response) => {
       return
     }
 
-    // Access the user's _id correctly
-    const studentId = req.user._id
+    const studentId = (req.user as AuthenticatedUser).id
 
     if (!req.file) {
       res.status(400).json({ error: "No file uploaded" })
@@ -27,46 +36,55 @@ export const submitThesis = async (req: Request, res: Response) => {
     }
 
     // Fetch the full student document from the database
-    const student = await Student.findById(studentId)
-    if (!student) {
+    const student = await userModel.getUserById(studentId)
+    if (!student || student.role !== 'student') {
       res.status(404).json({ error: "Student not found" })
       return
     }
 
-    const existingThesis = await Thesis.findOne({ student: studentId })
-    if (existingThesis) {
-      await Thesis.findByIdAndDelete(existingThesis._id)
+    const studentData = student as IStudent
 
+    // Check for existing thesis and delete if exists
+    const existingTheses = await thesisModel.getThesesByStudent(studentId)
+    for (const existingThesis of existingTheses) {
       // Remove the thesis from the reviewer's assignedTheses if it was assigned
-      if (existingThesis.assignedReviewer) {
-        await Reviewer.findByIdAndUpdate(
-          existingThesis.assignedReviewer,
-          { $pull: { assignedTheses: existingThesis._id } },
-          { new: true },
-        )
+      if (existingThesis.data.assignedReviewer) {
+        const reviewer = await userModel.getUserById(existingThesis.data.assignedReviewer)
+        if (reviewer && reviewer.role === 'reviewer') {
+          await userModel.removeThesisFromReviewer(reviewer.id, existingThesis.id)
+        }
       }
+      // Delete the thesis
+      await thesisModel.deleteThesis(existingThesis.id)
     }
 
-    const thesis = new Thesis({
+    // Create new thesis
+    const thesisData = {
       title: req.body.title,
-      student: student._id,
+      student: studentId,
       fileUrl: `/uploads/theses/${req.file.filename}`,
-      status: "submitted",
-      assignedReviewer: null,
-      finalGrade: "",
-      assessment: null,
+      submissionDate: new Date(),
+      status: "submitted" as const,
+      assignedReviewer: undefined,
+      finalGrade: undefined,
+      assessment: undefined,
+    }
+
+    const thesis = await thesisModel.createThesis(thesisData)
+
+    // Update student's thesis status and info
+    await userModel.updateStudentThesisStatus(studentId, "submitted")
+    await userModel.updateStudentThesisInfo(studentId, {
+      thesisFile: thesis.data.fileUrl,
+      thesisTopic: thesis.data.title,
     })
 
-    await thesis.save()
-
-    // Update student's thesis status
-    student.thesisStatus = "submitted"
-    student.thesisFile = thesis.fileUrl
-    student.thesisTopic = thesis.title
-
-    await student.save()
-
-    res.status(201).json(thesis)
+    res.status(201).json({
+      ...thesis.data,
+      id: thesis.id,
+      createdAt: thesis.created_at,
+      updatedAt: thesis.updated_at
+    })
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: "Thesis submission failed" })
@@ -78,11 +96,10 @@ export const submitThesis = async (req: Request, res: Response) => {
  */
 export const getStudentThesis = async (req: Request, res: Response) => {
   try {
-    const student = req.user as IStudent
+    const student = req.user as AuthenticatedUser & IStudent
 
-    const thesis = await Thesis.findOne({ student: student._id })
-      .populate("assignedReviewer", "fullName email institution")
-      .lean()
+    const theses = await thesisModel.getThesesByStudent(student.id)
+    const thesis = theses[0] // Assuming one thesis per student for now
 
     if (!thesis) {
       res.status(404).json({
@@ -92,10 +109,27 @@ export const getStudentThesis = async (req: Request, res: Response) => {
       return
     }
 
+    // Get reviewer info if assigned
+    let reviewerInfo = null
+    if (thesis.data.assignedReviewer) {
+      const reviewer = await userModel.getUserById(thesis.data.assignedReviewer)
+      if (reviewer) {
+        reviewerInfo = {
+          id: reviewer.id,
+          fullName: reviewer.fullName,
+          email: reviewer.email,
+          institution: reviewer.institution
+        }
+      }
+    }
+
     res.json({
-      ...thesis,
-      reviewer: thesis.assignedReviewer, // First assigned reviewer
-      status: student.thesisStatus, // From user model
+      ...thesis.data,
+      id: thesis.id,
+      createdAt: thesis.created_at,
+      updatedAt: thesis.updated_at,
+      reviewer: reviewerInfo,
+      status: student.thesisStatus || "submitted",
     })
   } catch (err) {
     console.error(err)
@@ -107,14 +141,14 @@ export const getStudentThesis = async (req: Request, res: Response) => {
 export const downloadThesis = async (req: Request, res: Response) => {
   try {
     const { id } = req.params
-    const user = req.user as IUser
+    const user = req.user as AuthenticatedUser
 
     if (!user) {
       res.status(401).json({ error: "User not authenticated" })
       return
     }
 
-    const thesis = await Thesis.findById(id)
+    const thesis = await thesisModel.getThesisById(id)
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" })
       return
@@ -123,17 +157,15 @@ export const downloadThesis = async (req: Request, res: Response) => {
     // Verify permissions
     const isAllowed =
       user.role === "admin" ||
-      (user.role === "reviewer" &&
-        isObjectId(thesis.assignedReviewer) &&
-        isObjectId(user._id) &&
-        thesis.assignedReviewer.equals(user._id))
+      (user.role === "reviewer" && thesis.data.assignedReviewer === user.id) ||
+      (user.role === "student" && thesis.data.student === user.id)
 
     if (!isAllowed) {
       res.status(403).json({ error: "Access denied" })
       return
     }
 
-    const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.fileUrl))
+    const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl))
 
     if (!fs.existsSync(filePath)) {
       res.status(404).json({ error: "File not found" })
@@ -142,7 +174,7 @@ export const downloadThesis = async (req: Request, res: Response) => {
 
     // Set headers to indicate a file download
     res.setHeader("Content-Type", "application/pdf")
-    res.setHeader("Content-Disposition", `attachment; filename="${thesis.title}.pdf"`)
+    res.setHeader("Content-Disposition", `attachment; filename="${thesis.data.title}.pdf"`)
 
     // Stream the file to the response
     const fileStream = fs.createReadStream(filePath)
@@ -161,14 +193,14 @@ export const downloadThesis = async (req: Request, res: Response) => {
 export const viewThesis = async (req: Request, res: Response) => {
   try {
     const { id } = req.params
-    const user = req.user as IUser
+    const user = req.user as AuthenticatedUser
 
     if (!user) {
       res.status(401).json({ error: "User not authenticated" })
       return
     }
 
-    const thesis = await Thesis.findById(id)
+    const thesis = await thesisModel.getThesisById(id)
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" })
       return
@@ -177,18 +209,15 @@ export const viewThesis = async (req: Request, res: Response) => {
     // Allow students to view their own thesis, reviewers to view assigned thesis, and admins to view all
     const isAllowed =
       user.role === "admin" ||
-      (user.role === "student" && isObjectId(thesis.student) && thesis.student.equals(user._id)) ||
-      (user.role === "reviewer" &&
-        isObjectId(thesis.assignedReviewer) &&
-        isObjectId(user._id) &&
-        thesis.assignedReviewer.equals(user._id))
+      (user.role === "student" && thesis.data.student === user.id) ||
+      (user.role === "reviewer" && thesis.data.assignedReviewer === user.id)
 
     if (!isAllowed) {
       res.status(403).json({ error: "Access denied" })
       return
     }
 
-    const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.fileUrl))
+    const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl))
 
     if (!fs.existsSync(filePath)) {
       res.status(404).json({ error: "File not found" })
@@ -197,7 +226,76 @@ export const viewThesis = async (req: Request, res: Response) => {
 
     // Set headers to indicate a file download
     res.setHeader("Content-Type", "application/pdf")
-    res.setHeader("Content-Disposition", `attachment; filename="${thesis.title}.pdf"`)
+    res.setHeader("Content-Disposition", `inline; filename="${thesis.data.title}.pdf"`)
+
+    // Stream the file to the response
+    const fileStream = fs.createReadStream(filePath)
+    fileStream.pipe(res)
+
+    fileStream.on("error", (error) => {
+      console.error("Error streaming file:", error)
+      res.status(500).json({ error: "View failed" })
+    })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: "View failed" })
+  }
+}
+
+// Download Signed Review
+export const downloadSignedReview = async (req: Request, res: Response) => {
+  try {
+    const { thesisId } = req.params
+    const user = req.user as AuthenticatedUser
+
+    if (!user) {
+      res.status(401).json({ error: "User not authenticated" })
+      return
+    }
+
+    const thesis = await thesisModel.getThesisById(thesisId)
+    if (!thesis) {
+      res.status(404).json({ error: "Thesis not found" })
+      return
+    }
+
+    // Check if review exists and is signed
+    if (thesis.data.status !== "evaluated" || !thesis.data.reviewPdf) {
+      res.status(404).json({ error: "Signed review not available" });
+      return 
+    }
+
+    // Check permissions - student can only download their own signed review
+    const isAllowed = 
+      user.role === "admin" ||
+      (user.role === "student" && thesis.data.student === user.id) ||
+      (user.role === "reviewer" && thesis.data.assignedReviewer === user.id)
+
+    if (!isAllowed) {
+      res.status(403).json({ error: "Access denied" })
+      return
+    }
+
+    let filePath: string
+
+    // Try to use the signed review path first, fall back to review PDF path
+    if (thesis.data.signedReviewPath && fs.existsSync(thesis.data.signedReviewPath)) {
+      filePath = thesis.data.signedReviewPath
+    } else if (thesis.data.reviewPdf && fs.existsSync(thesis.data.reviewPdf)) {
+      filePath = thesis.data.reviewPdf
+    } else {
+      // Fallback to default path
+      filePath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
+    }
+
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "File not found" })
+      return
+    }
+
+    // Set headers to indicate a file download
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", `attachment; filename="${thesis.data.title}_signed_review.pdf"`)
 
     // Stream the file to the response
     const fileStream = fs.createReadStream(filePath)
@@ -213,58 +311,94 @@ export const viewThesis = async (req: Request, res: Response) => {
   }
 }
 
-
-
-// Download Thesis
-export const downloadSignedReview = async (req: Request, res: Response) => {
+// Get student's thesis status and grade
+export const getThesisStatus = async (req: Request, res: Response) => {
   try {
-    const { thesisId } = req.params
-    const user = req.user as IUser
+    const student = req.user as AuthenticatedUser & IStudent
 
-    // Validate thesisId
-    if (!Types.ObjectId.isValid(thesisId)) {
-      res.status(400).json({ error: "Invalid thesis ID" });
-      return; 
+    const theses = await thesisModel.getThesesByStudent(student.id)
+    const thesis = theses[0] // Assuming one thesis per student
+
+    const response = {
+      thesisStatus: student.thesisStatus || "not_submitted",
+      thesisGrade: student.thesisGrade || null,
+      thesisTopic: student.thesisTopic || null,
+      hasThesis: !!thesis,
+      thesis: thesis ? {
+        id: thesis.id,
+        title: thesis.data.title,
+        submissionDate: thesis.data.submissionDate,
+        status: thesis.data.status,
+        assignedReviewer: thesis.data.assignedReviewer,
+      } : null
     }
 
-    if (!user) {
-      res.status(401).json({ error: "User not authenticated" })
-      return
-    }
-
-    const thesis = await Thesis.findById(thesisId)
-    if (!thesis) {
-      res.status(404).json({ error: "Thesis not found" })
-      return
-    }
-
-   // Check if review exists and is signed
-    if (thesis.status !== "evaluated" || !thesis.reviewPdf) {
-      res.status(404).json({ error: "Signed review not available" });
-      return 
-    }
-
-    const filePath = path.join(__dirname, "../../server/reviews/signed", path.basename(thesis.reviewPdf))
-
-    if (!fs.existsSync(filePath)) {
-      res.status(404).json({ error: "File not found" })
-      return
-    }
-
-    // Set headers to indicate a file download
-    res.setHeader("Content-Type", "application/pdf")
-    res.setHeader("Content-Disposition", `attachment; filename="${thesis.title}_signed.pdf"`)
-
-    // Stream the file to the response
-    const fileStream = fs.createReadStream(filePath)
-    fileStream.pipe(res)
-
-    fileStream.on("error", (error) => {
-      console.error("Error streaming file:", error)
-      res.status(500).json({ error: "Download failed" })
-    })
+    res.json(response)
   } catch (err) {
     console.error(err)
-    res.status(500).json({ error: "Download failed" })
+    res.status(500).json({ error: "Failed to get thesis status" })
+  }
+}
+
+// Delete student's thesis
+export const deleteThesis = async (req: Request, res: Response) => {
+  try {
+    const student = req.user as AuthenticatedUser & IStudent
+
+    const theses = await thesisModel.getThesesByStudent(student.id)
+    
+    for (const thesis of theses) {
+      // Remove from reviewer's assigned theses if assigned
+      if (thesis.data.assignedReviewer) {
+        const reviewer = await userModel.getUserById(thesis.data.assignedReviewer)
+        if (reviewer && reviewer.role === 'reviewer') {
+          await userModel.removeThesisFromReviewer(reviewer.id, thesis.id)
+        }
+      }
+      
+      // Delete the thesis file
+      const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl))
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath)
+      }
+      
+      // Delete the thesis record
+      await thesisModel.deleteThesis(thesis.id)
+    }
+
+    // Reset student's thesis info using separate methods
+    await userModel.updateStudentThesisStatus(student.id, "not_submitted")
+    await userModel.updateStudentThesisInfo(student.id, {
+      thesisFile: undefined,
+      thesisTopic: undefined,
+      thesisGrade: undefined,
+    })
+
+    res.json({ message: "Thesis deleted successfully" })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: "Failed to delete thesis" })
+  }
+}
+
+// Update student's thesis topic
+export const updateThesisTopic = async (req: Request, res: Response) => {
+  try {
+    const student = req.user as AuthenticatedUser & IStudent
+    const { thesisTopic } = req.body
+
+    if (!thesisTopic) {
+      res.status(400).json({ error: "Thesis topic is required" })
+      return
+    }
+
+    await userModel.updateStudentThesisInfo(student.id, {
+      thesisTopic: thesisTopic,
+    })
+
+    res.json({ message: "Thesis topic updated successfully" })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: "Failed to update thesis topic" })
   }
 }

@@ -166,8 +166,8 @@ const AdminDashboard = () => {
   }
 
   const handleAssignReviewer = async (studentId, reviewerId) => {
-    const student = students.find((s) => s._id === studentId)
-    const reviewer = approvedReviewers.find((r) => r._id === reviewerId)
+    const student = students.find((s) => s.id === studentId)
+    const reviewer = approvedReviewers.find((r) => r.id === reviewerId)
 
     const thesis = theses.find((t) => t.student === studentId)
 
@@ -176,13 +176,13 @@ const AdminDashboard = () => {
       return
     }
     const oldReviewerId = student?.reviewer
-    const currentReviewer = student?.reviewer ? approvedReviewers.find((r) => r._id === student.reviewer) : null
+    const currentReviewer = student?.reviewer ? approvedReviewers.find((r) => r.id === student.reviewer) : null
 
     if (currentReviewer) {
       // Show reassignment confirmation
       setReassignData({
         studentId,
-        thesisId: thesis?._id,
+        thesisId: thesis?.id,
         oldReviewerId: oldReviewerId,
         newReviewerId: reviewerId,
         studentName: student.fullName,
@@ -264,8 +264,8 @@ const AdminDashboard = () => {
     if (!userToDelete) return
 
     try {
-      setDeletingUser(userToDelete._id)
-      await thesisAPI.deleteUser(userToDelete._id)
+      setDeletingUser(userToDelete.id)
+      await thesisAPI.deleteUser(userToDelete.id)
       showToast(`User ${userToDelete.fullName} deleted successfully!`, "success")
       // Refresh data after successful deletion
       fetchedRef.current = false
@@ -488,8 +488,8 @@ const AdminDashboard = () => {
               <div className="space-y-4">
                 {filteredStudents.length > 0 ? (
                   filteredStudents.map((student) => {
-                    const reviewer = approvedReviewers.find((reviewer) => reviewer._id === student.reviewer)
-                    const thesis = theses?.find((thes) => thes.student === student._id)
+                    const reviewer = approvedReviewers.find((reviewer) => reviewer.id === student.reviewer)
+                    const thesis = theses?.find((thes) => thes.student === student.id)
 
                     return (
                       <div
@@ -553,22 +553,22 @@ const AdminDashboard = () => {
                                 <select
                                   onChange={(e) => {
                                     if (e.target.value) {
-                                      handleAssignReviewer(student._id, e.target.value)
+                                      handleAssignReviewer(student.id, e.target.value)
                                       e.target.value = ""
                                     }
                                   }}
-                                  disabled={assigningStudent === student._id}
+                                  disabled={assigningStudent === student.id}
                                   className="bg-white text-black font-medium py-2 px-4 rounded-lg hover:bg-gray-100 transition-colors text-sm disabled:opacity-50"
                                 >
                                   <option value="">
-                                    {assigningStudent === student._id
+                                    {assigningStudent === student.id
                                       ? "Processing..."
                                       : student.reviewer
                                         ? "Reassign Reviewer"
                                         : "Assign Reviewer"}
                                   </option>
                                   {approvedReviewers.map((reviewer) => (
-                                    <option key={reviewer._id} value={reviewer._id}>
+                                    <option key={reviewer.id} value={reviewer.id}>
                                       {reviewer.fullName} - {reviewer.institution}
                                     </option>
                                   ))}
@@ -577,12 +577,12 @@ const AdminDashboard = () => {
                             )}
                             <div className="relative">
                               <button
-                                onClick={() => toggleDropdown(student._id)}
+                                onClick={() => toggleDropdown(student.id)}
                                 className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
                               >
                                 <FiMoreHorizontal className="w-4 h-4" />
                               </button>
-                              {openDropdown === student._id && (
+                              {openDropdown === student.id && (
                                 <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[120px]">
                                   <button
                                     onClick={() => openDeleteModal(student)}
@@ -645,11 +645,11 @@ const AdminDashboard = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleApproveReviewer(reviewer._id)}
-                          disabled={processingReviewer === reviewer._id}
+                          onClick={() => handleApproveReviewer(reviewer.id)}
+                          disabled={processingReviewer === reviewer.id}
                           className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50"
                         >
-                          {processingReviewer === reviewer._id ? (
+                          {processingReviewer === reviewer.id ? (
                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                           ) : (
                             <FiCheck className="w-4 h-4" />
@@ -657,8 +657,8 @@ const AdminDashboard = () => {
                           Approve
                         </button>
                         <button
-                          onClick={() => handleDeclineReviewer(reviewer._id)}
-                          disabled={processingReviewer === reviewer._id}
+                          onClick={() => handleDeclineReviewer(reviewer.id)}
+                          disabled={processingReviewer === reviewer.id}
                           className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50"
                         >
                           <FiX className="w-4 h-4" />
@@ -666,12 +666,12 @@ const AdminDashboard = () => {
                         </button>
                         <div className="relative">
                           <button
-                            onClick={() => toggleDropdown(reviewer._id)}
+                            onClick={() => toggleDropdown(reviewer.id)}
                             className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
                           >
                             <FiMoreHorizontal className="w-4 h-4" />
                           </button>
-                          {openDropdown === reviewer._id && (
+                          {openDropdown === reviewer.id && (
                             <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[120px]">
                               <button
                                 onClick={() => openDeleteModal(reviewer)}
@@ -721,7 +721,7 @@ const AdminDashboard = () => {
                 {filteredUsers.length > 0 ? (
                   filteredUsers.map((userItem) => (
                     <div
-                      key={userItem._id}
+                      key={userItem.id}
                       className="bg-gray-900 rounded-lg p-6 border border-gray-800 hover:border-gray-700 transition-colors"
                     >
                       <div className="flex items-start justify-between">
@@ -767,15 +767,15 @@ const AdminDashboard = () => {
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          {userItem._id !== user._id && (
+                          {userItem.id !== user.id && (
                             <div className="relative">
                               <button
-                                onClick={() => toggleDropdown(userItem._id)}
+                                onClick={() => toggleDropdown(userItem.id)}
                                 className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
                               >
                                 <FiMoreHorizontal className="w-4 h-4" />
                               </button>
-                              {openDropdown === userItem._id && (
+                              {openDropdown === userItem.id && (
                                 <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[120px]">
                                   <button
                                     onClick={() => openDeleteModal(userItem)}

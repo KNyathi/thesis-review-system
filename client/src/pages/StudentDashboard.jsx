@@ -144,7 +144,7 @@ const StudentDashboard = () => {
 
   const handleViewPDF = async () => {
     try {
-      const blob = await thesisAPI.viewThesis(thesis?._id)
+      const blob = await thesisAPI.viewThesis(thesis?.id)
       const blobUrl = URL.createObjectURL(blob)
 
       // Open in new tab with proper PDF handling
@@ -562,9 +562,9 @@ const StudentDashboard = () => {
         <StudentThesisDetails thesis={thesis} onClose={() => setShowThesisDetails(false)} />
       </Modal>
       {/* Signed Review Modal */}
-      {thesis?.status === "evaluated" && thesis?._id && (
+      {thesis?.status === "evaluated" && thesis?.id && (
         <Modal isOpen={showSignedReview} onClose={() => setShowSignedReview(false)} title="Signed Review" size="full">
-          <SignedReviewViewer thesisId={thesis?._id} onClose={() => setShowSignedReview(false)} />
+          <SignedReviewViewer thesisId={thesis?.id} onClose={() => setShowSignedReview(false)} />
         </Modal>
       )}
     </div>

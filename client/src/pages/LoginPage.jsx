@@ -9,19 +9,35 @@ const LoginPage = () => {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false);
+  const [shouldRedirect, setShouldRedirect] = useState(false)
   const { login, loading, user } = useAuth()
   const navigate = useNavigate()
   const { toast, showToast, hideToast } = useToast()
 
+  // Handle redirects safely
+  useEffect(() => {
+    if (user && shouldRedirect) {
+      let targetPath = `/${user.role}`
+      
+      if (user.role === "reviewer" && !user.isApproved) {
+        targetPath = "/pending"
+      }
+      
+      // Use setTimeout to ensure navigation happens outside of render phase
+      const timer = setTimeout(() => {
+        navigate(targetPath, { replace: true })
+      }, 0)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [user, shouldRedirect, navigate])
+
+  // Separate effect to check initial auth state
   useEffect(() => {
     if (user) {
-      if (user.role === "reviewer" && !user.isApproved) {
-        navigate("/pending", { replace: true })
-      } else {
-        navigate(`/${user.role}`, { replace: true })
-      }
+      setShouldRedirect(true)
     }
-  }, [user, navigate])
+  }, [user])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -29,10 +45,22 @@ const LoginPage = () => {
 
     if (result.success) {
       showToast("Successfully logged in!", "success")
-      // Navigation will be handled by useEffect
+      setShouldRedirect(true)
     } else {
-      showToast("Login failed", result.error)
+      showToast("Login failed", "error", result.error)
     }
+  }
+
+  // If we have a user and should redirect, show loading state
+  if (user && shouldRedirect) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="text-white text-center">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p>Redirecting...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -94,11 +122,19 @@ const LoginPage = () => {
 
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center text-gray-400">
-              <input type="checkbox" checked={rememberMe}
-            onChange={(e) => setRememberMe(e.target.checked)} className="mr-2 rounded border-gray-600 bg-gray-900 text-white focus:ring-white" />
+              <input 
+                type="checkbox" 
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)} 
+                className="mr-2 rounded border-gray-600 bg-gray-900 text-white focus:ring-white" 
+              />
               Remember me
             </label>
-            <button type="button" className="text-gray-400 hover:text-white transition-colors" onClick={() => navigate('/forgot-password')}>
+            <button 
+              type="button" 
+              className="text-gray-400 hover:text-white transition-colors" 
+              onClick={() => navigate('/forgot-password')}
+            >
               Forgot password?
             </button>
           </div>
@@ -121,7 +157,10 @@ const LoginPage = () => {
 
         <div className="mt-6 text-center">
           <span className="text-gray-400">Don't have an account? </span>
-          <button onClick={() => navigate("/register")} className="text-white hover:underline font-medium">
+          <button 
+            onClick={() => navigate("/register")} 
+            className="text-white hover:underline font-medium"
+          >
             Sign up
           </button>
         </div>

@@ -6,10 +6,16 @@ import { IThesis } from "../models/Thesis.model";
 import {
   IReviewer,
   IStudent,
-  IAdmin,
-  Admin,
+  UserModel,
   Student,
 } from "../models/User.model";
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  connectionString: process.env.DB_URL
+});
+
+const userModel = new UserModel(pool);
 
 export async function generateReviewPDF(
   thesis: IThesis,
@@ -159,7 +165,7 @@ export async function generateReviewPDF(
     }
   );
 
-  const student = await Student.findById(thesis.student);
+  const student = await Student.findById(userModel, thesis.student);
 
   if (!student) {
     throw new Error("Student not found");
@@ -524,7 +530,7 @@ export async function generateReviewPDF(
   });
   currentY -= 20;
 
-  thesis.assessment!.section2.questions.forEach((question, i) => {
+  thesis.assessment!.section2.questions.forEach((question: any, i: number) => {
     // Calculate how much space this question will need
     const questionText = `${i + 1}. ${question}`;
     const words = questionText.split(" ");
@@ -585,9 +591,12 @@ export async function generateReviewPDF(
   });
   currentY -= 20; // Space after header
 
-  thesis.assessment!.section2.advantages.forEach((advantage, index) => {
-    const itemText = `${index + 1}. ${advantage}`;
+ const advantages = Array.isArray(thesis.assessment!.section2.advantages) 
+  ? thesis.assessment!.section2.advantages 
+  : [thesis.assessment!.section2.advantages].filter(Boolean);
 
+advantages.forEach((advantage: any, index: number) => {
+  const itemText = `${index + 1}. ${advantage}`;
     // Calculate required height for this advantage
     const words = itemText.split(" ");
     let lineCount = 1;
@@ -636,9 +645,12 @@ export async function generateReviewPDF(
   });
   currentY -= 20;
 
-  thesis.assessment!.section2.disadvantages.forEach((disadvantage, index) => {
-    const itemText = `${index + 1}. ${disadvantage}`;
+const disadvantages = Array.isArray(thesis.assessment!.section2.disadvantages) 
+  ? thesis.assessment!.section2.disadvantages 
+  : [thesis.assessment!.section2.disadvantages].filter(Boolean);
 
+disadvantages.forEach((disadvantage: any, index: number) => {
+  const itemText = `${index + 1}. ${disadvantage}`;
     // Calculate how many lines this item will need
     const words = itemText.split(" ");
     let lineCount = 1;
@@ -954,7 +966,7 @@ const drawMixedFontLine = (
 
   // Save PDF to file
   const pdfBytes = await pdfDoc.save();
-  const outputPath = path.join(reviewsDir, `unsigned_review_${thesis._id}.pdf`);
+  const outputPath = path.join(reviewsDir, `unsigned_review_${thesis.id}.pdf`);
   fs.writeFileSync(outputPath, pdfBytes);
 
   return outputPath;

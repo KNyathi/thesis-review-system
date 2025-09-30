@@ -30,6 +30,7 @@
     "multer": "^2.0.1",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.17.1",
+       "pg": "^8.16.2",
     "router": "^2.2.0"
   },
   "devDependencies": {
@@ -40,6 +41,7 @@
     "@types/jsonwebtoken": "^9.0.9",
     "@types/mongoose": "^5.11.97",
     "@types/node": "^22.15.30",
+    "@types/pg": "^8.15.4",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",

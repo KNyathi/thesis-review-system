@@ -106,7 +106,7 @@ const ReviewerAssessment = ({ thesisId, student, mode = "new", onClose }) => {
       const completedTheses = await thesisAPI.getCompletedReviews()
       const allTheses = [...assignedTheses, ...completedTheses]
 
-      const currentThesis = allTheses.find((t) => t._id === thesisId)
+      const currentThesis = allTheses.find((t) => t.id === thesisId)
 
       if (currentThesis) {
         setThesis(currentThesis)

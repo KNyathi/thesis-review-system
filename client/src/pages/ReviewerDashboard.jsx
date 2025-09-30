@@ -66,7 +66,7 @@ const ReviewerDashboard = () => {
       const allTheses = [...assignedData, ...completedData]
 
       const uniqueTheses = allTheses.filter(
-        (thesis, index, self) => index === self.findIndex((t) => t._id === thesis._id),
+        (thesis, index, self) => index === self.findIndex((t) => t.id === thesis.id),
       )
 
       const validAssigned = []
@@ -78,7 +78,7 @@ const ReviewerDashboard = () => {
           const studentData = {
             ...thesis.student,
             thesis: thesis,
-            thesisId: thesis._id,
+            thesisId: thesis.id,
             thesisTitle: thesis.title || "Untitled Thesis",
             submissionDate: thesis.submissionDate,
             status: thesis.status,

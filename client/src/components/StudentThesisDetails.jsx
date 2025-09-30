@@ -31,7 +31,7 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
   const handleDownload = async () => {
     try {
       setIsLoading(true)
-      const blob = await thesisAPI.downloadThesis(thesis._id)
+      const blob = await thesisAPI.downloadThesis(thesis.id)
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
@@ -51,7 +51,7 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
   const handleViewPDF = async () => {
     try {
       setIsLoading(true)
-      const blob = await thesisAPI.viewThesis(thesis._id)
+      const blob = await thesisAPI.viewThesis(thesis.id)
       const blobUrl = URL.createObjectURL(blob)
 
       const newWindow = window.open("", "_blank")
@@ -287,7 +287,7 @@ const StudentThesisDetails = ({ thesis, onClose }) => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowSignedReview(false)} />
           <div className="relative bg-gray-900 rounded-lg border border-gray-800 w-full max-w-6xl max-h-[90vh] overflow-hidden">
-            <SignedReviewViewer thesisId={thesis._id} onClose={() => setShowSignedReview(false)} />
+            <SignedReviewViewer thesisId={thesis.id} onClose={() => setShowSignedReview(false)} />
           </div>
         </div>
       )}

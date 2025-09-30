@@ -1,40 +1,44 @@
 import type { Request, Response } from "express"
-import { Thesis } from "../models/Thesis.model"
-import { type IReviewer, Student, Reviewer } from "../models/User.model"
+import { ThesisModel } from "../models/Thesis.model"
+import { UserModel, Reviewer, IUser, IReviewer, IStudent } from "../models/User.model"
 import { generateReviewPDF } from "../utils/pdfGenerator"
-import { Types } from "mongoose"
 import path from "path"
 import fs from "fs"
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  connectionString: process.env.DB_URL
+});
+
+const thesisModel = new ThesisModel(pool);
+const userModel = new UserModel(pool);
+
+// Define authenticated user type
+interface AuthenticatedUser {
+  id: string;
+  role: string;
+  email: string;
+}
 
 export const submitReview = async (req: Request, res: Response) => {
   try {
-    const reviewer = req.user as IReviewer
+    const reviewer = req.user as AuthenticatedUser & IReviewer
     const { thesisId } = req.params
     const { grade, assessment } = req.body
 
-    // Validate thesisId
-    if (!Types.ObjectId.isValid(thesisId)) {
-      res.status(400).json({ error: "Invalid thesis ID" })
-      return
-    }
-
     // Find the thesis first
-    const thesis = await Thesis.findById(thesisId)
+    const thesis = await thesisModel.getThesisById(thesisId)
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" })
       return
     }
 
     // Update the thesis with the review details 
-    const updatedThesis = await Thesis.findByIdAndUpdate(
-      thesisId,
-      {
-        finalGrade: grade,
-        assessment: assessment,
-        status: "under_review", // Keep as under_review until signed
-      },
-      { new: true },
-    )
+    const updatedThesis = await thesisModel.updateThesis(thesisId, {
+      finalGrade: grade,
+      assessment: assessment,
+      status: "under_review", // Keep as under_review until signed
+    })
 
     if (!updatedThesis) {
       res.status(404).json({ error: "Thesis not found" })
@@ -47,23 +51,21 @@ export const submitReview = async (req: Request, res: Response) => {
       fs.mkdirSync(unsignedDir, { recursive: true })
     }
 
-    const pdfPath = await generateReviewPDF(updatedThesis, reviewer)
+    const pdfPath = await generateReviewPDF(updatedThesis.data, reviewer)
 
-    // Update thesis 
-    updatedThesis.reviewPdf = pdfPath
-    await updatedThesis.save()
+    // Update thesis with PDF path
+    await thesisModel.updateThesis(thesisId, {
+      reviewPdf: pdfPath
+    })
 
     // Update student's grade 
-    await Student.findByIdAndUpdate(thesis.student, {
+    await userModel.updateStudentThesisInfo(thesis.data.student, {
       thesisGrade: grade,
-      thesisStatus: "under_review",
     })
 
     // Move thesis from assigned to reviewed for reviewer tracking
-    await Reviewer.findByIdAndUpdate(reviewer._id, {
-      $pull: { assignedTheses: new Types.ObjectId(thesisId) },
-      $push: { reviewedTheses: new Types.ObjectId(thesisId) },
-    })
+    await userModel.removeThesisFromReviewer(reviewer.id, thesisId)
+    await userModel.addThesisToReviewed(reviewer.id, thesisId)
 
     // Return success with redirect flag
     res.json({
@@ -79,14 +81,31 @@ export const submitReview = async (req: Request, res: Response) => {
 
 export const getAssignedTheses = async (req: Request, res: Response) => {
   try {
-    const reviewer = req.user as IReviewer
+    const reviewer = req.user as AuthenticatedUser & IReviewer
 
     // Fetch theses assigned to the reviewer
-    const theses = await Thesis.find({ _id: { $in: reviewer.assignedTheses } })
-      .populate("student", "fullName email institution")
-      .lean()
+    const assignedTheses = await thesisModel.getThesesByReviewer(reviewer.id)
+    
+    // Fetch student details for each thesis
+    const thesesWithStudents = await Promise.all(
+      assignedTheses.map(async (thesis) => {
+        const student = await userModel.getUserById(thesis.data.student)
+        return {
+          ...thesis.data,
+          id: thesis.id,
+          createdAt: thesis.created_at,
+          updatedAt: thesis.updated_at,
+          student: student ? {
+            id: student.id,
+            fullName: student.fullName,
+            email: student.email,
+            institution: student.institution
+          } : null
+        }
+      })
+    )
 
-    res.json(theses)
+    res.json(thesesWithStudents)
   } catch (error) {
     console.error(error)
     res.status(500).json({ error: "Failed to fetch assigned theses" })
@@ -95,14 +114,37 @@ export const getAssignedTheses = async (req: Request, res: Response) => {
 
 export const getCompletedReviews = async (req: Request, res: Response) => {
   try {
-    const reviewer = req.user as IReviewer
+    const reviewer = req.user as AuthenticatedUser & IReviewer
 
-    // Fetch theses reviewed by the reviewer
-    const reviews = await Thesis.find({ _id: { $in: reviewer.reviewedTheses } })
-      .populate("student", "fullName email institution")
-      .lean()
+    // Get all reviewed theses and filter by this reviewer
+    const allTheses = await thesisModel.find()
 
-    res.json(reviews)
+    const reviewedTheses = allTheses.filter(thesis => 
+      thesis.status === "evaluated" && 
+      thesis.assignedReviewer === reviewer.id
+    )
+
+    // Fetch student details for each thesis
+    const reviewsWithStudents = await Promise.all(
+      reviewedTheses.map(async (thesis) => {
+        const student = await userModel.getUserById(thesis.student)
+        console.log("the: ", thesis)
+        return {
+          ...thesis,
+          id: thesis.id,
+          createdAt: thesis.created_at,
+          updatedAt: thesis.updated_at,
+          student: student ? {
+            id: student.id,
+            fullName: student.fullName,
+            email: student.email,
+            institution: student.institution
+          } : null
+        }
+      })
+    )
+
+    res.json(reviewsWithStudents)
   } catch (error) {
     console.error(error)
     res.status(500).json({ error: "Failed to fetch completed reviews" })
@@ -111,26 +153,18 @@ export const getCompletedReviews = async (req: Request, res: Response) => {
 
 export const reReviewThesis = async (req: Request, res: Response) => {
   try {
-    const reviewer = req.user as IReviewer
+    const reviewer = req.user as AuthenticatedUser & IReviewer
     const { thesisId } = req.params
 
-    // Validate thesisId
-    if (!Types.ObjectId.isValid(thesisId)) {
-      res.status(400).json({ error: "Invalid thesis ID" })
-      return
-    }
-
-    const thesisObjectId = new Types.ObjectId(thesisId)
-
     // Find thesis
-    const thesis = await Thesis.findById(thesisObjectId)
+    const thesis = await thesisModel.getThesisById(thesisId)
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" })
       return
     }
 
     // Check reviewer access
-    if (!reviewer.reviewedTheses.some((id) => id.equals(thesisObjectId))) {
+    if (thesis.data.assignedReviewer !== reviewer.id) {
       res.status(403).json({ error: "Access denied" })
       return
     }
@@ -142,27 +176,26 @@ export const reReviewThesis = async (req: Request, res: Response) => {
     }
 
     // Delete unsigned review file if it exists
-    if (thesis.reviewPdf && fs.existsSync(thesis.reviewPdf)) {
-      fs.unlinkSync(thesis.reviewPdf)
+    if (thesis.data.reviewPdf && fs.existsSync(thesis.data.reviewPdf)) {
+      fs.unlinkSync(thesis.data.reviewPdf)
     }
 
     // Reset thesis to under_review and clear review data
-    await Thesis.findByIdAndUpdate(thesisObjectId, {
+    await thesisModel.updateThesis(thesisId, {
       status: "under_review",
-      $unset: { finalGrade: 1, assessment: 1, reviewPdf: 1, signedReviewPath: 1, signedDate: 1 },
+      finalGrade: undefined,
+      assessment: undefined,
+      reviewPdf: undefined,
+      signedReviewPath: undefined,
+      signedDate: undefined,
     })
 
     // Move thesis back from reviewed to assigned
-    await Reviewer.findByIdAndUpdate(reviewer._id, {
-      $pull: { reviewedTheses: thesisObjectId },
-      $push: { assignedTheses: thesisObjectId },
-    })
+    await userModel.removeThesisFromReviewer(reviewer.id, thesisId)
+    await userModel.addThesisToReviewer(reviewer.id, thesisId)
 
     // Update student status
-    await Student.findByIdAndUpdate(thesis.student, {
-      thesisStatus: "under_review",
-      $unset: { thesisGrade: 1 },
-    })
+    await userModel.updateStudentThesisStatus(thesis.data.student, "under_review")
 
     res.json({ message: "Thesis moved back for re-review successfully" })
   } catch (error) {
@@ -173,35 +206,29 @@ export const reReviewThesis = async (req: Request, res: Response) => {
 
 export const getUnsignedReview = async (req: Request, res: Response) => {
   try {
-    const reviewer = req.user as IReviewer
+    const reviewer = req.user as AuthenticatedUser & IReviewer
     const { thesisId } = req.params
 
-    // Validate thesisId
-    if (!Types.ObjectId.isValid(thesisId)) {
-      res.status(400).json({ error: "Invalid thesis ID" })
-      return
-    }
-
     // Find thesis and check access
-    const thesis = await Thesis.findById(thesisId)
+    const thesis = await thesisModel.getThesisById(thesisId)
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" })
       return
     }
 
     // Check if reviewer has access
-    if (!reviewer.reviewedTheses.some((id) => id.equals(new Types.ObjectId(thesisId)))) {
+    if (thesis.data.assignedReviewer !== reviewer.id) {
       res.status(403).json({ error: "Access denied" })
       return
     }
 
-    if (!thesis.reviewPdf) {
+    if (!thesis.data.reviewPdf) {
       res.status(404).json({ error: "Unsigned review not found" })
       return
     }
 
     // Use full path from database
-    const unsignedReviewPath = thesis.reviewPdf
+    const unsignedReviewPath = thesis.data.reviewPdf
 
     if (!fs.existsSync(unsignedReviewPath)) {
       res.status(404).json({ error: "Unsigned review file not found" })
@@ -226,26 +253,20 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
 
 export const uploadSignedReview = async (req: Request, res: Response) => {
   try {
-    const reviewer = req.user as IReviewer
+    const reviewer = req.user as AuthenticatedUser & IReviewer
     const { thesisId } = req.params
     const { file } = req
 
     console.log("Uploading signed review via Chrome native tools:", { thesisId, hasFile: !!file })
 
-    // Validate thesisId
-    if (!Types.ObjectId.isValid(thesisId)) {
-      res.status(400).json({ error: "Invalid thesis ID" })
-      return
-    }
-
     // Find thesis and check access
-    const thesis = await Thesis.findById(thesisId)
+    const thesis = await thesisModel.getThesisById(thesisId)
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" })
       return
     }
 
-    if (!reviewer.reviewedTheses.some((id) => id.equals(new Types.ObjectId(thesisId)))) {
+    if (thesis.data.assignedReviewer !== reviewer.id) {
       res.status(403).json({ error: "Access denied" })
       return
     }
@@ -268,7 +289,7 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
     console.log(`Chrome-signed review saved to: ${signedReviewPath}`)
 
     // Update thesis with signed PDF path and status
-    await Thesis.findByIdAndUpdate(thesisId, {
+    await thesisModel.updateThesis(thesisId, {
       status: "evaluated",
       signedReviewPath: signedReviewPath,
       reviewPdf: signedReviewPath,
@@ -276,9 +297,7 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
     })
 
     // Update student status to evaluated
-    await Student.findByIdAndUpdate(thesis.student, {
-      thesisStatus: "evaluated",
-    })
+    await userModel.updateStudentThesisStatus(thesis.data.student, "evaluated")
 
     res.json({
       message: "Signed review uploaded successfully using Chrome's native tools",
@@ -292,31 +311,19 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
 
 export const getSignedReview = async (req: Request, res: Response) => {
   try {
-    const user = req.user as any
+    const user = req.user as AuthenticatedUser
     const { thesisId } = req.params
 
-    // Validate thesisId
-    if (!Types.ObjectId.isValid(thesisId)) {
-      res.status(400).json({ error: "Invalid thesis ID" })
-      return
-    }
-
-    // Find thesis and populate student properly
-    const thesis = await Thesis.findById(thesisId).populate("student").lean()
+    // Find thesis
+    const thesis = await thesisModel.getThesisById(thesisId)
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" })
       return
     }
 
     // Check access permissions
-    const studentId =
-      typeof thesis.student === "object" && thesis.student !== null && "_id" in thesis.student
-        ? (thesis.student as any)._id.toString()
-        : thesis.student?.toString()
-
-    const isStudent = user.role === "student" && studentId === user._id.toString()
-    const isReviewer =
-      user.role === "reviewer" && user.reviewedTheses.some((id: any) => id.equals(new Types.ObjectId(thesisId)))
+    const isStudent = user.role === "student" && thesis.data.student === user.id
+    const isReviewer = user.role === "reviewer" && thesis.data.assignedReviewer === user.id
     const isAdmin = user.role === "admin"
 
     if (!isStudent && !isReviewer && !isAdmin) {
@@ -327,8 +334,8 @@ export const getSignedReview = async (req: Request, res: Response) => {
     // Try to find signed review file using full path from database
     let signedReviewPath: string
 
-    if (thesis.signedReviewPath && fs.existsSync(thesis.signedReviewPath)) {
-      signedReviewPath = thesis.signedReviewPath
+    if (thesis.data.signedReviewPath && fs.existsSync(thesis.data.signedReviewPath)) {
+      signedReviewPath = thesis.data.signedReviewPath
     } else {
       signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
     }
@@ -356,31 +363,19 @@ export const getSignedReview = async (req: Request, res: Response) => {
 
 export const downloadSignedReview = async (req: Request, res: Response) => {
   try {
-    const user = req.user as any
+    const user = req.user as AuthenticatedUser
     const { thesisId } = req.params
 
-    // Validate thesisId
-    if (!Types.ObjectId.isValid(thesisId)) {
-      res.status(400).json({ error: "Invalid thesis ID" })
-      return
-    }
-
-    // Find thesis and populate student properly
-    const thesis = await Thesis.findById(thesisId).populate("student").lean()
+    // Find thesis
+    const thesis = await thesisModel.getThesisById(thesisId)
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" })
       return
     }
 
     // Check access permissions
-    const studentId =
-      typeof thesis.student === "object" && thesis.student !== null && "_id" in thesis.student
-        ? (thesis.student as any)._id.toString()
-        : thesis.student?.toString()
-
-    const isStudent = user.role === "student" && studentId === user._id.toString()
-    const isReviewer =
-      user.role === "reviewer" && user.reviewedTheses.some((id: any) => id.equals(new Types.ObjectId(thesisId)))
+    const isStudent = user.role === "student" && thesis.data.student === user.id
+    const isReviewer = user.role === "reviewer" && thesis.data.assignedReviewer === user.id
     const isAdmin = user.role === "admin"
 
     if (!isStudent && !isReviewer && !isAdmin) {
@@ -390,8 +385,8 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
 
     let signedReviewPath: string
 
-    if (thesis.signedReviewPath && fs.existsSync(thesis.signedReviewPath)) {
-      signedReviewPath = thesis.signedReviewPath
+    if (thesis.data.signedReviewPath && fs.existsSync(thesis.data.signedReviewPath)) {
+      signedReviewPath = thesis.data.signedReviewPath
     } else {
       signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
     }
@@ -419,7 +414,7 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
 
 export const signedReview = async (req: Request, res: Response) => {
   try {
-    const reviewer = req.user as IReviewer
+    const reviewer = req.user as AuthenticatedUser & IReviewer
     const { thesisId } = req.params
     const { file } = req
 
@@ -428,20 +423,10 @@ export const signedReview = async (req: Request, res: Response) => {
       return
     }
 
-    // Validate thesisId
-    if (!Types.ObjectId.isValid(thesisId)) {
-      res.status(400).json({ error: "Invalid thesis ID" })
-      return
-    }
-
     // Update the thesis status to evaluated
-    const thesis = await Thesis.findByIdAndUpdate(
-      thesisId,
-      {
-        status: "evaluated",
-      },
-      { new: true },
-    )
+    const thesis = await thesisModel.updateThesis(thesisId, {
+      status: "evaluated",
+    })
 
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" })
@@ -453,13 +438,33 @@ export const signedReview = async (req: Request, res: Response) => {
     fs.renameSync(file.path, signedPath)
 
     // Update student's status
-    await Student.findByIdAndUpdate(thesis.student, {
-      thesisStatus: "evaluated",
-    })
+    await userModel.updateStudentThesisStatus(thesis.data.student, "evaluated")
 
     res.json({ success: true })
   } catch (error) {
     console.error("Error finalizing review:", error)
     res.status(500).json({ error: "Failed to finalize review" })
+  }
+}
+
+// New method to get reviewer's assigned and reviewed thesis counts
+export const getReviewerStats = async (req: Request, res: Response) => {
+  try {
+    const reviewer = req.user as AuthenticatedUser & IReviewer
+
+    const assignedTheses = await thesisModel.getThesesByReviewer(reviewer.id)
+    const allTheses = await thesisModel.find()
+    const reviewedTheses = allTheses.filter(thesis => 
+      thesis.data.status === "evaluated" && thesis.data.assignedReviewer === reviewer.id
+    )
+
+    res.json({
+      assignedCount: assignedTheses.length,
+      reviewedCount: reviewedTheses.length,
+      totalCount: assignedTheses.length + reviewedTheses.length
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: "Failed to fetch reviewer stats" })
   }
 }
