@@ -166,7 +166,17 @@ $function$;
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
    );
 
-   ```  
+   ```
+4) Create users table:
+   ```
+      CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY DEFAULT generate_mongodb_style_id(),
+    data JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+   );
+
+   ```
 4) Change env variables to the following:
 - DB_URL = 'postgres://$USER:$PASSWORD@localhost:5432/thesisdb'
 
