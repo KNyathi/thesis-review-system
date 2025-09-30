@@ -122,5 +122,63 @@
      "newReviewerId": ""
      }
    ```
-6) 
+
+
+MIGRATION TO POSTGRES DB:
+1) Create Database:
+   - sudo systemctl start postgresql
+   - sudo -i -u postgres
+   - psql
+   - CREATE DATABASE thesisdb;
+   - \c thesisdb or  psql -U admin -d thesisdb -h localhost
+  
+2) Create MongoDB-like IDs function:
+ ```
+   CREATE SEQUENCE IF NOT EXISTS objectid_counter_seq;
+CREATE OR REPLACE FUNCTION generate_mongodb_style_id()
+RETURNS text
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    timestamp_hex TEXT;
+    machine_id_hex TEXT;
+    process_id_hex TEXT;
+    counter_hex TEXT;
+BEGIN
+    timestamp_hex := lpad(to_hex(floor(extract(epoch FROM now()))::int8), 8, '0');
+    machine_id_hex := lpad(to_hex(('x'||substring(md5(inet_server_addr()::text) from 1 for 6))::bit(24)::int8), 6, '0');
+    process_id_hex := lpad(to_hex(pg_backend_pid()::int8), 4, '0');
+    counter_hex := lpad(to_hex(nextval('objectid_counter_seq')::int8), 6, '0');
+    
+    RETURN substring(timestamp_hex from 1 for 8) || 
+           machine_id_hex || 
+           process_id_hex || 
+           counter_hex;
+END;
+$function$;
+ ```
+3) Create theses table:
+   ```
+      CREATE TABLE IF NOT EXISTS theses (
+    id TEXT PRIMARY KEY DEFAULT generate_mongodb_style_id(),
+    data JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+   );
+
+   ```
+4) Create users table:
+   ```
+      CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY DEFAULT generate_mongodb_style_id(),
+    data JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+   );
+
+   ```
+4) Change env variables to the following:
+- DB_URL = 'postgres://$USER:$PASSWORD@localhost:5432/thesisdb'
+
+
 
