@@ -20,12 +20,10 @@ const RegisterPage = () => {
 
   useEffect(() => {
     if (user) {
-      if (user.role === "reviewer" && !user.isApproved) {
-        navigate("/pending", { replace: true })
-      } else {
+      if (user.role === "reviewer")
         navigate(`/${user.role}`, { replace: true })
       }
-    }
+ 
   }, [user, navigate])
 
   const handleChange = (e) => {

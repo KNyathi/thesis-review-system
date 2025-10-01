@@ -19,9 +19,6 @@ const LoginPage = () => {
     if (user && shouldRedirect) {
       let targetPath = `/${user.role}`
       
-      if (user.role === "reviewer" && !user.isApproved) {
-        targetPath = "/pending"
-      }
       
       // Use setTimeout to ensure navigation happens outside of render phase
       const timer = setTimeout(() => {

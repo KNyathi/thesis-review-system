@@ -1,6 +1,23 @@
 import type { Request, Response } from "express"
 import bcrypt from "bcrypt"
-import { UserModel, Student, Reviewer, Admin, IUser, IStudent, IReviewer, IAdmin } from "../models/User.model"
+import { 
+  UserModel, 
+  Student, 
+  Consultant,
+  Supervisor,
+  Reviewer, 
+  HeadOfDepartment,
+  Dean,
+  Admin, 
+  IUser, 
+  IStudent, 
+  IConsultant,
+  ISupervisor,
+  IReviewer, 
+  IHeadOfDepartment,
+  IDean,
+  IAdmin 
+} from "../models/User.model"
 import { generateToken } from "../middleware/auth"
 import { Pool } from 'pg';
 
@@ -46,8 +63,33 @@ export const register = async (req: Request, res: Response) => {
           educationalProgram: roleSpecificData.educationalProgram || "",
           degreeLevel: roleSpecificData.degreeLevel || "bachelors",
           thesisStatus: "not_submitted",
+          isTopicApproved: false
         }
         user = await Student.create(userModel, studentData)
+        break
+      case "consultant":
+        const consultantData: Omit<IConsultant, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+          email,
+          password: hashedPassword,
+          fullName,
+          institution,
+          position: roleSpecificData.position || "",
+          assignedStudents: [],
+        }
+        user = await Consultant.create(userModel, consultantData)
+        break
+      case "supervisor":
+        const supervisorData: Omit<ISupervisor, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+          email,
+          password: hashedPassword,
+          fullName,
+          institution,
+          position: roleSpecificData.position || "",
+          department: roleSpecificData.department || "",
+          assignedStudents: [],
+          maxStudents: roleSpecificData.maxStudents || 10,
+        }
+        user = await Supervisor.create(userModel, supervisorData)
         break
       case "reviewer":
         const reviewerData: Omit<IReviewer, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
@@ -55,12 +97,35 @@ export const register = async (req: Request, res: Response) => {
           password: hashedPassword,
           fullName,
           institution,
-          positions: roleSpecificData.positions || [],
+          position: roleSpecificData.position || "",
           assignedTheses: [],
           reviewedTheses: [],
-          isApproved: false,
+          // Removed isApproved field
         }
         user = await Reviewer.create(userModel, reviewerData)
+        break
+      case "head_of_department":
+        const hodData: Omit<IHeadOfDepartment, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+          email,
+          password: hashedPassword,
+          fullName,
+          institution,
+          position: roleSpecificData.position || "",
+          department: roleSpecificData.department || "",
+          faculty: roleSpecificData.faculty || "",
+        }
+        user = await HeadOfDepartment.create(userModel, hodData)
+        break
+      case "dean":
+        const deanData: Omit<IDean, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+          email,
+          password: hashedPassword,
+          fullName,
+          institution,
+          position: roleSpecificData.position || "",
+          faculty: roleSpecificData.faculty || "",
+        }
+        user = await Dean.create(userModel, deanData)
         break
       case "admin":
         const adminData: Omit<IAdmin, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
@@ -179,21 +244,39 @@ export const updateProfile = async (req: Request, res: Response) => {
     // Define allowed updates based on user role
     let allowedUpdates: string[] = []
 
-    if (userRole === "student") {
-      allowedUpdates = [
-        "fullName",
-        "institution",
-        "faculty",
-        "group",
-        "subjectArea",
-        "educationalProgram",
-        "degreeLevel",
-        "thesisTopic",
-      ]
-    } else if (userRole === "reviewer") {
-      allowedUpdates = ["fullName", "institution", "positions"]
-    } else if (userRole === "admin") {
-      allowedUpdates = ["fullName", "institution", "position"]
+    switch (userRole) {
+      case "student":
+        allowedUpdates = [
+          "fullName",
+          "institution",
+          "faculty",
+          "group",
+          "subjectArea",
+          "educationalProgram",
+          "degreeLevel",
+          "thesisTopic",
+        ]
+        break
+      case "consultant":
+        allowedUpdates = ["fullName", "institution", "position", "expertiseAreas"]
+        break
+      case "supervisor":
+        allowedUpdates = ["fullName", "institution", "position", "department", "maxStudents"]
+        break
+      case "reviewer":
+        allowedUpdates = ["fullName", "institution", "position", "expertiseAreas"]
+        break
+      case "head_of_department":
+        allowedUpdates = ["fullName", "institution", "position", "department", "faculty"]
+        break
+      case "dean":
+        allowedUpdates = ["fullName", "institution", "position", "faculty"]
+        break
+      case "admin":
+        allowedUpdates = ["fullName", "institution", "position"]
+        break
+      default:
+        allowedUpdates = ["fullName", "institution"]
     }
 
     const isValidOperation = updates.every((update) => allowedUpdates.includes(update))
@@ -361,6 +444,7 @@ export const registerStudent = async (req: Request, res: Response) => {
       educationalProgram,
       degreeLevel: degreeLevel || "bachelors",
       thesisStatus: "not_submitted",
+      isTopicApproved: false
     }
 
     const user = await Student.create(userModel, studentData)
@@ -389,7 +473,8 @@ export const registerReviewer = async (req: Request, res: Response) => {
       password, 
       fullName, 
       institution, 
-      positions 
+      position,
+      expertiseAreas
     } = req.body
 
     // Check if user already exists
@@ -407,10 +492,10 @@ export const registerReviewer = async (req: Request, res: Response) => {
       password: hashedPassword,
       fullName,
       institution,
-      positions: positions || [],
+      position: position || "",
       assignedTheses: [],
       reviewedTheses: [],
-      isApproved: false,
+      // Removed isApproved field
     }
 
     const user = await Reviewer.create(userModel, reviewerData)
@@ -428,5 +513,187 @@ export const registerReviewer = async (req: Request, res: Response) => {
   } catch (error) {
     console.error(error)
     res.status(500).json({ error: "Reviewer registration failed" })
+  }
+}
+
+// Additional registration functions for new roles
+export const registerConsultant = async (req: Request, res: Response) => {
+  try {
+    const { 
+      email, 
+      password, 
+      fullName, 
+      institution, 
+      position,
+      expertiseAreas
+    } = req.body
+
+    const existingUser = await userModel.getUserByEmail(email)
+    if (existingUser) {
+      res.status(400).json({ error: "User already exists" })
+      return
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10)
+
+    const consultantData: Omit<IConsultant, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+      email,
+      password: hashedPassword,
+      fullName,
+      institution,
+      position: position || "",
+      assignedStudents: [],
+    }
+
+    const user = await Consultant.create(userModel, consultantData)
+    const token = generateToken(user.id, user.role)
+
+    res.status(201).json({ 
+      token,
+      user: {
+        id: user.id,
+        role: user.role,
+      }
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: "Consultant registration failed" })
+  }
+}
+
+export const registerSupervisor = async (req: Request, res: Response) => {
+  try {
+    const { 
+      email, 
+      password, 
+      fullName, 
+      institution, 
+      position,
+      department,
+      maxStudents
+    } = req.body
+
+    const existingUser = await userModel.getUserByEmail(email)
+    if (existingUser) {
+      res.status(400).json({ error: "User already exists" })
+      return
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10)
+
+    const supervisorData: Omit<ISupervisor, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+      email,
+      password: hashedPassword,
+      fullName,
+      institution,
+      position: position || "",
+      department: department || "",
+      assignedStudents: [],
+      maxStudents: maxStudents || 10,
+    }
+
+    const user = await Supervisor.create(userModel, supervisorData)
+    const token = generateToken(user.id, user.role)
+
+    res.status(201).json({ 
+      token,
+      user: {
+        id: user.id,
+        role: user.role,
+      }
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: "Supervisor registration failed" })
+  }
+}
+
+export const registerHeadOfDepartment = async (req: Request, res: Response) => {
+  try {
+    const { 
+      email, 
+      password, 
+      fullName, 
+      institution, 
+      position,
+      department,
+      faculty
+    } = req.body
+
+    const existingUser = await userModel.getUserByEmail(email)
+    if (existingUser) {
+      res.status(400).json({ error: "User already exists" })
+      return
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10)
+
+    const hodData: Omit<IHeadOfDepartment, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+      email,
+      password: hashedPassword,
+      fullName,
+      institution,
+      position: position || "",
+      department: department || "",
+      faculty: faculty || "",
+    }
+
+    const user = await HeadOfDepartment.create(userModel, hodData)
+    const token = generateToken(user.id, user.role)
+
+    res.status(201).json({ 
+      token,
+      user: {
+        id: user.id,
+        role: user.role,
+      }
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: "Head of Department registration failed" })
+  }
+}
+
+export const registerDean = async (req: Request, res: Response) => {
+  try {
+    const { 
+      email, 
+      password, 
+      fullName, 
+      institution, 
+      position,
+      faculty
+    } = req.body
+
+    const existingUser = await userModel.getUserByEmail(email)
+    if (existingUser) {
+      res.status(400).json({ error: "User already exists" })
+      return
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10)
+
+    const deanData: Omit<IDean, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+      email,
+      password: hashedPassword,
+      fullName,
+      institution,
+      position: position || "",
+      faculty: faculty || "",
+    }
+
+    const user = await Dean.create(userModel, deanData)
+    const token = generateToken(user.id, user.role)
+
+    res.status(201).json({ 
+      token,
+      user: {
+        id: user.id,
+        role: user.role,
+      }
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: "Dean registration failed" })
   }
 }

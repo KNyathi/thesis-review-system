@@ -12,6 +12,11 @@ import {
   FiAlertCircle,
   FiEye,
   FiEdit,
+  FiSend,
+  FiBook,
+  FiUsers,
+  FiMessageSquare,
+  FiRotateCw,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
@@ -28,10 +33,12 @@ const StudentDashboard = () => {
   const [title, setTitle] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
+  const [isSubmittingTopic, setIsSubmittingTopic] = useState(false)
   const [showReupload, setShowReupload] = useState(false)
   const [showThesisDetails, setShowThesisDetails] = useState(false)
   const { toast, showToast, hideToast } = useToast()
   const [showSignedReview, setShowSignedReview] = useState(false)
+  const [topicProposal, setTopicProposal] = useState("")
 
   // Use ref to prevent infinite loops
   const fetchedRef = useRef(false)
@@ -52,6 +59,11 @@ const StudentDashboard = () => {
         const data = await thesisAPI.getMyThesis()
         setThesis(data)
         setTitle(data?.title || "")
+        
+        // Set topic proposal from user data if available
+        if (user?.thesisTopic) {
+          setTopicProposal(user.thesisTopic)
+        }
       } catch (error) {
         if (error.response?.status !== 404) {
           console.error("Error fetching thesis:", error)
@@ -64,7 +76,7 @@ const StudentDashboard = () => {
         fetchedRef.current = true
       }
     },
-    [showToast, refreshUser],
+    [showToast, refreshUser, user?.thesisTopic],
   )
 
   // Initial fetch - only once
@@ -78,6 +90,7 @@ const StudentDashboard = () => {
   useEffect(() => {
     if (user?.thesisTopic && !thesis && fetchedRef.current) {
       setTitle(user.thesisTopic)
+      setTopicProposal(user.thesisTopic)
     }
   }, [user?.thesisTopic, thesis])
 
@@ -98,6 +111,30 @@ const StudentDashboard = () => {
         return
       }
       setFile(selectedFile)
+    }
+  }
+
+  const handleSubmitTopic = async (e) => {
+    e.preventDefault()
+    
+    if (!topicProposal.trim()) {
+      showToast("Please enter a thesis topic", "error")
+      return
+    }
+
+    try {
+      setIsSubmittingTopic(true)
+      
+      await thesisAPI.submitTopic(topicProposal)
+      showToast("Thesis topic submitted for approval!", "success")
+      
+      // Refresh user data
+      await refreshUser()
+      
+    } catch (error) {
+      showToast("Failed to submit thesis topic", "error")
+    } finally {
+      setIsSubmittingTopic(false)
     }
   }
 
@@ -187,6 +224,20 @@ const StudentDashboard = () => {
     fetchThesis(true)
   }
 
+  // NEW: Handle thesis resubmission after revisions
+  const handleResubmitThesis = async () => {
+    try {
+      setIsUploading(true)
+      await thesisAPI.studentResubmitThesis(thesis.id)
+      showToast("Thesis resubmitted for review!", "success")
+      await fetchThesis(true)
+    } catch (error) {
+      showToast("Failed to resubmit thesis", "error")
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   const getStatusColor = (thesis) => {
     if (thesis?.finalGrade && thesis?.status === "evaluated") {
       return "text-green-400"
@@ -196,12 +247,18 @@ const StudentDashboard = () => {
       return "text-yellow-400"
     }
 
+    // NEW: Colors for consultant and supervisor statuses
     switch (thesis?.status) {
       case "submitted":
         return "text-blue-400"
-      case "assigned":
-      case "under_review":
+      case "with_consultant":
+        return "text-purple-400"
+      case "with_supervisor":
         return "text-orange-400"
+      case "under_review":
+        return "text-yellow-400"
+      case "revisions_requested":
+        return "text-red-400"
       case "evaluated":
         return "text-green-400"
       default:
@@ -218,19 +275,40 @@ const StudentDashboard = () => {
       return "Review completed - Waiting for signature"
     }
 
+    // NEW: Status texts for consultant and supervisor workflow
     switch (thesis?.status) {
       case "submitted":
-        return "Submitted - Waiting for reviewer assignment"
-      case "assigned":
-        return "Assigned to reviewer"
+        return "Submitted - Waiting for team assignment"
+      case "with_consultant":
+        return "Under consultant review"
+      case "with_supervisor":
+        return "Under supervisor review"
       case "under_review":
-        return "Under review"
+        return "Under final review"
+      case "revisions_requested":
+        return "Revisions requested - Please resubmit"
       case "evaluated":
         return "Evaluated"
       default:
         return "Not submitted"
     }
   }
+
+  const getStatusIcon = (thesis) => {
+    switch (thesis?.status) {
+      case "with_consultant":
+        return <FiUsers className="w-4 h-4" />
+      case "with_supervisor":
+        return <FiUser className="w-4 h-4" />
+      case "revisions_requested":
+        return <FiRotateCw className="w-4 h-4" />
+      default:
+        return <FiClock className="w-4 h-4" />
+    }
+  }
+
+  // Check if topic is approved and student can upload thesis
+  const canUploadThesis = user?.isTopicApproved
 
   if (isLoading && !fetchedRef.current) {
     return (
@@ -244,7 +322,7 @@ const StudentDashboard = () => {
   }
 
   // Get the current thesis title - prioritize uploaded thesis title, then user profile topic
-  const currentThesisTitle = thesis?.title || user?.thesisTopic || ""
+  const currentThesisTitle = user?.thesisTopic || ""
 
   return (
     <div className="min-h-screen bg-black">
@@ -303,19 +381,93 @@ const StudentDashboard = () => {
             <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-6">
               <span className="text-black font-bold text-xl">T</span>
             </div>
-            <h1 className="text-2xl font-semibold text-white mb-2">Thesis Submission</h1>
-            <p className="text-gray-400">Upload and manage your graduation thesis</p>
+            <h1 className="text-2xl font-semibold text-white mb-2">
+              {canUploadThesis ? "Thesis Submission" : "Thesis Topic Proposal"}
+            </h1>
+            <p className="text-gray-400">
+              {canUploadThesis 
+                ? "Upload and manage your graduation thesis" 
+                : "Submit your thesis topic for approval before uploading your thesis"}
+            </p>
           </div>
 
+          {/* Topic Approval Status */}
+          {!canUploadThesis && (
+            <div className="bg-gray-900 rounded-lg p-6 border border-gray-800 mb-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 bg-yellow-500 rounded-full flex items-center justify-center">
+                  <FiBook className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-white mb-1">Thesis Topic Approval Required</h2>
+                  <p className="text-gray-400">
+                    You need to get your thesis topic approved before you can upload your thesis file.
+                  </p>
+                </div>
+              </div>
+
+              {/* Topic Proposal Form */}
+              <form onSubmit={handleSubmitTopic} className="space-y-4">
+                <div>
+                  <label htmlFor="topicProposal" className="block text-sm font-medium text-gray-300 mb-2">
+                    Proposed Thesis Topic
+                  </label>
+                  <textarea
+                    id="topicProposal"
+                    value={topicProposal}
+                    onChange={(e) => setTopicProposal(e.target.value)}
+                    placeholder="Enter your proposed thesis topic in detail..."
+                    rows="4"
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent transition-all resize-none"
+                    required
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    type="submit"
+                    disabled={isSubmittingTopic || !topicProposal.trim()}
+                    className="flex-1 bg-white text-black font-medium py-3 px-4 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isSubmittingTopic ? (
+                      <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <FiSend className="w-5 h-5" />
+                        Submit for Approval
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              {/* Current topic status */}
+              {user?.thesisTopic && (
+                <div className="mt-6 p-4 bg-blue-900/20 border border-blue-800 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <FiClock className="w-5 h-5 text-blue-400" />
+                    <div>
+                      <p className="text-blue-400 font-medium">Topic Submitted for Approval</p>
+                      <p className="text-white text-sm mt-1">"{user.thesisTopic}"</p>
+                      <p className="text-gray-400 text-sm mt-1">
+                        Your topic is waiting for supervisor approval. You will be notified once it's approved.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Show thesis topic even without uploaded file */}
-          {currentThesisTitle && !thesis && (
+          {canUploadThesis && currentThesisTitle && !thesis && (
             <div className="bg-gray-900 rounded-lg p-6 border border-gray-800 mb-6">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-xl font-semibold text-white mb-2">{currentThesisTitle}</h2>
-                  <div className="flex items-center gap-2 text-gray-400">
-                    <FiEdit className="w-4 h-4" />
-                    <span className="text-sm">Title set in profile - ready for file upload</span>
+                  <div className="flex items-center gap-2 text-green-400">
+                    <FiCheck className="w-4 h-4" />
+                    <span className="text-sm">Topic Approved - Ready for file upload</span>
                   </div>
                 </div>
                 <button
@@ -326,13 +478,13 @@ const StudentDashboard = () => {
                   Edit in Profile
                 </button>
               </div>
-              <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4">
+              <div className="bg-green-900/20 border border-green-800 rounded-lg p-4">
                 <div className="flex items-center gap-3">
-                  <FiAlertCircle className="w-5 h-5 text-blue-400" />
+                  <FiCheck className="w-5 h-5 text-green-400" />
                   <div>
-                    <p className="text-blue-400 font-medium">Ready for Upload</p>
+                    <p className="text-green-400 font-medium">Topic Approved</p>
                     <p className="text-gray-400 text-sm">
-                      You have set your thesis title. Now upload your thesis file to complete the submission.
+                      Your thesis topic has been approved. You can now upload your thesis file.
                     </p>
                   </div>
                 </div>
@@ -340,227 +492,302 @@ const StudentDashboard = () => {
             </div>
           )}
 
-          {thesis && !showReupload ? (
-            // Existing thesis display
-            <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
-              <div className="flex items-start justify-between mb-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-white mb-2">{thesis.title}</h2>
-                  <div className={`flex items-center gap-2 ${getStatusColor(thesis)}`}>
-                    <FiClock className="w-4 h-4" />
-                    <span className="text-sm font-medium">{getStatusText(thesis)}</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-gray-400 text-sm">Submitted on</p>
-                  <p className="text-white font-medium">{new Date(thesis.submissionDate).toLocaleDateString()}</p>
-                </div>
-              </div>
-
-              {/* Special message for students waiting for reviewer assignment */}
-              {thesis.status === "submitted" && !thesis.assignedReviewer && !thesis.finalGrade && (
-                <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4 mb-6">
-                  <div className="flex items-center gap-3">
-                    <FiAlertCircle className="w-5 h-5 text-blue-400" />
+          {/* Thesis Upload Section - Only show if topic is approved */}
+          {canUploadThesis && (
+            <>
+              {thesis && !showReupload ? (
+                // Existing thesis display
+                <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
+                  <div className="flex items-start justify-between mb-6">
                     <div>
-                      <p className="text-blue-400 font-medium">Waiting for Reviewer Assignment</p>
-                      <p className="text-gray-400 text-sm">
-                        Your thesis has been successfully submitted. An administrator will assign a reviewer to your
-                        thesis soon. You will be notified once a reviewer has been assigned and begins the review
-                        process.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {thesis.assignedReviewer && !thesis.finalGrade && (
-                <div className="bg-gray-800 rounded-lg p-4 mb-6">
-                  <div className="flex items-center gap-3">
-                    <FiUser className="w-5 h-5 text-gray-400" />
-                    <div>
-                      <p className="text-gray-400 text-sm">Assigned Reviewer</p>
-                      <p className="text-white font-medium">{thesis.assignedReviewer.fullName}</p>
-                      <p className="text-gray-400 text-sm">{thesis.assignedReviewer.institution}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {thesis.finalGrade && (
-                <div
-                  className={`bg-${thesis.status === "evaluated" ? "green" : "yellow"}-900/20 border border-${thesis.status === "evaluated" ? "green" : "yellow"}-800 rounded-lg p-4 mb-6`}
-                >
-                  <div className="flex items-center gap-3">
-                    <FiCheck className={`w-5 h-5 text-${thesis.status === "evaluated" ? "green" : "yellow"}-400`} />
-                    <div>
-                      <p className={`text-${thesis.status === "evaluated" ? "green" : "yellow"}-400 font-medium`}>
-                        Final Grade: {thesis.finalGrade}
-                      </p>
-                      <p className="text-gray-400 text-sm">
-                        {thesis.status === "evaluated"
-                          ? "Your thesis has been evaluated and signed"
-                          : "Your thesis has been graded - waiting for signature"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between pt-4 border-t border-gray-800">
-                <div className="flex items-center gap-2 text-gray-400">
-                  <FiFile className="w-4 h-4" />
-                  <span className="text-sm">PDF Document</span>
-                </div>
-                <div className="flex gap-3">
-                  {!thesis.finalGrade && (
-                    <button
-                      onClick={() => setShowReupload(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
-                    >
-                      <FiRefreshCw className="w-4 h-4" />
-                      Re-upload Thesis
-                    </button>
-                  )}
-                  <button
-                    onClick={handleViewPDF}
-                    className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-100 transition-colors"
-                  >
-                    <FiDownload className="w-4 h-4" />
-                    Download Thesis
-                  </button>
-                  {thesis.finalGrade && thesis.assessment && (
-                    <button
-                      onClick={() => setShowThesisDetails(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      <FiEye className="w-4 h-4" />
-                      View Review
-                    </button>
-                  )}
-                  {thesis.status === "evaluated" && thesis.finalGrade && thesis?._id && (
-                    <button
-                      onClick={() => setShowSignedReview(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                    >
-                      <FiEye className="w-4 h-4" />
-                      View Signed Review
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            // Upload/Re-upload form
-            <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
-              {showReupload && (
-                <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-800 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <FiRefreshCw className="w-5 h-5 text-yellow-400" />
-                    <div>
-                      <p className="text-yellow-400 font-medium">Re-uploading Thesis</p>
-                      <p className="text-gray-400 text-sm">
-                        This will replace your current thesis file. The old file will be permanently deleted.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label htmlFor="title" className="block text-sm font-medium text-gray-300 mb-2">
-                    Thesis Title
-                  </label>
-                  <input
-                    type="text"
-                    id="title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Enter your thesis title"
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent transition-all"
-                    required
-                  />
-                  {user?.thesisTopic && title !== user.thesisTopic && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Profile title: "{user.thesisTopic}" -
-                      <button
-                        type="button"
-                        onClick={() => setTitle(user.thesisTopic)}
-                        className="text-blue-400 hover:text-blue-300 ml-1"
-                      >
-                        Use profile title
-                      </button>
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="thesisFile" className="block text-sm font-medium text-gray-300 mb-2">
-                    Thesis File (PDF only, max 10MB)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="file"
-                      id="thesisFile"
-                      accept=".pdf"
-                      onChange={handleFileChange}
-                      className="hidden"
-                      required
-                    />
-                    <label
-                      htmlFor="thesisFile"
-                      className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-700 rounded-lg cursor-pointer hover:border-gray-600 transition-colors"
-                    >
-                      <div className="text-center">
-                        <FiUpload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                        <p className="text-gray-400">{file ? file.name : "Click to select PDF file"}</p>
-                        <p className="text-gray-500 text-sm mt-1">PDF only, max 10MB</p>
+                      <h2 className="text-xl font-semibold text-white mb-2">{thesis.title}</h2>
+                      <div className={`flex items-center gap-2 ${getStatusColor(thesis)}`}>
+                        {getStatusIcon(thesis)}
+                        <span className="text-sm font-medium">{getStatusText(thesis)}</span>
                       </div>
-                    </label>
+                      
+                      {/* NEW: Show iteration and review count */}
+                      {(thesis.currentIteration > 0 || thesis.totalReviewCount > 0) && (
+                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
+                          {thesis.currentIteration > 0 && (
+                            <span>Iteration: {thesis.currentIteration}</span>
+                          )}
+                          {thesis.totalReviewCount > 0 && (
+                            <span>Total Reviews: {thesis.totalReviewCount}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-gray-400 text-sm">Submitted on</p>
+                      <p className="text-white font-medium">{new Date(thesis.submissionDate).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+
+                  {/* NEW: Team members display */}
+                  {(thesis.assignedConsultant || thesis.assignedSupervisor || thesis.assignedReviewer) && (
+                    <div className="mb-6 p-4 bg-gray-800 rounded-lg">
+                      <h3 className="text-white font-medium mb-3">Assigned Team</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {thesis.assignedConsultant && (
+                          <div className="flex items-center gap-2 p-2 bg-purple-900/20 rounded">
+                            <FiUsers className="w-4 h-4 text-purple-400" />
+                            <div>
+                              <p className="text-purple-400 text-xs">Consultant</p>
+                              <p className="text-white text-sm">{thesis.assignedConsultant}</p>
+                            </div>
+                          </div>
+                        )}
+                        {thesis.assignedSupervisor && (
+                          <div className="flex items-center gap-2 p-2 bg-orange-900/20 rounded">
+                            <FiUser className="w-4 h-4 text-orange-400" />
+                            <div>
+                              <p className="text-orange-400 text-xs">Supervisor</p>
+                              <p className="text-white text-sm">{thesis.assignedSupervisor}</p>
+                            </div>
+                          </div>
+                        )}
+                        {thesis.assignedReviewer && (
+                          <div className="flex items-center gap-2 p-2 bg-yellow-900/20 rounded">
+                            <FiMessageSquare className="w-4 h-4 text-yellow-400" />
+                            <div>
+                              <p className="text-yellow-400 text-xs">Reviewer</p>
+                              <p className="text-white text-sm">{thesis.assignedReviewer}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* NEW: Revisions requested message */}
+                  {thesis.status === "revisions_requested" && (
+                    <div className="bg-red-900/20 border border-red-800 rounded-lg p-4 mb-6">
+                      <div className="flex items-center gap-3">
+                        <FiRotateCw className="w-5 h-5 text-red-400" />
+                        <div>
+                          <p className="text-red-400 font-medium">Revisions Requested</p>
+                          <p className="text-gray-400 text-sm">
+                            Your thesis requires revisions. Please review the feedback and resubmit your thesis.
+                          </p>
+                          {/* NEW: Show latest review comments if available */}
+                          {thesis.reviewIterations && thesis.reviewIterations.length > 0 && (
+                            <div className="mt-2 p-3 bg-gray-800 rounded">
+                              <p className="text-white text-sm font-medium">Latest Feedback:</p>
+                              <p className="text-gray-300 text-sm mt-1">
+                                {thesis.reviewIterations[thesis.reviewIterations.length - 1]?.consultantReview?.comments ||
+                                 thesis.reviewIterations[thesis.reviewIterations.length - 1]?.supervisorReview?.comments ||
+                                 "Please check the detailed review for specific feedback."}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Special message for students waiting for reviewer assignment */}
+                  {thesis.status === "submitted" && !thesis.assignedReviewer && !thesis.finalGrade && (
+                    <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4 mb-6">
+                      <div className="flex items-center gap-3">
+                        <FiAlertCircle className="w-5 h-5 text-blue-400" />
+                        <div>
+                          <p className="text-blue-400 font-medium">Waiting for Team Assignment</p>
+                          <p className="text-gray-400 text-sm">
+                            Your thesis has been successfully submitted. An administrator will assign a team to review your thesis soon.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {thesis.finalGrade && (
+                    <div className={`bg-${thesis.status === "evaluated" ? "green" : "yellow"}-900/20 border border-${thesis.status === "evaluated" ? "green" : "yellow"}-800 rounded-lg p-4 mb-6`}>
+                      <div className="flex items-center gap-3">
+                        <FiCheck className={`w-5 h-5 text-${thesis.status === "evaluated" ? "green" : "yellow"}-400`} />
+                        <div>
+                          <p className={`text-${thesis.status === "evaluated" ? "green" : "yellow"}-400 font-medium`}>
+                            Final Grade: {thesis.finalGrade}
+                          </p>
+                          <p className="text-gray-400 text-sm">
+                            {thesis.status === "evaluated"
+                              ? "Your thesis has been evaluated and signed"
+                              : "Your thesis has been graded - waiting for signature"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-800">
+                    <div className="flex items-center gap-2 text-gray-400">
+                      <FiFile className="w-4 h-4" />
+                      <span className="text-sm">PDF Document</span>
+                    </div>
+                    <div className="flex gap-3">
+                      {/* NEW: Resubmit button for revisions */}
+                      {thesis.status === "revisions_requested" && (
+                        <button
+                          onClick={handleResubmitThesis}
+                          disabled={isUploading}
+                          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                        >
+                          <FiRotateCw className="w-4 h-4" />
+                          {isUploading ? "Resubmitting..." : "Resubmit Thesis"}
+                        </button>
+                      )}
+                      
+                      {!thesis.finalGrade && thesis.status !== "revisions_requested" && (
+                        <button
+                          onClick={() => setShowReupload(true)}
+                          className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+                        >
+                          <FiRefreshCw className="w-4 h-4" />
+                          Re-upload Thesis
+                        </button>
+                      )}
+                      <button
+                        onClick={handleViewPDF}
+                        className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-100 transition-colors"
+                      >
+                        <FiDownload className="w-4 h-4" />
+                        Download Thesis
+                      </button>
+                      {thesis.finalGrade && thesis.assessment && (
+                        <button
+                          onClick={() => setShowThesisDetails(true)}
+                          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          <FiEye className="w-4 h-4" />
+                          View Review
+                        </button>
+                      )}
+                      {thesis.status === "evaluated" && thesis.finalGrade && thesis?.id && (
+                        <button
+                          onClick={() => setShowSignedReview(true)}
+                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          <FiEye className="w-4 h-4" />
+                          View Signed Review
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-
-                <div className="flex gap-3">
+              ) : (
+                // Upload/Re-upload form
+                <div className="bg-gray-900 rounded-lg p-6 border border-gray-800">
                   {showReupload && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowReupload(false)
-                        setFile(null)
-                        const fileInput = document.getElementById("thesisFile")
-                        if (fileInput) fileInput.value = ""
-                      }}
-                      className="flex-1 bg-gray-800 text-white font-medium py-3 px-4 rounded-lg hover:bg-gray-700 transition-colors"
-                    >
-                      Cancel
-                    </button>
+                    <div className="mb-6 p-4 bg-yellow-900/20 border border-yellow-800 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <FiRefreshCw className="w-5 h-5 text-yellow-400" />
+                        <div>
+                          <p className="text-yellow-400 font-medium">Re-uploading Thesis</p>
+                          <p className="text-gray-400 text-sm">
+                            This will replace your current thesis file. The old file will be permanently deleted.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   )}
-                  <button
-                    type="submit"
-                    disabled={isUploading || !file || !title.trim()}
-                    className="flex-1 bg-white text-black font-medium py-3 px-4 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {isUploading ? (
-                      <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <FiUpload className="w-5 h-5" />
-                        {showReupload ? "Re-upload Thesis" : "Submit Thesis"}
-                      </>
-                    )}
-                  </button>
+
+                  <form onSubmit={handleSubmit} className="space-y-6">
+                    <div>
+                      <label htmlFor="title" className="block text-sm font-medium text-gray-300 mb-2">
+                        Thesis Title
+                      </label>
+                      <input
+                        type="text"
+                        id="title"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="Enter your thesis title"
+                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent transition-all"
+                        required
+                      />
+                      {user?.thesisTopic && title !== user.thesisTopic && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Approved topic: "{user.thesisTopic}" -
+                          <button
+                            type="button"
+                            onClick={() => setTitle(user.thesisTopic)}
+                            className="text-blue-400 hover:text-blue-300 ml-1"
+                          >
+                            Use approved topic
+                          </button>
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label htmlFor="thesisFile" className="block text-sm font-medium text-gray-300 mb-2">
+                        Thesis File (PDF only, max 10MB)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          id="thesisFile"
+                          accept=".pdf"
+                          onChange={handleFileChange}
+                          className="hidden"
+                          required
+                        />
+                        <label
+                          htmlFor="thesisFile"
+                          className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-700 rounded-lg cursor-pointer hover:border-gray-600 transition-colors"
+                        >
+                          <div className="text-center">
+                            <FiUpload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                            <p className="text-gray-400">{file ? file.name : "Click to select PDF file"}</p>
+                            <p className="text-gray-500 text-sm mt-1">PDF only, max 10MB</p>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      {showReupload && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowReupload(false)
+                            setFile(null)
+                            const fileInput = document.getElementById("thesisFile")
+                            if (fileInput) fileInput.value = ""
+                          }}
+                          className="flex-1 bg-gray-800 text-white font-medium py-3 px-4 rounded-lg hover:bg-gray-700 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={isUploading || !file || !title.trim()}
+                        className="flex-1 bg-white text-black font-medium py-3 px-4 rounded-lg hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {isUploading ? (
+                          <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <FiUpload className="w-5 h-5" />
+                            {showReupload ? "Re-upload Thesis" : "Submit Thesis"}
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
                 </div>
-              </form>
-            </div>
+              )}
+            </>
           )}
         </div>
       </div>
 
-      {/* Thesis Details Modal - только для просмотра деталей своего тезиса */}
+      {/* Thesis Details Modal */}
       <Modal isOpen={showThesisDetails} onClose={() => setShowThesisDetails(false)} title="Thesis Details" size="full">
         <StudentThesisDetails thesis={thesis} onClose={() => setShowThesisDetails(false)} />
       </Modal>
+      
       {/* Signed Review Modal */}
       {thesis?.status === "evaluated" && thesis?.id && (
         <Modal isOpen={showSignedReview} onClose={() => setShowSignedReview(false)} title="Signed Review" size="full">

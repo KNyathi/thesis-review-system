@@ -9,8 +9,7 @@ import {
   uploadSignedReview,
   signedReview,
 } from "../controllers/reviewController"
-import { authenticate } from "../middleware/auth"
-import { isReviewer, isStudent, isAdmin } from "../middleware/roles"
+import { authenticate, isAdmin, isReviewer, isStudent } from "../middleware/auth"
 import upload from "../utils/multer"
 
 const reviewRouter = express.Router()

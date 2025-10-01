@@ -7,7 +7,7 @@ interface IUserBase {
   password: string;
   fullName: string;
   institution: string;
-  role: 'student' | 'reviewer' | 'admin';
+  role: 'student' | 'consultant' | 'supervisor' | 'reviewer' | 'head_of_department' | 'dean' | 'admin';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,19 +21,64 @@ export interface IStudent extends IUserBase {
   educationalProgram: string;
   degreeLevel: 'bachelors' | 'masters' | 'specialist';
   thesisTopic?: string;
-  thesisStatus?: 'not_submitted' | 'submitted' | 'under_review' | 'evaluated';
+  thesisStatus?: 'not_submitted' | 'submitted' | 'with_consultant' | 'with_supervisor' | 'under_review' | 'evaluated' | 'revisions_requested';
   thesisGrade?: string;
   thesisFile?: string;
   reviewer?: string;
+  isTopicApproved: boolean;
+  supervisor?: string;
+  consultant?: string; 
 }
 
-// Reviewer-specific interface
+export interface IConsultant extends IUserBase {
+  role: 'consultant';
+  position: string;
+  assignedStudents: string[];
+  assignedTheses: string[]; // Add this
+  reviewedTheses: string[]; // Add this
+  reviewStats: {
+    totalReviews: number;
+    approvedTheses: number;
+    averageReviewCount: number;
+  };
+}
+
+export interface ISupervisor extends IUserBase {
+  role: 'supervisor';
+  position: string;
+  department: string;
+  assignedStudents: string[];
+  assignedTheses: string[]; // Add this
+  reviewedTheses: string[]; // Add this
+  reviewStats: {
+    totalReviews: number;
+    approvedTheses: number;
+    averageReviewCount: number;
+  };
+  maxStudents: number;
+}
+
+// Reviewer remains the same
 export interface IReviewer extends IUserBase {
   role: 'reviewer';
-  positions: string[];
+  position: string;
   assignedTheses: string[];
   reviewedTheses: string[];
-  isApproved: boolean;
+}
+
+// Head of Department-specific interface
+export interface IHeadOfDepartment extends IUserBase {
+  role: 'head_of_department';
+  position: string;
+  department: string;
+  faculty: string;
+}
+
+// Dean-specific interface
+export interface IDean extends IUserBase {
+  role: 'dean';
+  position: string;
+  faculty: string;
 }
 
 // Admin interface
@@ -43,7 +88,7 @@ export interface IAdmin extends IUserBase {
 }
 
 // Export the base interface
-export type IUser = IStudent | IReviewer | IAdmin;
+export type IUser = IStudent | IConsultant | ISupervisor | IReviewer | IHeadOfDepartment | IDean | IAdmin;
 
 interface UserDocument {
   id: string;
@@ -92,9 +137,7 @@ export class UserModel {
 
   // Get user by email
   async getUserByEmail(email: string): Promise<IUser | null> {
-    
     const query = `SELECT * FROM users WHERE data->>'email' = $1`;
-  
     const result = await this.pool.query(query, [email]);
     const row = result.rows[0];
     if (!row) return null;
@@ -113,7 +156,6 @@ export class UserModel {
     
     return null;
   }
-
 
   // Get users by role
   async getUsersByRole(role: string): Promise<IUser[]> {
@@ -139,6 +181,30 @@ export class UserModel {
     })) as IStudent[];
   }
 
+  // Get all consultants
+  async getConsultants(): Promise<IConsultant[]> {
+    const query = `SELECT * FROM users WHERE data->>'role' = 'consultant' ORDER BY created_at DESC`;
+    const result = await this.pool.query(query);
+    return result.rows.map(row => ({
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    })) as IConsultant[];
+  }
+
+  // Get all supervisors
+  async getSupervisors(): Promise<ISupervisor[]> {
+    const query = `SELECT * FROM users WHERE data->>'role' = 'supervisor' ORDER BY created_at DESC`;
+    const result = await this.pool.query(query);
+    return result.rows.map(row => ({
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    })) as ISupervisor[];
+  }
+
   // Get all reviewers
   async getReviewers(): Promise<IReviewer[]> {
     const query = `SELECT * FROM users WHERE data->>'role' = 'reviewer' ORDER BY created_at DESC`;
@@ -151,6 +217,30 @@ export class UserModel {
     })) as IReviewer[];
   }
 
+  // Get all heads of department
+  async getHeadsOfDepartment(): Promise<IHeadOfDepartment[]> {
+    const query = `SELECT * FROM users WHERE data->>'role' = 'head_of_department' ORDER BY created_at DESC`;
+    const result = await this.pool.query(query);
+    return result.rows.map(row => ({
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    })) as IHeadOfDepartment[];
+  }
+
+  // Get all deans
+  async getDeans(): Promise<IDean[]> {
+    const query = `SELECT * FROM users WHERE data->>'role' = 'dean' ORDER BY created_at DESC`;
+    const result = await this.pool.query(query);
+    return result.rows.map(row => ({
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    })) as IDean[];
+  }
+
   // Get all admins
   async getAdmins(): Promise<IAdmin[]> {
     const query = `SELECT * FROM users WHERE data->>'role' = 'admin' ORDER BY created_at DESC`;
@@ -161,38 +251,6 @@ export class UserModel {
       createdAt: row.created_at,
       updatedAt: row.updated_at
     })) as IAdmin[];
-  }
-
-  // Get approved reviewers
-  async getApprovedReviewers(): Promise<IReviewer[]> {
-    const query = `
-      SELECT * FROM users 
-      WHERE data->>'role' = 'reviewer' AND data->>'isApproved' = 'true' 
-      ORDER BY created_at DESC
-    `;
-    const result = await this.pool.query(query);
-    return result.rows.map(row => ({
-      ...row.data,
-      id: row.id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    })) as IReviewer[];
-  }
-
-  // Get unapproved reviewers
-  async getUnapprovedReviewers(): Promise<IReviewer[]> {
-    const query = `
-      SELECT * FROM users 
-      WHERE data->>'role' = 'reviewer' AND (data->>'isApproved' = 'false' OR data->>'isApproved' IS NULL)
-      ORDER BY created_at DESC
-    `;
-    const result = await this.pool.query(query);
-    return result.rows.map(row => ({
-      ...row.data,
-      id: row.id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    })) as IReviewer[];
   }
 
   // Update user
@@ -343,6 +401,148 @@ export class UserModel {
     } as IStudent;
   }
 
+  async assignSupervisorToStudent(studentId: string, supervisorId: string): Promise<IStudent> {
+    const query = `
+      UPDATE users
+      SET data = jsonb_set(data, '{supervisor}', $1), updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2 AND data->>'role' = 'student'
+      RETURNING *;
+    `;
+    const result = await this.pool.query(query, [JSON.stringify(supervisorId), studentId]);
+    const row = result.rows[0];
+    
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as IStudent;
+  }
+
+  async assignConsultantToStudent(studentId: string, consultantId: string): Promise<IStudent> {
+    const query = `
+      UPDATE users
+      SET data = jsonb_set(data, '{consultant}', $1), updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2 AND data->>'role' = 'student'
+      RETURNING *;
+    `;
+    const result = await this.pool.query(query, [JSON.stringify(consultantId), studentId]);
+    const row = result.rows[0];
+    
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as IStudent;
+  }
+
+  // Consultant-specific methods
+  async addStudentToConsultant(consultantId: string, studentId: string): Promise<IConsultant> {
+    const currentUser = await this.getUserById(consultantId);
+    if (!currentUser || currentUser.role !== 'consultant') {
+      throw new Error('Consultant not found');
+    }
+
+    const consultantData = currentUser as IConsultant;
+    const updatedAssignedStudents = [...(consultantData.assignedStudents || []), studentId];
+
+    const query = `
+      UPDATE users
+      SET data = jsonb_set(data, '{assignedStudents}', $1), updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING *;
+    `;
+    const result = await this.pool.query(query, [JSON.stringify(updatedAssignedStudents), consultantId]);
+    const row = result.rows[0];
+    
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as IConsultant;
+  }
+
+  async removeStudentFromConsultant(consultantId: string, studentId: string): Promise<IConsultant> {
+    const currentUser = await this.getUserById(consultantId);
+    if (!currentUser || currentUser.role !== 'consultant') {
+      throw new Error('Consultant not found');
+    }
+
+    const consultantData = currentUser as IConsultant;
+    const updatedAssignedStudents = (consultantData.assignedStudents || []).filter(id => id !== studentId);
+
+    const query = `
+      UPDATE users
+      SET data = jsonb_set(data, '{assignedStudents}', $1), updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING *;
+    `;
+    const result = await this.pool.query(query, [JSON.stringify(updatedAssignedStudents), consultantId]);
+    const row = result.rows[0];
+    
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as IConsultant;
+  }
+
+  // Supervisor-specific methods
+  async addStudentToSupervisor(supervisorId: string, studentId: string): Promise<ISupervisor> {
+    const currentUser = await this.getUserById(supervisorId);
+    if (!currentUser || currentUser.role !== 'supervisor') {
+      throw new Error('Supervisor not found');
+    }
+
+    const supervisorData = currentUser as ISupervisor;
+    const updatedAssignedStudents = [...(supervisorData.assignedStudents || []), studentId];
+
+    const query = `
+      UPDATE users
+      SET data = jsonb_set(data, '{assignedStudents}', $1), updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING *;
+    `;
+    const result = await this.pool.query(query, [JSON.stringify(updatedAssignedStudents), supervisorId]);
+    const row = result.rows[0];
+    
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as ISupervisor;
+  }
+
+  async removeStudentFromSupervisor(supervisorId: string, studentId: string): Promise<ISupervisor> {
+    const currentUser = await this.getUserById(supervisorId);
+    if (!currentUser || currentUser.role !== 'supervisor') {
+      throw new Error('Supervisor not found');
+    }
+
+    const supervisorData = currentUser as ISupervisor;
+    const updatedAssignedStudents = (supervisorData.assignedStudents || []).filter(id => id !== studentId);
+
+    const query = `
+      UPDATE users
+      SET data = jsonb_set(data, '{assignedStudents}', $1), updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING *;
+    `;
+    const result = await this.pool.query(query, [JSON.stringify(updatedAssignedStudents), supervisorId]);
+    const row = result.rows[0];
+    
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as ISupervisor;
+  }
+
   // Reviewer-specific methods
   async addThesisToReviewer(reviewerId: string, thesisId: string): Promise<IReviewer> {
     const currentUser = await this.getUserById(reviewerId);
@@ -422,33 +622,26 @@ export class UserModel {
     } as IReviewer;
   }
 
-  async approveReviewer(reviewerId: string): Promise<IReviewer> {
-    const query = `
-      UPDATE users
-      SET data = jsonb_set(data, '{isApproved}', 'true'), updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1 AND data->>'role' = 'reviewer'
-      RETURNING *;
-    `;
-    const result = await this.pool.query(query, [reviewerId]);
-    const row = result.rows[0];
-    
-    return {
-      ...row.data,
-      id: row.id,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    } as IReviewer;
-  }
+  // Position update methods for roles with position field
+  async updateUserPosition(userId: string, position: string): Promise<IUser> {
+    const currentUser = await this.getUserById(userId);
+    if (!currentUser) {
+      throw new Error('User not found');
+    }
 
-  // Admin-specific method
-  async updateAdminPosition(adminId: string, position: string): Promise<IAdmin> {
+    // Check if the user role has a position field
+    const rolesWithPosition = ['consultant', 'supervisor', 'reviewer', 'head_of_department', 'dean', 'admin'];
+    if (!rolesWithPosition.includes(currentUser.role)) {
+      throw new Error(`User role ${currentUser.role} does not have a position field`);
+    }
+
     const query = `
       UPDATE users
       SET data = jsonb_set(data, '{position}', $1), updated_at = CURRENT_TIMESTAMP
-      WHERE id = $2 AND data->>'role' = 'admin'
+      WHERE id = $2
       RETURNING *;
     `;
-    const result = await this.pool.query(query, [JSON.stringify(position), adminId]);
+    const result = await this.pool.query(query, [JSON.stringify(position), userId]);
     const row = result.rows[0];
     
     return {
@@ -456,7 +649,7 @@ export class UserModel {
       id: row.id,
       createdAt: row.created_at,
       updatedAt: row.updated_at
-    } as IAdmin;
+    } as IUser;
   }
 
   // Delete user
@@ -548,6 +741,34 @@ export class UserModel {
     } as IStudent;
   }
 
+  async createConsultant(consultantData: Omit<IConsultant, 'id' | 'createdAt' | 'updatedAt' | 'role'>): Promise<IConsultant> {
+    const data: Omit<IConsultant, 'id' | 'createdAt' | 'updatedAt'> = {
+      ...consultantData,
+      role: 'consultant'
+    };
+    const result = await this.createUser(data);
+    return {
+      ...result.data,
+      id: result.id,
+      createdAt: result.created_at,
+      updatedAt: result.updated_at
+    } as IConsultant;
+  }
+
+  async createSupervisor(supervisorData: Omit<ISupervisor, 'id' | 'createdAt' | 'updatedAt' | 'role'>): Promise<ISupervisor> {
+    const data: Omit<ISupervisor, 'id' | 'createdAt' | 'updatedAt'> = {
+      ...supervisorData,
+      role: 'supervisor'
+    };
+    const result = await this.createUser(data);
+    return {
+      ...result.data,
+      id: result.id,
+      createdAt: result.created_at,
+      updatedAt: result.updated_at
+    } as ISupervisor;
+  }
+
   async createReviewer(reviewerData: Omit<IReviewer, 'id' | 'createdAt' | 'updatedAt' | 'role'>): Promise<IReviewer> {
     const data: Omit<IReviewer, 'id' | 'createdAt' | 'updatedAt'> = {
       ...reviewerData,
@@ -560,6 +781,34 @@ export class UserModel {
       createdAt: result.created_at,
       updatedAt: result.updated_at
     } as IReviewer;
+  }
+
+  async createHeadOfDepartment(hodData: Omit<IHeadOfDepartment, 'id' | 'createdAt' | 'updatedAt' | 'role'>): Promise<IHeadOfDepartment> {
+    const data: Omit<IHeadOfDepartment, 'id' | 'createdAt' | 'updatedAt'> = {
+      ...hodData,
+      role: 'head_of_department'
+    };
+    const result = await this.createUser(data);
+    return {
+      ...result.data,
+      id: result.id,
+      createdAt: result.created_at,
+      updatedAt: result.updated_at
+    } as IHeadOfDepartment;
+  }
+
+  async createDean(deanData: Omit<IDean, 'id' | 'createdAt' | 'updatedAt' | 'role'>): Promise<IDean> {
+    const data: Omit<IDean, 'id' | 'createdAt' | 'updatedAt'> = {
+      ...deanData,
+      role: 'dean'
+    };
+    const result = await this.createUser(data);
+    return {
+      ...result.data,
+      id: result.id,
+      createdAt: result.created_at,
+      updatedAt: result.updated_at
+    } as IDean;
   }
 
   async createAdmin(adminData: Omit<IAdmin, 'id' | 'createdAt' | 'updatedAt' | 'role'>): Promise<IAdmin> {
@@ -576,13 +825,85 @@ export class UserModel {
     } as IAdmin;
   }
 
+  // In UserModel - Add these methods
+
+// For consultants and supervisors
+async addThesisToConsultant(consultantId: string, thesisId: string): Promise<IConsultant> {
+  const currentUser = await this.getUserById(consultantId);
+  if (!currentUser || currentUser.role !== 'consultant') {
+    throw new Error('Consultant not found');
+  }
+
+  const consultantData = currentUser as IConsultant;
+  const updatedAssignedTheses = [...new Set([...(consultantData.assignedTheses || []), thesisId])];
+
+  const query = `
+    UPDATE users
+    SET data = jsonb_set(data, '{assignedTheses}', $1), updated_at = CURRENT_TIMESTAMP
+    WHERE id = $2
+    RETURNING *;
+  `;
+  const result = await this.pool.query(query, [JSON.stringify(updatedAssignedTheses), consultantId]);
+  const row = result.rows[0];
+  
+  return {
+    ...row.data,
+    id: row.id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  } as IConsultant;
+}
+
+// Similar method for supervisor...
+async addThesisToSupervisor(supervisorId: string, thesisId: string): Promise<ISupervisor> {
+  const currentUser = await this.getUserById(supervisorId);
+  if (!currentUser || currentUser.role !== 'supervisor') {
+    throw new Error('Supervisor not found');
+  }
+
+  const supervisorData = currentUser as ISupervisor;
+  const updatedAssignedTheses = [...new Set([...(supervisorData.assignedTheses || []), thesisId])];
+
+  const query = `
+    UPDATE users
+    SET data = jsonb_set(data, '{assignedTheses}', $1), updated_at = CURRENT_TIMESTAMP
+    WHERE id = $2
+    RETURNING *;
+  `;
+  const result = await this.pool.query(query, [JSON.stringify(updatedAssignedTheses), supervisorId]);
+  const row = result.rows[0];
+  
+  return {
+    ...row.data,
+    id: row.id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  } as ISupervisor;
+}
+
   // Type guards for runtime type checking
   isStudent(user: IUser): user is IStudent {
     return user.role === 'student';
   }
 
+  isConsultant(user: IUser): user is IConsultant {
+    return user.role === 'consultant';
+  }
+
+  isSupervisor(user: IUser): user is ISupervisor {
+    return user.role === 'supervisor';
+  }
+
   isReviewer(user: IUser): user is IReviewer {
     return user.role === 'reviewer';
+  }
+
+  isHeadOfDepartment(user: IUser): user is IHeadOfDepartment {
+    return user.role === 'head_of_department';
+  }
+
+  isDean(user: IUser): user is IDean {
+    return user.role === 'dean';
   }
 
   isAdmin(user: IUser): user is IAdmin {
@@ -602,6 +923,28 @@ export const Student = {
   )
 };
 
+export const Consultant = {
+  create: (userModel: UserModel, consultantData: Omit<IConsultant, 'id' | 'createdAt' | 'updatedAt' | 'role'>) => 
+    userModel.createConsultant(consultantData),
+  
+  find: (userModel: UserModel) => userModel.getConsultants(),
+  
+  findById: (userModel: UserModel, id: string) => userModel.getUserById(id).then(user => 
+    user && user.role === 'consultant' ? user as IConsultant : null
+  )
+};
+
+export const Supervisor = {
+  create: (userModel: UserModel, supervisorData: Omit<ISupervisor, 'id' | 'createdAt' | 'updatedAt' | 'role'>) => 
+    userModel.createSupervisor(supervisorData),
+  
+  find: (userModel: UserModel) => userModel.getSupervisors(),
+  
+  findById: (userModel: UserModel, id: string) => userModel.getUserById(id).then(user => 
+    user && user.role === 'supervisor' ? user as ISupervisor : null
+  )
+};
+
 export const Reviewer = {
   create: (userModel: UserModel, reviewerData: Omit<IReviewer, 'id' | 'createdAt' | 'updatedAt' | 'role'>) => 
     userModel.createReviewer(reviewerData),
@@ -610,11 +953,30 @@ export const Reviewer = {
   
   findById: (userModel: UserModel, id: string) => userModel.getUserById(id).then(user => 
     user && user.role === 'reviewer' ? user as IReviewer : null
-  ),
+  )
+  // Removed findApproved and findUnapproved methods
+};
+
+export const HeadOfDepartment = {
+  create: (userModel: UserModel, hodData: Omit<IHeadOfDepartment, 'id' | 'createdAt' | 'updatedAt' | 'role'>) => 
+    userModel.createHeadOfDepartment(hodData),
   
-  findApproved: (userModel: UserModel) => userModel.getApprovedReviewers(),
+  find: (userModel: UserModel) => userModel.getHeadsOfDepartment(),
   
-  findUnapproved: (userModel: UserModel) => userModel.getUnapprovedReviewers()
+  findById: (userModel: UserModel, id: string) => userModel.getUserById(id).then(user => 
+    user && user.role === 'head_of_department' ? user as IHeadOfDepartment : null
+  )
+};
+
+export const Dean = {
+  create: (userModel: UserModel, deanData: Omit<IDean, 'id' | 'createdAt' | 'updatedAt' | 'role'>) => 
+    userModel.createDean(deanData),
+  
+  find: (userModel: UserModel) => userModel.getDeans(),
+  
+  findById: (userModel: UserModel, id: string) => userModel.getUserById(id).then(user => 
+    user && user.role === 'dean' ? user as IDean : null
+  )
 };
 
 export const Admin = {

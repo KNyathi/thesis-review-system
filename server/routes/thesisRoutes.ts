@@ -4,15 +4,16 @@ import {
   getStudentThesis,
   downloadThesis,
   viewThesis,
-  downloadSignedReview
+  downloadSignedReview,
+  submitTopic
 } from "../controllers/thesisController"
-import { authenticate } from "../middleware/auth"
-import { isStudent, isReviewer, isAdmin } from "../middleware/roles"
+import { authenticate, isAdmin, isReviewer, isStudent } from "../middleware/auth"
 import upload from "../utils/multer"
 
 const thesisRouter = express.Router()
 
 //Student Routes
+thesisRouter.post("/submit-topic", authenticate, isStudent, submitTopic)
 thesisRouter.post("/submit-thesis", authenticate, isStudent, upload.single("thesisFile"), submitThesis)
 thesisRouter.get("/my-thesis", authenticate, isStudent, getStudentThesis)
 

@@ -97,22 +97,6 @@ export const deleteUser = async (req: Request, res: Response) => {
   }
 };
 
-export const approveReviewer = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    // Use the UserModel to update the reviewer
-    const updatedReviewer = await userModel.approveReviewer(id);
-
-    res.json({
-      message: "Reviewer approved successfully",
-      reviewer: updatedReviewer
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to approve reviewer" });
-  }
-};
 
 export const rejectReviewer = async (req: Request, res: Response) => {
   try {
@@ -156,11 +140,7 @@ export const assignThesis = async (req: Request, res: Response) => {
     }
 
     const reviewerData = reviewer as IReviewer;
-    if (!reviewerData.isApproved) {
-      res.status(400).json({ error: "Reviewer is not approved" });
-      return;
-    }
-
+  
     // Update thesis with reviewer
     await thesisModel.assignReviewer(thesisId, reviewerId);
 
@@ -219,37 +199,7 @@ export const reassignThesis = async (req: Request, res: Response) => {
   }
 };
 
-// Additional helper methods you might need
-export const getPendingReviewers = async (req: Request, res: Response) => {
-  try {
-    const reviewers = await userModel.getReviewers();
-    const pendingReviewers = reviewers.filter(reviewer => !reviewer.isApproved);
-    res.json(pendingReviewers);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to fetch pending reviewers" });
-  }
-};
 
-export const getApprovedReviewers = async (req: Request, res: Response) => {
-  try {
-    const approvedReviewers = await userModel.getApprovedReviewers();
-    res.json(approvedReviewers);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to fetch approved reviewers" });
-  }
-};
-
-export const getUnapprovedReviewers = async (req: Request, res: Response) => {
-  try {
-    const unapprovedReviewers = await userModel.getUnapprovedReviewers();
-    res.json(unapprovedReviewers);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to fetch unapproved reviewers" });
-  }
-};
 
 export const getStudentsWithoutReviewers = async (req: Request, res: Response) => {
   try {

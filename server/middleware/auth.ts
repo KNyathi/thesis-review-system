@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { UserModel, IUser, IReviewer } from "../models/User.model";
 import { Pool } from 'pg';
+import { ROLES, ROLE_HIERARCHY, ROLE_GROUPS, UserRole } from './roles';
 
 const pool = new Pool({
   connectionString: process.env.DB_URL
@@ -72,99 +73,11 @@ export const requireReviewer = (req: Request, res: Response, next: NextFunction)
   }
 
   const reviewer = user as IReviewer;
-  if (!reviewer.isApproved) {
-    res.status(403).json({
-      error: "Reviewer account pending admin approval",
-    });
-    return;
-  }
 
   next();
 };
 
-/**
- * 3. Reviewer Middleware (without approval check)
- * - Only checks if user is a reviewer, regardless of approval status
- */
-export const isReviewer = (req: Request, res: Response, next: NextFunction) => {
-  const user = req.user;
 
-  if (!user) {
-    res.status(401).json({ error: "User not authenticated" });
-    return;
-  }
-
-  if (user.role !== "reviewer") {
-    res.status(403).json({ error: "Access denied. Reviewers only." });
-    return;
-  }
-
-  next();
-};
-
-/**
- * 4. Admin Middleware
- */
-export const isAdmin = (req: Request, res: Response, next: NextFunction) => {
-  const user = req.user;
-
-  if (!user) {
-    res.status(401).json({ error: 'User not authenticated' });
-    return;
-  }
-
-  if (user.role !== 'admin') {
-    res.status(403).json({ error: 'Access denied. Admins only.' });
-    return;
-  }
-
-  next();
-};
-
-/**
- * 5. Student Middleware
- */
-export const isStudent = (req: Request, res: Response, next: NextFunction) => {
-  const user = req.user;
-
-  if (!user) {
-    res.status(401).json({ error: 'User not authenticated' });
-    return;
-  }
-
-  if (user.role !== 'student') {
-    res.status(403).json({ error: 'Access denied. Students only.' });
-    return;
-  }
-
-  next();
-};
-
-/**
- * 6. Role-based access control middleware
- * - Allows multiple roles to access a route
- */
-export const requireRoles = (allowedRoles: string[]) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const user = req.user;
-
-    if (!user) {
-      res.status(401).json({ error: 'User not authenticated' });
-      return;
-    }
-
-    if (!allowedRoles.includes(user.role)) {
-      res.status(403).json({ 
-        error: 'Access denied. Insufficient permissions.',
-        requiredRoles: allowedRoles,
-        userRole: user.role
-      });
-      return;
-    }
-
-    next();
-  };
-};
 
 /**
  * 7. Optional authentication middleware
@@ -269,12 +182,76 @@ export const requireApprovedReviewer = (req: Request, res: Response, next: NextF
   }
 
   const reviewer = user as IReviewer;
-  if (!reviewer.isApproved) {
-    res.status(403).json({
-      error: "Reviewer must be approved by admin to perform this action",
-    });
-    return;
-  }
+
 
   next();
 };
+
+
+
+// Generic role checker
+export const requireRole = (allowedRoles: UserRole | UserRole[]) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    const userRole = req.user.role as UserRole;
+    const rolesArray = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
+    
+    if (!rolesArray.includes(userRole)) {
+      res.status(403).json({ 
+        error: 'Insufficient permissions',
+        required: rolesArray,
+        current: userRole
+      });
+      return;
+    }
+    
+    next();
+  };
+};
+
+// Hierarchical role check (user must have at least the specified role level)
+export const requireMinRole = (minRole: UserRole) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    const userRole = req.user.role as UserRole;
+    const allowedRoles = ROLE_HIERARCHY[minRole];
+    
+    if (!allowedRoles.includes(userRole)) {
+      res.status(403).json({ 
+        error: 'Insufficient permissions',
+        minimumRequired: minRole,
+        current: userRole,
+        allowedRoles
+      });
+      return;
+    }
+    
+    next();
+  };
+};
+
+// Specific role middleware
+export const isStudent = requireRole(ROLES.STUDENT);
+export const isConsultant = requireRole(ROLES.CONSULTANT);
+export const isSupervisor = requireRole(ROLES.SUPERVISOR);
+export const isReviewer = requireRole(ROLES.REVIEWER);
+export const isHeadOfDepartment = requireRole(ROLES.HEAD_OF_DEPARTMENT);
+export const isDean = requireRole(ROLES.DEAN);
+export const isAdmin = requireRole(ROLES.ADMIN);
+
+// Role group middleware
+export const isFaculty = requireRole(ROLE_GROUPS.FACULTY);
+export const isManagement = requireRole(ROLE_GROUPS.MANAGEMENT);
+export const isAcademicStaff = requireRole(ROLE_GROUPS.ACADEMIC_STAFF);
+export const isStaff = requireRole(ROLE_GROUPS.ALL_STAFF);
+
+// Multiple specific roles
+export const requireRoles = (roles: UserRole[]) => requireRole(roles);

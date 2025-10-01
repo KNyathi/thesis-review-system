@@ -21,6 +21,12 @@ api.interceptors.request.use((config) => {
 
 // Real API calls
 const realThesisAPI = {
+
+  submitTopic: async (thesisTopic) => {
+    const response = await api.post(`/submit-topic`, { thesisTopic })
+    return response.data
+  },
+
   // Student endpoints
   submitThesis: async (formData) => {
     const response = await api.post("/submit-thesis", formData, {
@@ -131,18 +137,13 @@ const realThesisAPI = {
     return response.data
   },
 
-  getPendingReviewers: async () => {
-    const response = await api.get("/users")
-    const users = response.data
-    return users.filter((user) => user.role === "reviewer" && !user.isApproved)
-  },
-
   getApprovedReviewers: async () => {
     const response = await api.get("/users")
     const users = response.data
-    return users.filter((user) => user.role === "reviewer" && user.isApproved)
+    return users.filter((user) => user.role === "reviewer" )
   },
 
+  
   assignReviewer: async (studentId, reviewerId) => {
     const response = await api.post("/assign-thesis", {
       studentId: studentId,
@@ -173,6 +174,12 @@ const realThesisAPI = {
   deleteUser: async (userId) => {
     const response = await api.delete(`/users/${userId}`)
     return response.data
+  },
+
+  // Team assignment endpoints
+  assignThesisTeam: async (assignmentData) => {
+    const response = await api.post("/assign-thesis-team", assignmentData);
+    return response.data;
   },
 }
 

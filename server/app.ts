@@ -10,6 +10,7 @@ import thesisRouter from "./routes/thesisRoutes";
 import authRouter from "./routes/authRoutes";
 import adminRouter from "./routes/adminRoutes";
 import path from 'path';
+import assignRouter from "./routes/assignRoutes";
 
 
 //Body parser
@@ -27,6 +28,8 @@ app.use(
   cors({
     origin: allowedOrigins,
     credentials: true, 
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
   })
 );
 
@@ -39,6 +42,7 @@ app.use(
     authRouter,
     adminRouter,
     authRouter,
+    assignRouter
 );
 
 

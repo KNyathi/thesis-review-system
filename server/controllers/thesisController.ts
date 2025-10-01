@@ -19,6 +19,51 @@ interface AuthenticatedUser {
   email: string;
 }
 
+// Submit thesis topic
+export const submitTopic = async (req: Request, res: Response) => {
+  try {
+    // Check if user is attached to the request and has the necessary properties
+    if (!req.user) {
+      res.status(401).json({ error: "User not authenticated" })
+      return
+    }
+
+    const studentId = (req.user as AuthenticatedUser).id
+    const { thesisTopic } = req.body
+
+    // Validate request body
+    if (!thesisTopic || typeof thesisTopic !== 'string' || thesisTopic.trim() === '') {
+      res.status(400).json({ error: "Thesis topic is required and must be a non-empty string" })
+      return
+    }
+
+    // Fetch the full student document from the database
+    const student = await userModel.getUserById(studentId)
+    if (!student || student.role !== 'student') {
+      res.status(404).json({ error: "Student not found" })
+      return
+    }
+
+    // Update the student's thesis topic - isTopicApproved remains false by default
+    const updatedStudent = await userModel.updateUser(studentId, {
+      thesisTopic: thesisTopic.trim()
+    } as Partial<Omit<IUser, 'id' | 'createdAt' | 'updatedAt'>>)
+
+    //NOTIFY SUPERVISOR THAT TOPIC HAS BEEN SENT (TO BE DONE)
+    res.status(200).json({
+      message: "Thesis topic submitted successfully",
+      student: {
+        id: updatedStudent.id,
+        thesisTopic: (updatedStudent as IStudent).thesisTopic,
+        isTopicApproved: (updatedStudent as IStudent).isTopicApproved
+      }
+    })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: "Thesis topic submission failed" })
+  }
+}
+
 // Submit Thesis with File Upload
 export const submitThesis = async (req: Request, res: Response) => {
   try {
@@ -65,11 +110,30 @@ export const submitThesis = async (req: Request, res: Response) => {
       fileUrl: `/uploads/theses/${req.file.filename}`,
       submissionDate: new Date(),
       status: "submitted" as const,
-      assignedReviewer: undefined,
+      assignedReviewer: '',
+      assignedSupervisor: '',
+      assignedConsultant: '',
       finalGrade: undefined,
       assessment: undefined,
+      reviewIterations: [], // Initialize empty array for review iterations
+      currentIteration: 0,  // Start at iteration 0 (no reviews yet)
+      totalReviewCount: 0,  // No reviews yet
+      reviewPdf: undefined,
+      signedReviewPath: undefined,
+      signedDate: undefined
     }
 
+    // Add team assignments if they exist
+    if (studentData.supervisor) {
+      thesisData.assignedSupervisor = studentData.supervisor;
+    }
+    if (studentData.consultant) {
+      thesisData.assignedConsultant = studentData.consultant;
+    }
+    if (studentData.reviewer) {
+      thesisData.assignedReviewer = studentData.reviewer;
+    }
+    
     const thesis = await thesisModel.createThesis(thesisData)
 
     // Update student's thesis status and info
@@ -262,11 +326,11 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
     // Check if review exists and is signed
     if (thesis.data.status !== "evaluated" || !thesis.data.reviewPdf) {
       res.status(404).json({ error: "Signed review not available" });
-      return 
+      return
     }
 
     // Check permissions - student can only download their own signed review
-    const isAllowed = 
+    const isAllowed =
       user.role === "admin" ||
       (user.role === "student" && thesis.data.student === user.id) ||
       (user.role === "reviewer" && thesis.data.assignedReviewer === user.id)
@@ -346,7 +410,7 @@ export const deleteThesis = async (req: Request, res: Response) => {
     const student = req.user as AuthenticatedUser & IStudent
 
     const theses = await thesisModel.getThesesByStudent(student.id)
-    
+
     for (const thesis of theses) {
       // Remove from reviewer's assigned theses if assigned
       if (thesis.data.assignedReviewer) {
@@ -355,13 +419,13 @@ export const deleteThesis = async (req: Request, res: Response) => {
           await userModel.removeThesisFromReviewer(reviewer.id, thesis.id)
         }
       }
-      
+
       // Delete the thesis file
       const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl))
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath)
       }
-      
+
       // Delete the thesis record
       await thesisModel.deleteThesis(thesis.id)
     }

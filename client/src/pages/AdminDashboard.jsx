@@ -15,6 +15,9 @@ import {
   FiAlertTriangle,
   FiMoreHorizontal,
   FiRefreshCw,
+  FiBook,
+  FiAward,
+  FiHelpCircle,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
@@ -29,6 +32,8 @@ const AdminDashboard = () => {
   const [theses, setTheses] = useState([])
   const [pendingReviewers, setPendingReviewers] = useState([])
   const [approvedReviewers, setApprovedReviewers] = useState([])
+  const [supervisors, setSupervisors] = useState([])
+  const [consultants, setConsultants] = useState([])
   const [filteredStudents, setFilteredStudents] = useState([])
   const [filteredUsers, setFilteredUsers] = useState([])
   const [activeTab, setActiveTab] = useState("students")
@@ -40,8 +45,13 @@ const AdminDashboard = () => {
   const [deletingUser, setDeletingUser] = useState(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showReassignModal, setShowReassignModal] = useState(false)
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false)
   const [userToDelete, setUserToDelete] = useState(null)
   const [reassignData, setReassignData] = useState(null)
+  const [assignmentData, setAssignmentData] = useState(null)
+  const [selectedSupervisor, setSelectedSupervisor] = useState("")
+  const [selectedConsultant, setSelectedConsultant] = useState("")
+  const [selectedReviewer, setSelectedReviewer] = useState("")
   const [openDropdown, setOpenDropdown] = useState(null)
   const { toast, showToast, hideToast } = useToast()
 
@@ -68,29 +78,31 @@ const AdminDashboard = () => {
         ])
       }
 
-      const [allUsersResult, allThesesResult, pendingResult, approvedResult] = await Promise.allSettled([
+      const [allUsersResult, allThesesResult] = await Promise.allSettled([
         fetchWithTimeout(thesisAPI.getAllUsers()),
         fetchWithTimeout(thesisAPI.getAllTheses()),
-        fetchWithTimeout(thesisAPI.getPendingReviewers()),
-        fetchWithTimeout(thesisAPI.getApprovedReviewers()),
       ])
 
       // Extract values from settled promises with fallbacks
       const users = allUsersResult.status === "fulfilled" && allUsersResult.value ? allUsersResult.value : []
       const thesesData = allThesesResult.status === "fulfilled" && allThesesResult.value ? allThesesResult.value : []
-      const pending = pendingResult.status === "fulfilled" && pendingResult.value ? pendingResult.value : []
-      const approved = approvedResult.status === "fulfilled" && approvedResult.value ? approvedResult.value : []
 
-      // Filter students from all users with additional safety check
+      // Filter users by role using existing data
       const studentUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "student") : []
+      const reviewerUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "reviewer") : []
+      const supervisorUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "supervisor") : []
+      const consultantUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "consultant") : []
+      
       setStudents(studentUsers)
       setAllUsers(users)
       setTheses(thesesData)
-      setPendingReviewers(pending)
-      setApprovedReviewers(approved)
+      setPendingReviewers(reviewerUsers.filter(reviewer => !reviewer.isApproved))
+      setApprovedReviewers(reviewerUsers.filter(reviewer => reviewer.isApproved))
+      setSupervisors(supervisorUsers)
+      setConsultants(consultantUsers)
 
       // Check if any requests failed
-      const failedRequests = [allUsersResult, allThesesResult, pendingResult, approvedResult].filter(
+      const failedRequests = [allUsersResult, allThesesResult].filter(
         (result) => result.status === "rejected",
       )
 
@@ -155,6 +167,10 @@ const AdminDashboard = () => {
       filtered = filtered.filter((user) => user.role === "reviewer")
     } else if (userFilterOption === "admins") {
       filtered = filtered.filter((user) => user.role === "admin")
+    } else if (userFilterOption === "supervisors") {
+      filtered = filtered.filter((user) => user.role === "supervisor")
+    } else if (userFilterOption === "consultants") {
+      filtered = filtered.filter((user) => user.role === "consultant")
     }
 
     setFilteredUsers(filtered)
@@ -163,6 +179,37 @@ const AdminDashboard = () => {
   const handleLogout = () => {
     logout()
     navigate("/login", { replace: true })
+  }
+
+  const handleAssignTeam = async (studentId) => {
+    if (!selectedSupervisor && !selectedConsultant && !selectedReviewer) {
+      showToast("Please select at least one team member to assign", "error")
+      return
+    }
+
+    try {
+      setAssigningStudent(studentId)
+      await thesisAPI.assignThesisTeam({
+        studentId,
+        supervisorId: selectedSupervisor || undefined,
+        consultantId: selectedConsultant || undefined,
+        reviewerId: selectedReviewer || undefined
+      })
+      
+      showToast("Team assigned successfully!", "success")
+      // Refresh data after successful assignment
+      fetchedRef.current = false
+      await fetchData()
+      setShowAssignmentModal(false)
+      setSelectedSupervisor("")
+      setSelectedConsultant("")
+      setSelectedReviewer("")
+      setAssignmentData(null)
+    } catch (error) {
+      showToast("Failed to assign team", "error")
+    } finally {
+      setAssigningStudent(null)
+    }
   }
 
   const handleAssignReviewer = async (studentId, reviewerId) => {
@@ -194,7 +241,10 @@ const AdminDashboard = () => {
       // Direct assignment
       try {
         setAssigningStudent(studentId)
-        await thesisAPI.assignReviewer(studentId, reviewerId)
+        await thesisAPI.assignThesisTeam({
+          studentId,
+          reviewerId
+        })
         showToast("Reviewer assigned successfully!", "success")
         // Refresh data after successful assignment
         fetchedRef.current = false
@@ -212,7 +262,10 @@ const AdminDashboard = () => {
 
     try {
       setAssigningStudent(reassignData.studentId)
-      await thesisAPI.reassignReviewer(reassignData.thesisId, reassignData.oldReviewerId, reassignData.newReviewerId)
+      await thesisAPI.assignThesisTeam({
+        studentId: reassignData.studentId,
+        reviewerId: reassignData.newReviewerId
+      })
 
       showToast(
         `Reviewer successfully changed from ${reassignData.currentReviewerName} to ${reassignData.newReviewerName}!`,
@@ -285,6 +338,15 @@ const AdminDashboard = () => {
     setOpenDropdown(null)
   }
 
+  const openAssignmentModal = (student) => {
+    setAssignmentData(student)
+    setSelectedSupervisor(student.supervisor || "")
+    setSelectedConsultant(student.consultant || "")
+    setSelectedReviewer(student.reviewer || "")
+    setShowAssignmentModal(true)
+    setOpenDropdown(null)
+  }
+
   const toggleDropdown = (userId) => {
     setOpenDropdown(openDropdown === userId ? null : userId)
   }
@@ -333,6 +395,10 @@ const AdminDashboard = () => {
         return "from-green-500 to-teal-600"
       case "admin":
         return "from-purple-500 to-pink-600"
+      case "supervisor":
+        return "from-orange-500 to-red-600"
+      case "consultant":
+        return "from-indigo-500 to-purple-600"
       default:
         return "from-gray-500 to-gray-600"
     }
@@ -489,11 +555,13 @@ const AdminDashboard = () => {
                 {filteredStudents.length > 0 ? (
                   filteredStudents.map((student) => {
                     const reviewer = approvedReviewers.find((reviewer) => reviewer.id === student.reviewer)
+                    const supervisor = supervisors.find((sup) => sup.id === student.supervisor)
+                    const consultant = consultants.find((cons) => cons.id === student.consultant)
                     const thesis = theses?.find((thes) => thes.student === student.id)
 
                     return (
                       <div
-                        key={student._id}
+                        key={student.id}
                         className="bg-gray-900 rounded-lg p-6 border border-gray-800 hover:border-gray-700 transition-colors"
                       >
                         <div className="flex items-start justify-between">
@@ -539,15 +607,38 @@ const AdminDashboard = () => {
                                   </span>
                                 </div>
                               </div>
-                              {student.reviewer && (
-                                <div className="mt-3 p-3 bg-gray-800 rounded-lg">
-                                  <p className="text-gray-400 text-xs">Assigned Reviewer</p>
-                                  <p className="text-white font-medium">{reviewer?.fullName}</p>
-                                </div>
-                              )}
+
+                              {/* Team Members Display */}
+                              <div className="mt-3 space-y-2">
+                                {student.supervisor && (
+                                  <div className="p-2 bg-orange-900/20 border border-orange-800 rounded-lg">
+                                    <p className="text-orange-400 text-xs">Supervisor</p>
+                                    <p className="text-white font-medium">{supervisor?.fullName}</p>
+                                  </div>
+                                )}
+                                {student.consultant && (
+                                  <div className="p-2 bg-indigo-900/20 border border-indigo-800 rounded-lg">
+                                    <p className="text-indigo-400 text-xs">Consultant</p>
+                                    <p className="text-white font-medium">{consultant?.fullName}</p>
+                                  </div>
+                                )}
+                                {student.reviewer && (
+                                  <div className="p-2 bg-green-900/20 border border-green-800 rounded-lg">
+                                    <p className="text-green-400 text-xs">Reviewer</p>
+                                    <p className="text-white font-medium">{reviewer?.fullName}</p>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => openAssignmentModal(student)}
+                              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                            >
+                              <FiUser className="w-4 h-4" />
+                              Assign Team
+                            </button>
                             {student.thesisFile && (
                               <div className="relative">
                                 <select
@@ -614,7 +705,7 @@ const AdminDashboard = () => {
               {pendingReviewers.length > 0 ? (
                 pendingReviewers.map((reviewer) => (
                   <div
-                    key={reviewer._id}
+                    key={reviewer.id}
                     className="bg-gray-900 rounded-lg p-6 border border-gray-800 hover:border-gray-700 transition-colors"
                   >
                     <div className="flex items-start justify-between">
@@ -712,6 +803,8 @@ const AdminDashboard = () => {
                     <option value="students">Students</option>
                     <option value="reviewers">Reviewers</option>
                     <option value="admins">Admins</option>
+                    <option value="supervisors">Supervisors</option>
+                    <option value="consultants">Consultants</option>
                   </select>
                 </div>
               </div>
@@ -947,6 +1040,151 @@ const AdminDashboard = () => {
                 <>
                   <FiRefreshCw className="w-5 h-5" />
                   Reassign Reviewer
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Assign Team Modal */}
+      <Modal
+        isOpen={showAssignmentModal}
+        onClose={() => {
+          setShowAssignmentModal(false)
+          setAssignmentData(null)
+          setSelectedSupervisor("")
+          setSelectedConsultant("")
+          setSelectedReviewer("")
+        }}
+        title="Assign Thesis Team"
+        size="medium"
+      >
+        <div className="p-6">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
+              <FiUsers className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">Assign Team Members</h3>
+              <p className="text-gray-400">Select supervisor, consultant, and reviewer for this student</p>
+            </div>
+          </div>
+
+          {assignmentData && (
+            <div className="bg-gray-800 rounded-lg p-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                  <span className="text-white font-semibold text-sm">
+                    {assignmentData.fullName
+                      .split(" ")
+                      .map((name) => name[0])
+                      .join("")
+                      .toUpperCase()
+                      .slice(0, 2)}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-white font-medium">{assignmentData.fullName}</p>
+                  <p className="text-gray-400 text-sm">{assignmentData.email}</p>
+                  <p className="text-gray-400 text-sm">{assignmentData.thesisTopic || "No thesis topic"}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {/* Supervisor Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                <div className="flex items-center gap-2">
+                  <FiBook className="w-4 h-4 text-orange-400" />
+                  <span>Supervisor</span>
+                </div>
+              </label>
+              <select
+                value={selectedSupervisor}
+                onChange={(e) => setSelectedSupervisor(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent transition-all"
+              >
+                <option value="">Select Supervisor</option>
+                {supervisors.map((supervisor) => (
+                  <option key={supervisor.id} value={supervisor.id}>
+                    {supervisor.fullName} - {supervisor.institution}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Consultant Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                <div className="flex items-center gap-2">
+                  <FiHelpCircle className="w-4 h-4 text-indigo-400" />
+                  <span>Consultant</span>
+                </div>
+              </label>
+              <select
+                value={selectedConsultant}
+                onChange={(e) => setSelectedConsultant(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent transition-all"
+              >
+                <option value="">Select Consultant</option>
+                {consultants.map((consultant) => (
+                  <option key={consultant.id} value={consultant.id}>
+                    {consultant.fullName} - {consultant.institution}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Reviewer Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                <div className="flex items-center gap-2">
+                  <FiAward className="w-4 h-4 text-green-400" />
+                  <span>Reviewer</span>
+                </div>
+              </label>
+              <select
+                value={selectedReviewer}
+                onChange={(e) => setSelectedReviewer(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent transition-all"
+              >
+                <option value="">Select Reviewer</option>
+                {approvedReviewers.map((reviewer) => (
+                  <option key={reviewer.id} value={reviewer.id}>
+                    {reviewer.fullName} - {reviewer.institution}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={() => {
+                setShowAssignmentModal(false)
+                setAssignmentData(null)
+                setSelectedSupervisor("")
+                setSelectedConsultant("")
+                setSelectedReviewer("")
+              }}
+              className="flex-1 bg-gray-700 text-white font-medium py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => handleAssignTeam(assignmentData?.id)}
+              disabled={assigningStudent || (!selectedSupervisor && !selectedConsultant && !selectedReviewer)}
+              className="flex-1 bg-blue-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {assigningStudent ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <FiUser className="w-5 h-5" />
+                  Assign Team
                 </>
               )}
             </button>
