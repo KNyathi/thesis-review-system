@@ -21,8 +21,9 @@ export async function generateReviewPDF(
   thesis: IThesis,
   reviewer: IReviewer
 ): Promise<string> {
+
   // Ensure reviews directory exists
-  const reviewsDir = path.join(__dirname, "../reviews/unsigned");
+  const reviewsDir = path.join(__dirname, "../reviews/reviewer/unsigned");
   if (!fs.existsSync(reviewsDir)) {
     fs.mkdirSync(reviewsDir, { recursive: true });
   }
@@ -271,9 +272,7 @@ export async function generateReviewPDF(
   drawMixedText(
     page,
     "Рецензент / Reviewer: ",
-    `${reviewer.fullName}, ${reviewer.institution}, ${reviewer.positions.join(
-      ", "
-    )}`,
+    `${reviewer.fullName}, ${reviewer.institution}, ${reviewer.position}`,
     50,
     startY - 7 * lineHeight, // Extra space before reviewer section
     10
@@ -966,7 +965,7 @@ const drawMixedFontLine = (
 
   // Save PDF to file
   const pdfBytes = await pdfDoc.save();
-  const outputPath = path.join(reviewsDir, `unsigned_review_${thesis.id}.pdf`);
+  const outputPath = path.join(reviewsDir, `unsigned_review_${thesis.student}.pdf`);
   fs.writeFileSync(outputPath, pdfBytes);
 
   return outputPath;

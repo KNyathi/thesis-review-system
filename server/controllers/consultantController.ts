@@ -55,6 +55,19 @@ export const submitReview = async (req: Request, res: Response) => {
             // Update consultant stats
             await thesisModel.updateConsultantStats(consultant.id, thesisId, false);
 
+            // Update student with consultant feedback
+            await userModel.updateStudentThesisFeedback(
+                thesis.data.student,
+                {
+                    comments: comments,
+                    lastReviewDate: new Date(),
+                    reviewIteration: thesis.data.currentIteration,
+                    status: 'revisions_requested'
+                },
+                thesis.data.currentIteration
+            );
+
+
              res.json({
                 message: "Revisions requested successfully",
                 redirectToSign: false,
@@ -79,7 +92,7 @@ export const submitReview = async (req: Request, res: Response) => {
             // Submit the consultant review with final approval
             updatedThesis = await thesisModel.submitConsultantReview(
                 thesisId,
-                comments || "Thesis approved by consultant",
+                 "Thesis approved by consultant",
                 'approved',
                 true
             );
@@ -96,6 +109,18 @@ export const submitReview = async (req: Request, res: Response) => {
                 reviewPdf: pdfPath,
                 status: updatedThesis.data.assignedSupervisor ? "with_supervisor" : "under_review"
             });
+
+            // Update student with consultant feedback and approval
+            await userModel.updateStudentThesisFeedback(
+                thesis.data.student,
+                {
+                    comments:  "Thesis approved by consultant",
+                    lastReviewDate: new Date(),
+                    reviewIteration: thesis.data.currentIteration,
+                    status: 'approved'
+                },
+                thesis.data.currentIteration
+            );
 
             // Update consultant stats and tracking
             await thesisModel.updateConsultantStats(consultant.id, thesisId, true);

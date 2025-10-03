@@ -89,9 +89,17 @@ export const submitThesis = async (req: Request, res: Response) => {
 
     const studentData = student as IStudent
 
-    // Check for existing thesis and delete if exists
+    // Check for existing thesis to determine if this is a resubmission
     const existingTheses = await thesisModel.getThesesByStudent(studentId)
-    for (const existingThesis of existingTheses) {
+    const isResubmission = existingTheses.length > 0
+    
+    let currentIteration = 1; // Default for first submission
+
+    if (isResubmission) {
+      // This is a resubmission - increment iteration
+      const existingThesis = existingTheses[0]
+      currentIteration = existingThesis.data.currentIteration + 1
+      
       // Remove the thesis from the reviewer's assignedTheses if it was assigned
       if (existingThesis.data.assignedReviewer) {
         const reviewer = await userModel.getUserById(existingThesis.data.assignedReviewer)
@@ -99,11 +107,11 @@ export const submitThesis = async (req: Request, res: Response) => {
           await userModel.removeThesisFromReviewer(reviewer.id, existingThesis.id)
         }
       }
-      // Delete the thesis
+      // Delete the old thesis
       await thesisModel.deleteThesis(existingThesis.id)
     }
 
-    // Create new thesis
+    // Create new thesis (or replacement thesis for resubmission)
     const thesisData = {
       title: req.body.title,
       student: studentId,
@@ -115,9 +123,9 @@ export const submitThesis = async (req: Request, res: Response) => {
       assignedConsultant: '',
       finalGrade: undefined,
       assessment: undefined,
-      reviewIterations: [], // Initialize empty array for review iterations
-      currentIteration: 0,  // Start at iteration 0 (no reviews yet)
-      totalReviewCount: 0,  // No reviews yet
+      reviewIterations: [], // Start with empty review iterations for new submission
+      currentIteration: currentIteration, // Use calculated iteration
+      totalReviewCount: 0,  // Reset review count for new submission
       reviewPdf: undefined,
       signedReviewPath: undefined,
       signedDate: undefined
@@ -138,16 +146,27 @@ export const submitThesis = async (req: Request, res: Response) => {
 
     // Update student's thesis status and info
     await userModel.updateStudentThesisStatus(studentId, "submitted")
-    await userModel.updateStudentThesisInfo(studentId, {
+    
+    const studentUpdateData: any = {
       thesisFile: thesis.data.fileUrl,
       thesisTopic: thesis.data.title,
-    })
+      currentReviewIteration: currentIteration, // Update student's iteration
+    }
+    
+    // Only increment totalReviewAttempts for student if this is first submission
+    if (!isResubmission) {
+      studentUpdateData.totalReviewAttempts = 0 // Initialize for first submission
+    }
+
+    await userModel.updateStudentThesisInfo(studentId, studentUpdateData)
 
     res.status(201).json({
       ...thesis.data,
       id: thesis.id,
       createdAt: thesis.created_at,
-      updatedAt: thesis.updated_at
+      updatedAt: thesis.updated_at,
+      isResubmission: isResubmission, // Let frontend know if this was a resubmission
+      iteration: currentIteration
     })
   } catch (err) {
     console.error(err)

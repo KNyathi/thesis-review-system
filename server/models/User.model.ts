@@ -29,6 +29,26 @@ export interface IStudent extends IUserBase {
   supervisor?: string;
   consultant?: string;
   topicRejectionComments?: string;
+
+  consultantFeedback?: {
+    comments?: string;
+    lastReviewDate?: Date;
+    reviewIteration: number;
+    status: 'pending' | 'approved' | 'revisions_requested';
+  };
+
+  // Supervisor feedback
+  supervisorFeedback?: {
+    comments?: string;
+    lastReviewDate?: Date;
+    reviewIteration: number;
+    status: 'pending' | 'approved' | 'revisions_requested' | 'signed';
+    isSigned: boolean;
+    signedDate?: Date;
+  };
+
+  totalReviewAttempts: number;
+  currentReviewIteration: number;
 }
 
 export interface IConsultant extends IUserBase {
@@ -748,6 +768,94 @@ export class UserModel {
       createdAt: row.created_at,
       updatedAt: row.updated_at
     } as IUser;
+  }
+
+  async updateStudentThesisFeedback(
+    studentId: string,
+    feedback: {
+      comments?: string;
+      lastReviewDate?: Date;
+      reviewIteration: number;
+      status: 'pending' | 'approved' | 'revisions_requested';
+    },
+    currentIteration: number
+  ): Promise<IStudent> {
+    const currentUser = await this.getUserById(studentId);
+    if (!currentUser || currentUser.role !== 'student') {
+      throw new Error('Student not found');
+    }
+
+    const studentData = currentUser as IStudent;
+
+    const updatedData = {
+      ...studentData,
+      consultantFeedback: feedback,
+      currentReviewIteration: currentIteration,
+      totalReviewAttempts: (studentData.totalReviewAttempts || 0) + 1,
+      thesisStatus: feedback.status === 'approved' ? 'with_supervisor' : 'revisions_requested'
+    };
+
+    const query = `
+        UPDATE users
+        SET data = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *;
+    `;
+    const result = await this.pool.query(query, [updatedData, studentId]);
+    const row = result.rows[0];
+
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as IStudent;
+  }
+
+  // In UserModel - Add supervisor feedback method
+  async updateStudentSupervisorFeedback(
+    studentId: string,
+    feedback: {
+      comments?: string;
+      lastReviewDate?: Date;
+      reviewIteration: number;
+      status: 'pending' | 'approved' | 'revisions_requested' | 'signed';
+      isSigned: boolean;
+      signedDate?: Date;
+    },
+    currentIteration: number
+  ): Promise<IStudent> {
+    const currentUser = await this.getUserById(studentId);
+    if (!currentUser || currentUser.role !== 'student') {
+      throw new Error('Student not found');
+    }
+
+    const studentData = currentUser as IStudent;
+
+    const updatedData = {
+      ...studentData,
+      supervisorFeedback: feedback,
+      currentReviewIteration: currentIteration,
+      totalReviewAttempts: (studentData.totalReviewAttempts || 0) + 1,
+      thesisStatus: feedback.status === 'approved' || feedback.status === 'signed' ?
+        'under_review' : 'revisions_requested'
+    };
+
+    const query = `
+        UPDATE users
+        SET data = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *;
+    `;
+    const result = await this.pool.query(query, [updatedData, studentId]);
+    const row = result.rows[0];
+
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as IStudent;
   }
 
   // Delete user

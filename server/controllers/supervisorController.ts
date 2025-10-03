@@ -53,7 +53,7 @@ export const approveThesisTopic = async (req: Request, res: Response) => {
 
         const studentData = student as IStudent;
 
-         // Check if student is assigned to this supervisor
+        // Check if student is assigned to this supervisor
         if (studentData.supervisor !== supervisorId) {
             res.status(403).json({
                 error: "You are not assigned as supervisor for this student"
@@ -113,39 +113,39 @@ export const approveThesisTopic = async (req: Request, res: Response) => {
 
 
 export const getPendingApprovals = async (req: Request, res: Response) => {
-  try {
-    const supervisorId = (req.user as any).id;
+    try {
+        const supervisorId = (req.user as any).id;
 
-    const allStudents = await userModel.getStudents();
-    
-    // Filter students assigned to this supervisor with pending topic approval
-    const pendingApprovals = allStudents
-      .filter(student => 
-        student.thesisTopic && 
-        student.thesisTopic.trim() !== '' && 
-        !student.isTopicApproved && 
-        student.supervisor === supervisorId
-      )
-      .map(student => ({
-        studentId: student.id,
-        studentName: student.fullName,
-        faculty: student.faculty,
-        thesisTopic: student.thesisTopic
-      }));
+        const allStudents = await userModel.getStudents();
 
-     res.status(200).json({
-      data: pendingApprovals
-    });
-    return
+        // Filter students assigned to this supervisor with pending topic approval
+        const pendingApprovals = allStudents
+            .filter(student =>
+                student.thesisTopic &&
+                student.thesisTopic.trim() !== '' &&
+                !student.isTopicApproved &&
+                student.supervisor === supervisorId
+            )
+            .map(student => ({
+                studentId: student.id,
+                studentName: student.fullName,
+                faculty: student.faculty,
+                thesisTopic: student.thesisTopic
+            }));
 
-  } catch (error: any) {
-    console.error('Error fetching pending approvals:', error);
-    res.status(500).json({
-      error: error.message || "Failed to fetch pending approvals"
-    });
+        res.status(200).json({
+            data: pendingApprovals
+        });
+        return
 
-    return
-  }
+    } catch (error: any) {
+        console.error('Error fetching pending approvals:', error);
+        res.status(500).json({
+            error: error.message || "Failed to fetch pending approvals"
+        });
+
+        return
+    }
 };
 
 
@@ -172,30 +172,48 @@ export const submitReview = async (req: Request, res: Response) => {
         let pdfPath = null;
 
         // SCENARIO 1: Consultant already reviewed and approved - Just sign existing PDF
-        const hasConsultantApproval = thesis.data.reviewIterations?.some(iteration => 
-            iteration.consultantReview?.status === 'approved' && 
+        const validReviewIterations = (thesis.data.reviewIterations || []).filter(iteration => iteration !== null);
+        const hasConsultantApproval = validReviewIterations.some(iteration =>
+            iteration.consultantReview?.status === 'approved' &&
             iteration.consultantReview?.isFinalApproval === true
         );
 
         if (hasConsultantApproval && thesis.data.assignedConsultant) {
             // Get the signed consultant PDF
-            const consultantSignedPdfPath = thesis.data.signedReviewPath; 
-            
+            const consultantSignedPdfPath = thesis.data.signedReviewPath;
+
             if (!consultantSignedPdfPath) {
                 res.status(400).json({ error: "Consultant signed PDF not found" });
                 return
             }
 
+
+            // Verify the PDF exists in the CONSULTANT SIGNED directory
+            if (!fs.existsSync(consultantSignedPdfPath)) {
+                // Try to find it in the consultant signed directory
+                const consultantSignedDir = path.join(__dirname, "../../server/reviews/consultant/signed");
+                const fileName = path.basename(consultantSignedPdfPath);
+                const alternativePath = path.join(consultantSignedDir, fileName);
+
+                if (!fs.existsSync(alternativePath)) {
+                    return res.status(400).json({
+                        error: "Consultant signed PDF file not found on server",
+                        details: `Looking for: ${consultantSignedPdfPath} or ${alternativePath}`
+                    });
+                }
+
+            }
+
             // Submit supervisor review (just signing)
             updatedThesis = await thesisModel.submitSupervisorReview(
                 thesisId,
-                comments || "Thesis approved and signed by supervisor after consultant review",
-                'approved', 
+                "Thesis approved by supervisor after consultant review",
+                'approved',
                 true
             );
 
             // Copy the signed consultant PDF to supervisor signed directory
-            const supervisorSignedDir = path.join(__dirname, "../../server/reviews/supervisor/signed");
+            const supervisorSignedDir = path.join(__dirname, "../../server/reviews/supervisor/unsigned");
             if (!fs.existsSync(supervisorSignedDir)) {
                 fs.mkdirSync(supervisorSignedDir, { recursive: true });
             }
@@ -214,6 +232,20 @@ export const submitReview = async (req: Request, res: Response) => {
                 status: "under_review" // Ready for final review
             });
 
+            // Update student with supervisor feedback (signing only)
+            await userModel.updateStudentSupervisorFeedback(
+                thesis.data.student,
+                {
+                    comments: "Thesis approved by supervisor",
+                    lastReviewDate: new Date(),
+                    reviewIteration: thesis.data.currentIteration,
+                    status: 'approved',
+                    isSigned: true,
+                    signedDate: new Date()
+                },
+                thesis.data.currentIteration
+            );
+
             // Update supervisor stats and tracking
             await thesisModel.updateSupervisorStats(supervisor.id, thesisId, true);
             await userModel.removeThesisFromSupervisor(supervisor.id, thesisId);
@@ -221,7 +253,7 @@ export const submitReview = async (req: Request, res: Response) => {
 
             res.json({
                 message: "Thesis signed successfully using consultant's approved review",
-                redirectToSign: true, 
+                redirectToSign: true,
                 thesisId: thesisId,
                 pdfPath: supervisorSignedPdfPath,
                 action: "signed"
@@ -241,6 +273,18 @@ export const submitReview = async (req: Request, res: Response) => {
 
             // Update supervisor stats
             await thesisModel.updateSupervisorStats(supervisor.id, thesisId, false);
+
+            await userModel.updateStudentSupervisorFeedback(
+                thesis.data.student,
+                {
+                    comments: comments,
+                    lastReviewDate: new Date(),
+                    reviewIteration: thesis.data.currentIteration,
+                    status: 'revisions_requested',
+                    isSigned: false
+                },
+                thesis.data.currentIteration
+            );
 
             res.json({
                 message: "Revisions requested successfully",
@@ -266,7 +310,7 @@ export const submitReview = async (req: Request, res: Response) => {
             // Submit the supervisor review with final approval
             updatedThesis = await thesisModel.submitSupervisorReview(
                 thesisId,
-                comments || "Thesis approved by supervisor",
+                "Thesis approved by supervisor",
                 'approved',
                 true
             );
@@ -285,12 +329,25 @@ export const submitReview = async (req: Request, res: Response) => {
                 status: "under_review" // Ready for final review
             });
 
+            // Update student with supervisor feedback and approval
+            await userModel.updateStudentSupervisorFeedback(
+                thesis.data.student,
+                {
+                    comments: "Thesis approved by supervisor",
+                    lastReviewDate: new Date(),
+                    reviewIteration: thesis.data.currentIteration,
+                    status: 'approved',
+                    isSigned: false // Will be signed later
+                },
+                thesis.data.currentIteration
+            );
+
             // Update supervisor stats and tracking
             await thesisModel.updateSupervisorStats(supervisor.id, thesisId, true);
             await userModel.removeThesisFromSupervisor(supervisor.id, thesisId);
             await userModel.addThesisToSupervisorReviewed(supervisor.id, thesisId);
 
-             res.json({
+            res.json({
                 message: "Review submitted and approved successfully",
                 redirectToSign: true, // Supervisor needs to sign their own PDF
                 thesisId: thesisId,

@@ -46,7 +46,7 @@ export const submitReview = async (req: Request, res: Response) => {
     }
 
     // Generate unsigned PDF
-    const unsignedDir = path.join(__dirname, "../../server/reviews/unsigned")
+    const unsignedDir = path.join(__dirname, "../../server/reviews/reviewer/unsigned");
     if (!fs.existsSync(unsignedDir)) {
       fs.mkdirSync(unsignedDir, { recursive: true })
     }
@@ -85,7 +85,7 @@ export const getAssignedTheses = async (req: Request, res: Response) => {
 
     // Fetch theses assigned to the reviewer
     const assignedTheses = await thesisModel.getThesesByReviewer(reviewer.id)
-    
+
     // Fetch student details for each thesis
     const thesesWithStudents = await Promise.all(
       assignedTheses.map(async (thesis) => {
@@ -119,8 +119,8 @@ export const getCompletedReviews = async (req: Request, res: Response) => {
     // Get all reviewed theses and filter by this reviewer
     const allTheses = await thesisModel.find()
 
-    const reviewedTheses = allTheses.filter(thesis => 
-      thesis.status === "evaluated" && 
+    const reviewedTheses = allTheses.filter(thesis =>
+      thesis.status === "evaluated" &&
       thesis.assignedReviewer === reviewer.id
     )
 
@@ -454,7 +454,7 @@ export const getReviewerStats = async (req: Request, res: Response) => {
 
     const assignedTheses = await thesisModel.getThesesByReviewer(reviewer.id)
     const allTheses = await thesisModel.find()
-    const reviewedTheses = allTheses.filter(thesis => 
+    const reviewedTheses = allTheses.filter(thesis =>
       thesis.data.status === "evaluated" && thesis.data.assignedReviewer === reviewer.id
     )
 

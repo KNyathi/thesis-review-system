@@ -792,23 +792,6 @@ export async function generateConsultantReviewPDF(
     }
   };
 
-  if (!thesis.finalGrade) {
-    throw new Error("Thesis final grade is required");
-  }
-
-  // Draw final grade with wrapping and bold grade
-  const gradeText = `Итоговая оценка ВКР - ${thesis.finalGrade}. / Final Assessment of the thesis - ${thesis.finalGrade}.`;
-  currentY = drawWrappedText(
-    currentPage,
-    gradeText,
-    50,
-    currentY,
-    500,
-    10,
-    font,
-    boldFont,
-    ["Итоговая оценка", thesis.finalGrade, "Final Assessment", thesis.finalGrade]
-  );
 
   currentY -= 10;
 
@@ -973,10 +956,14 @@ export async function generateConsultantReviewPDF(
   };
 
   // Check if consultant has already approved (for supervisor case)
-  const hasConsultantApproval = thesis.reviewIterations?.some(iteration => 
-    iteration.consultantReview?.status === 'approved' && 
-    iteration.consultantReview?.isFinalApproval === true
-  );
+  const hasConsultantApproval = thesis.reviewIterations && 
+    Array.isArray(thesis.reviewIterations) && 
+    thesis.reviewIterations.some(iteration => 
+        iteration && 
+        iteration.consultantReview && 
+        iteration.consultantReview.status === 'approved' && 
+        iteration.consultantReview.isFinalApproval === true
+    );
 
   // Draw signatures with dynamic configuration
   await drawSignatureBlocks(
