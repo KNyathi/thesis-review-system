@@ -29,13 +29,18 @@ export const assignThesisTeam = async (req: Request, res: Response) => {
 
     const studentData = student as IStudent;
 
+    // Get current assignments BEFORE making changes
+    const currentSupervisorId = studentData.supervisor;
+    const currentConsultantId = studentData.consultant;
+    const currentReviewerId = studentData.reviewer;
+
     // Find if there's an existing thesis for the student
     const studentTheses = await thesisModel.getThesesByStudent(studentId);
     const hasExistingThesis = studentTheses.length > 0;
     const thesis = hasExistingThesis ? studentTheses[0] : null;
     const thesisId = thesis?.id;
 
-    // Validate and assign supervisor
+    // Handle SUPERVISOR assignment
     if (supervisorId) {
       const supervisor = await userModel.getUserById(supervisorId);
       if (!supervisor || supervisor.role !== 'supervisor') {
@@ -43,6 +48,15 @@ export const assignThesisTeam = async (req: Request, res: Response) => {
         return;
       }
       
+      // Remove from old supervisor first
+      if (currentSupervisorId && currentSupervisorId !== supervisorId) {
+        await userModel.removeStudentFromSupervisor(currentSupervisorId, studentId);
+        if (hasExistingThesis && thesisId) {
+          await userModel.removeThesisFromSupervisor(currentSupervisorId, thesisId);
+          await thesisModel.unassignSupervisor(thesisId);
+        }
+      }
+
       // Assign supervisor to student
       await userModel.assignSupervisorToStudent(studentId, supervisorId);
       
@@ -56,7 +70,7 @@ export const assignThesisTeam = async (req: Request, res: Response) => {
       }
     }
 
-    // Validate and assign consultant
+    // Handle CONSULTANT assignment
     if (consultantId) {
       const consultant = await userModel.getUserById(consultantId);
       if (!consultant || consultant.role !== 'consultant') {
@@ -64,6 +78,15 @@ export const assignThesisTeam = async (req: Request, res: Response) => {
         return;
       }
       
+      // Remove from old consultant first
+      if (currentConsultantId && currentConsultantId !== consultantId) {
+        await userModel.removeStudentFromConsultant(currentConsultantId, studentId);
+        if (hasExistingThesis && thesisId) {
+          await userModel.removeThesisFromConsultant(currentConsultantId, thesisId);
+          await thesisModel.unassignConsultant(thesisId);
+        }
+      }
+
       // Assign consultant to student
       await userModel.assignConsultantToStudent(studentId, consultantId);
       
@@ -77,12 +100,20 @@ export const assignThesisTeam = async (req: Request, res: Response) => {
       }
     }
 
-    // Validate and assign reviewer
+    // Handle REVIEWER assignment
     if (reviewerId) {
       const reviewer = await userModel.getUserById(reviewerId);
       if (!reviewer || reviewer.role !== 'reviewer') {
         res.status(404).json({ error: "Reviewer not found" });
         return;
+      }
+
+      // Remove from old reviewer first
+      if (currentReviewerId && currentReviewerId !== reviewerId) {
+        if (hasExistingThesis && thesisId) {
+          await userModel.removeThesisFromReviewer(currentReviewerId, thesisId);
+          await thesisModel.unassignReviewer(thesisId);
+        }
       }
 
       // Assign reviewer to student
