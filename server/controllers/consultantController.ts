@@ -125,7 +125,7 @@ export const submitReview = async (req: Request, res: Response) => {
 
 export const getAssignedTheses = async (req: Request, res: Response) => {
     try {
-        const consultant = req.user as AuthenticatedUser & IReviewer
+        const consultant = req.user as AuthenticatedUser & IConsultant
 
         // Fetch theses assigned to the consultant
         const assignedTheses = await thesisModel.getThesesByConsultant(consultant.id);
