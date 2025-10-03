@@ -253,5 +253,8 @@ export const isManagement = requireRole(ROLE_GROUPS.MANAGEMENT);
 export const isAcademicStaff = requireRole(ROLE_GROUPS.ACADEMIC_STAFF);
 export const isStaff = requireRole(ROLE_GROUPS.ALL_STAFF);
 
+export const isConsultantReview = requireRole(ROLE_GROUPS.ACCESS_REVIEW_1);
+export const isReviewerReview = requireRole(ROLE_GROUPS.ACCESS_REVIEW_2);
+
 // Multiple specific roles
 export const requireRoles = (roles: UserRole[]) => requireRole(roles);

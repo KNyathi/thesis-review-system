@@ -1,10 +1,11 @@
-import type { Request, Response } from "express";
-import { Pool } from 'pg';
+import type { Request, Response } from "express"
+import { ThesisModel } from "../models/Thesis.model"
+import { UserModel, Reviewer, IUser, IReviewer, IStudent, IConsultant } from "../models/User.model"
+import { generateReviewPDF } from "../utils/pdfGenerator"
 import path from "path"
 import fs from "fs"
-import { ThesisModel, IThesis, IReviewIteration } from "../models/Thesis.model";
-import { UserModel, Student, Reviewer, IUser, IStudent, IReviewer, ISupervisor } from "../models/User.model";
-import { generateConsultantReviewPDF } from "../utils/pdfGeneratorConsultant";
+import { Pool } from 'pg';
+import { generateConsultantReviewPDF } from "../utils/pdfGeneratorConsultant"
 
 const pool = new Pool({
     connectionString: process.env.DB_URL
@@ -20,138 +21,9 @@ interface AuthenticatedUser {
     email: string;
 }
 
-
-export const approveThesisTopic = async (req: Request, res: Response) => {
-    try {
-        const { studentId } = req.params;
-        const { approved, comments } = req.body;
-        const supervisorId = (req.user as AuthenticatedUser).id;
-
-        // Validate input
-        if (typeof approved !== 'boolean') {
-            res.status(400).json({
-                error: "Approval status is required and must be boolean"
-            });
-            return;
-        }
-
-        if (!approved && (!comments || comments.trim() === '')) {
-            res.status(400).json({
-                error: "Comments are required when rejecting a thesis topic"
-            });
-            return;
-        }
-
-        // Get student data
-        const student = await userModel.getUserById(studentId);
-        if (!student || student.role !== 'student') {
-            res.status(404).json({
-                error: "Student not found"
-            });
-            return;
-        }
-
-        const studentData = student as IStudent;
-
-         // Check if student is assigned to this supervisor
-        if (studentData.supervisor !== supervisorId) {
-            res.status(403).json({
-                error: "You are not assigned as supervisor for this student"
-            });
-            return;
-        }
-
-        // Check if student has submitted a thesis topic
-        if (!studentData.thesisTopic || studentData.thesisTopic.trim() === '') {
-            res.status(400).json({
-                error: "Student has not submitted any thesis topic"
-            });
-            return;
-        }
-
-        // Check if topic is already approved
-        if (studentData.isTopicApproved) {
-            res.status(400).json({
-                error: "Thesis topic is already approved"
-            });
-            return;
-        }
-
-        // Prepare update data
-        const updateData: any = {
-            isTopicApproved: approved
-        };
-
-        // Store rejection comments if topic is rejected
-        if (!approved) {
-            updateData.topicRejectionComments = comments.trim();
-        } else {
-            // Clear rejection comments if approving
-            updateData.topicRejectionComments = null;
-        }
-
-        const updatedStudent = await userModel.updateUser(studentId, updateData);
-
-        res.status(200).json({
-            message: `Thesis topic ${approved ? 'approved' : 'rejected'} successfully`,
-            student: {
-                id: updatedStudent.id,
-                thesisTopic: (updatedStudent as IStudent).thesisTopic,
-                isTopicApproved: (updatedStudent as IStudent).isTopicApproved,
-                fullName: updatedStudent.fullName,
-                ...(!approved && { rejectionComments: (updatedStudent as IStudent).topicRejectionComments })
-            }
-        });
-
-    } catch (error: any) {
-        console.error('Error approving thesis topic:', error);
-        res.status(500).json({
-            error: error.message || "Failed to approve thesis topic"
-        });
-    }
-};
-
-
-export const getPendingApprovals = async (req: Request, res: Response) => {
-  try {
-    const supervisorId = (req.user as any).id;
-
-    const allStudents = await userModel.getStudents();
-    
-    // Filter students assigned to this supervisor with pending topic approval
-    const pendingApprovals = allStudents
-      .filter(student => 
-        student.thesisTopic && 
-        student.thesisTopic.trim() !== '' && 
-        !student.isTopicApproved && 
-        student.supervisor === supervisorId
-      )
-      .map(student => ({
-        studentId: student.id,
-        studentName: student.fullName,
-        faculty: student.faculty,
-        thesisTopic: student.thesisTopic
-      }));
-
-     res.status(200).json({
-      data: pendingApprovals
-    });
-    return
-
-  } catch (error: any) {
-    console.error('Error fetching pending approvals:', error);
-    res.status(500).json({
-      error: error.message || "Failed to fetch pending approvals"
-    });
-
-    return
-  }
-};
-
-
 export const submitReview = async (req: Request, res: Response) => {
     try {
-        const supervisor = req.user as AuthenticatedUser & ISupervisor;
+        const consultant = req.user as AuthenticatedUser & IConsultant;
         const { thesisId } = req.params;
         const { comments, assessment, isFinalApproval } = req.body;
 
@@ -162,98 +34,39 @@ export const submitReview = async (req: Request, res: Response) => {
             return
         }
 
-        // Verify supervisor is assigned to this thesis
-        if (thesis.data.assignedSupervisor !== supervisor.id) {
-            res.status(403).json({ error: "Not authorized to review this thesis" });
-            return
+        // Verify consultant is assigned to this thesis
+        if (thesis.data.assignedConsultant !== consultant.id) {
+             res.status(403).json({ error: "Not authorized to review this thesis" });
+             return
         }
 
         let updatedThesis;
         let pdfPath = null;
 
-        // SCENARIO 1: Consultant already reviewed and approved - Just sign existing PDF
-        const hasConsultantApproval = thesis.data.reviewIterations?.some(iteration => 
-            iteration.consultantReview?.status === 'approved' && 
-            iteration.consultantReview?.isFinalApproval === true
-        );
-
-        if (hasConsultantApproval && thesis.data.assignedConsultant) {
-            // Get the signed consultant PDF
-            const consultantSignedPdfPath = thesis.data.signedReviewPath; 
-            
-            if (!consultantSignedPdfPath) {
-                res.status(400).json({ error: "Consultant signed PDF not found" });
-                return
-            }
-
-            // Submit supervisor review (just signing)
-            updatedThesis = await thesisModel.submitSupervisorReview(
-                thesisId,
-                comments || "Thesis approved and signed by supervisor after consultant review",
-                'approved', 
-                true
-            );
-
-            // Copy the signed consultant PDF to supervisor signed directory
-            const supervisorSignedDir = path.join(__dirname, "../../server/reviews/supervisor/signed");
-            if (!fs.existsSync(supervisorSignedDir)) {
-                fs.mkdirSync(supervisorSignedDir, { recursive: true });
-            }
-
-            // Use the same filename but in supervisor signed directory
-            const fileName = path.basename(consultantSignedPdfPath);
-            const supervisorSignedPdfPath = path.join(supervisorSignedDir, fileName);
-
-            // Copy the file
-            fs.copyFileSync(consultantSignedPdfPath, supervisorSignedPdfPath);
-
-            // Update thesis with supervisor signed PDF path
-            await thesisModel.updateThesis(thesisId, {
-                signedReviewPath: supervisorSignedPdfPath,
-                signedDate: new Date(),
-                status: "under_review" // Ready for final review
-            });
-
-            // Update supervisor stats and tracking
-            await thesisModel.updateSupervisorStats(supervisor.id, thesisId, true);
-            await userModel.removeThesisFromSupervisor(supervisor.id, thesisId);
-            await userModel.addThesisToSupervisorReviewed(supervisor.id, thesisId);
-
-            res.json({
-                message: "Thesis signed successfully using consultant's approved review",
-                redirectToSign: true, 
-                thesisId: thesisId,
-                pdfPath: supervisorSignedPdfPath,
-                action: "signed"
-            });
-            return
-        }
-
-        // SCENARIO 2: No consultant or consultant didn't approve - Supervisor does full review
-        // CASE 2A: Request Revisions (only comments)
+        // CASE 1: Request Revisions (only comments)
         if (comments && !assessment) {
-            updatedThesis = await thesisModel.submitSupervisorReview(
+            updatedThesis = await thesisModel.submitConsultantReview(
                 thesisId,
                 comments,
                 'revisions_requested',
                 false
             );
 
-            // Update supervisor stats
-            await thesisModel.updateSupervisorStats(supervisor.id, thesisId, false);
+            // Update consultant stats
+            await thesisModel.updateConsultantStats(consultant.id, thesisId, false);
 
-            res.json({
+             res.json({
                 message: "Revisions requested successfully",
                 redirectToSign: false,
                 thesisId: thesisId,
-                action: "revisions_requested"
             });
+
             return
         }
 
-        // CASE 2B: Final Approval (with assessment) - Supervisor creates new PDF
+        // CASE 2: Final Approval (with grade and assessment)
         if (assessment) {
-            // Update the thesis with assessment first
+            // Update the thesis with grade and assessment first
             updatedThesis = await thesisModel.updateThesis(thesisId, {
                 assessment: assessment,
             });
@@ -263,62 +76,59 @@ export const submitReview = async (req: Request, res: Response) => {
                 return
             }
 
-            // Submit the supervisor review with final approval
-            updatedThesis = await thesisModel.submitSupervisorReview(
+            // Submit the consultant review with final approval
+            updatedThesis = await thesisModel.submitConsultantReview(
                 thesisId,
-                comments || "Thesis approved by supervisor",
+                comments || "Thesis approved by consultant",
                 'approved',
                 true
             );
-
-            // Generate unsigned PDF for supervisor review (only when no consultant)
-            const unsignedDir = path.join(__dirname, "../../server/reviews/supervisor/unsigned");
+            // Generate unsigned PDF for consultant review
+            const unsignedDir = path.join(__dirname, "../../server/reviews/consultant/unsigned");
             if (!fs.existsSync(unsignedDir)) {
                 fs.mkdirSync(unsignedDir, { recursive: true });
             }
 
-            pdfPath = await generateConsultantReviewPDF(updatedThesis.data, supervisor, true);
+            pdfPath = await generateConsultantReviewPDF(updatedThesis.data, consultant, false);
 
             // Update thesis with PDF path
             await thesisModel.updateThesis(thesisId, {
                 reviewPdf: pdfPath,
-                status: "under_review" // Ready for final review
+                status: updatedThesis.data.assignedSupervisor ? "with_supervisor" : "under_review"
             });
 
-            // Update supervisor stats and tracking
-            await thesisModel.updateSupervisorStats(supervisor.id, thesisId, true);
-            await userModel.removeThesisFromSupervisor(supervisor.id, thesisId);
-            await userModel.addThesisToSupervisorReviewed(supervisor.id, thesisId);
+            // Update consultant stats and tracking
+            await thesisModel.updateConsultantStats(consultant.id, thesisId, true);
+            await userModel.removeThesisFromConsultant(consultant.id, thesisId);
+            await userModel.addThesisToConsultantReviewed(consultant.id, thesisId);
 
-             res.json({
+            res.json({
                 message: "Review submitted and approved successfully",
-                redirectToSign: true, // Supervisor needs to sign their own PDF
+                redirectToSign: true,
                 thesisId: thesisId,
-                pdfPath: pdfPath,
-                action: "approved"
+                pdfPath: pdfPath
             });
             return
         }
 
         // If we get here, the request is invalid
         res.status(400).json({
-            error: "Invalid request. Either provide only comments for revisions, or provide assessment for approval."
+            error: "Invalid request. Either provide only comments for revisions, or provide grade and assessment for approval."
         });
         return
 
     } catch (error) {
-        console.error("Error in submitSupervisorReview:", error);
+        console.error("Error in submitConsultantReview:", error);
         res.status(500).json({ error: "Failed to submit review" });
     }
 }
 
-
 export const getAssignedTheses = async (req: Request, res: Response) => {
     try {
-        const supervisor = req.user as AuthenticatedUser & ISupervisor
+        const consultant = req.user as AuthenticatedUser & IReviewer
 
         // Fetch theses assigned to the consultant
-        const assignedTheses = await thesisModel.getThesesBySupervisor(supervisor.id);
+        const assignedTheses = await thesisModel.getThesesByConsultant(consultant.id);
 
         // Fetch student details for each thesis
         const thesesWithStudents = await Promise.all(
@@ -348,10 +158,10 @@ export const getAssignedTheses = async (req: Request, res: Response) => {
 
 export const getCompletedReviews = async (req: Request, res: Response) => {
     try {
-        const supervisor = req.user as AuthenticatedUser & ISupervisor;
+        const consultant = req.user as AuthenticatedUser & IConsultant;
 
         // Get all theses assigned to this consultant
-        const assignedTheses = await thesisModel.getThesesBySupervisor(supervisor.id);
+        const assignedTheses = await thesisModel.getThesesByConsultant(consultant.id);
 
         // Filter theses where consultant has given final approval
         const completedReviews = assignedTheses.filter(thesis => {
@@ -364,8 +174,8 @@ export const getCompletedReviews = async (req: Request, res: Response) => {
 
             // Look for any consultant review that has isFinalApproval = true
             const hasFinalApproval = thesisData.reviewIterations.some(iteration =>
-                iteration.supervisorReview?.isFinalApproval === true &&
-                iteration.supervisorReview?.status === 'approved'
+                iteration.consultantReview?.isFinalApproval === true &&
+                iteration.consultantReview?.status === 'approved'
             );
 
             return hasFinalApproval;
@@ -379,7 +189,7 @@ export const getCompletedReviews = async (req: Request, res: Response) => {
 
                 // Find the final approval review
                 const finalReview = thesisData.reviewIterations.find(iteration =>
-                    iteration.supervisorReview?.isFinalApproval === true
+                    iteration.consultantReview?.isFinalApproval === true
                 );
 
                 return {
@@ -388,8 +198,8 @@ export const getCompletedReviews = async (req: Request, res: Response) => {
                     submissionDate: thesisData.submissionDate,
                     finalGrade: thesisData.finalGrade,
                     status: thesisData.status,
-                    supervisorReview: finalReview?.supervisorReview,
-                    approvedAt: finalReview?.supervisorReview?.submittedDate,
+                    consultantReview: finalReview?.consultantReview,
+                    approvedAt: finalReview?.consultantReview?.submittedDate,
                     iteration: finalReview?.iteration,
                     createdAt: thesis.created_at, // From ThesisDocument
                     updatedAt: thesis.updated_at, // From ThesisDocument

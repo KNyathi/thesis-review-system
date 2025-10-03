@@ -78,7 +78,7 @@ export interface IThesis {
   signedDate?: Date;
 }
 
-interface ThesisDocument {
+export interface ThesisDocument {
   id: string;
   data: IThesis;
   created_at: Date;

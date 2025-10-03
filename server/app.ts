@@ -13,6 +13,7 @@ import path from 'path';
 import assignRouter from "./routes/assignRoutes";
 import supervisorRouter from "./routes/supervisorRoutes";
 import studentRouter from "./routes/studentRoutes";
+import consultantRouter from "./routes/consultantRoute";
 
 
 //Body parser
@@ -46,7 +47,8 @@ app.use(
     authRouter,
     assignRouter,
     supervisorRouter,
-    studentRouter
+    studentRouter,
+    consultantRouter
 );
 
 

@@ -35,8 +35,8 @@ export interface IConsultant extends IUserBase {
   role: 'consultant';
   position: string;
   assignedStudents: string[];
-  assignedTheses: string[]; // Add this
-  reviewedTheses: string[]; // Add this
+  assignedTheses: string[];
+  reviewedTheses: string[];
   reviewStats: {
     totalReviews: number;
     approvedTheses: number;
@@ -49,8 +49,8 @@ export interface ISupervisor extends IUserBase {
   position: string;
   department: string;
   assignedStudents: string[];
-  assignedTheses: string[]; // Add this
-  reviewedTheses: string[]; // Add this
+  assignedTheses: string[];
+  reviewedTheses: string[];
   reviewStats: {
     totalReviews: number;
     approvedTheses: number;
@@ -440,37 +440,37 @@ export class UserModel {
 
   // Consultant-specific methods
   async addStudentToConsultant(consultantId: string, studentId: string): Promise<IConsultant> {
-  const currentUser = await this.getUserById(consultantId);
-  if (!currentUser || currentUser.role !== 'consultant') {
-    throw new Error('Consultant not found');
-  }
+    const currentUser = await this.getUserById(consultantId);
+    if (!currentUser || currentUser.role !== 'consultant') {
+      throw new Error('Consultant not found');
+    }
 
-  const consultantData = currentUser as IConsultant;
-  
-  // Check if student already exists in assignedStudents
-  const assignedStudents = consultantData.assignedStudents || [];
-  if (assignedStudents.includes(studentId)) {
-    return currentUser as IConsultant; // Student already assigned, return unchanged
-  }
+    const consultantData = currentUser as IConsultant;
 
-  const updatedAssignedStudents = [...assignedStudents, studentId];
+    // Check if student already exists in assignedStudents
+    const assignedStudents = consultantData.assignedStudents || [];
+    if (assignedStudents.includes(studentId)) {
+      return currentUser as IConsultant; // Student already assigned, return unchanged
+    }
 
-  const query = `
+    const updatedAssignedStudents = [...assignedStudents, studentId];
+
+    const query = `
     UPDATE users
     SET data = jsonb_set(data, '{assignedStudents}', $1), updated_at = CURRENT_TIMESTAMP
     WHERE id = $2
     RETURNING *;
   `;
-  const result = await this.pool.query(query, [JSON.stringify(updatedAssignedStudents), consultantId]);
-  const row = result.rows[0];
-  
-  return {
-    ...row.data,
-    id: row.id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  } as IConsultant;
-}
+    const result = await this.pool.query(query, [JSON.stringify(updatedAssignedStudents), consultantId]);
+    const row = result.rows[0];
+
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as IConsultant;
+  }
 
   async removeStudentFromConsultant(consultantId: string, studentId: string): Promise<IConsultant> {
     const currentUser = await this.getUserById(consultantId);
@@ -500,37 +500,37 @@ export class UserModel {
 
   // Supervisor-specific methods
   async addStudentToSupervisor(supervisorId: string, studentId: string): Promise<ISupervisor> {
-  const currentUser = await this.getUserById(supervisorId);
-  if (!currentUser || currentUser.role !== 'supervisor') {
-    throw new Error('Supervisor not found');
-  }
+    const currentUser = await this.getUserById(supervisorId);
+    if (!currentUser || currentUser.role !== 'supervisor') {
+      throw new Error('Supervisor not found');
+    }
 
-  const supervisorData = currentUser as ISupervisor;
-  
-  // Check if student already exists in assignedStudents
-  const assignedStudents = supervisorData.assignedStudents || [];
-  if (assignedStudents.includes(studentId)) {
-    return currentUser as ISupervisor; // Student already assigned, return unchanged
-  }
+    const supervisorData = currentUser as ISupervisor;
 
-  const updatedAssignedStudents = [...assignedStudents, studentId];
+    // Check if student already exists in assignedStudents
+    const assignedStudents = supervisorData.assignedStudents || [];
+    if (assignedStudents.includes(studentId)) {
+      return currentUser as ISupervisor; // Student already assigned, return unchanged
+    }
 
-  const query = `
+    const updatedAssignedStudents = [...assignedStudents, studentId];
+
+    const query = `
     UPDATE users
     SET data = jsonb_set(data, '{assignedStudents}', $1), updated_at = CURRENT_TIMESTAMP
     WHERE id = $2
     RETURNING *;
   `;
-  const result = await this.pool.query(query, [JSON.stringify(updatedAssignedStudents), supervisorId]);
-  const row = result.rows[0];
-  
-  return {
-    ...row.data,
-    id: row.id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  } as ISupervisor;
-}
+    const result = await this.pool.query(query, [JSON.stringify(updatedAssignedStudents), supervisorId]);
+    const row = result.rows[0];
+
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as ISupervisor;
+  }
 
   async removeStudentFromSupervisor(supervisorId: string, studentId: string): Promise<ISupervisor> {
     const currentUser = await this.getUserById(supervisorId);
@@ -559,38 +559,38 @@ export class UserModel {
   }
 
   // Reviewer-specific methods
-async addThesisToReviewer(reviewerId: string, thesisId: string): Promise<IReviewer> {
-  const currentUser = await this.getUserById(reviewerId);
-  if (!currentUser || currentUser.role !== 'reviewer') {
-    throw new Error('Reviewer not found');
-  }
+  async addThesisToReviewer(reviewerId: string, thesisId: string): Promise<IReviewer> {
+    const currentUser = await this.getUserById(reviewerId);
+    if (!currentUser || currentUser.role !== 'reviewer') {
+      throw new Error('Reviewer not found');
+    }
 
-  const reviewerData = currentUser as IReviewer;
-  
-  // Check if thesis already exists in assignedTheses
-  const assignedTheses = reviewerData.assignedTheses || [];
-  if (assignedTheses.includes(thesisId)) {
-    return currentUser as IReviewer; // Thesis already assigned, return unchanged
-  }
+    const reviewerData = currentUser as IReviewer;
 
-  const updatedAssignedTheses = [...assignedTheses, thesisId];
+    // Check if thesis already exists in assignedTheses
+    const assignedTheses = reviewerData.assignedTheses || [];
+    if (assignedTheses.includes(thesisId)) {
+      return currentUser as IReviewer; // Thesis already assigned, return unchanged
+    }
 
-  const query = `
+    const updatedAssignedTheses = [...assignedTheses, thesisId];
+
+    const query = `
     UPDATE users
     SET data = jsonb_set(data, '{assignedTheses}', $1), updated_at = CURRENT_TIMESTAMP
     WHERE id = $2
     RETURNING *;
   `;
-  const result = await this.pool.query(query, [JSON.stringify(updatedAssignedTheses), reviewerId]);
-  const row = result.rows[0];
-  
-  return {
-    ...row.data,
-    id: row.id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  } as IReviewer;
-}
+    const result = await this.pool.query(query, [JSON.stringify(updatedAssignedTheses), reviewerId]);
+    const row = result.rows[0];
+
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as IReviewer;
+  }
 
   async removeThesisFromReviewer(reviewerId: string, thesisId: string): Promise<IReviewer> {
     const currentUser = await this.getUserById(reviewerId);
@@ -625,7 +625,12 @@ async addThesisToReviewer(reviewerId: string, thesisId: string): Promise<IReview
     }
 
     const reviewerData = currentUser as IReviewer;
-    const updatedReviewedTheses = [...(reviewerData.reviewedTheses || []), thesisId];
+
+    // Use Set to prevent duplicates
+    const updatedReviewedTheses = [...new Set([
+      ...(reviewerData.reviewedTheses || []),
+      thesisId
+    ])];
 
     const query = `
       UPDATE users
@@ -642,6 +647,77 @@ async addThesisToReviewer(reviewerId: string, thesisId: string): Promise<IReview
       createdAt: row.created_at,
       updatedAt: row.updated_at
     } as IReviewer;
+  }
+
+  async addThesisToConsultantReviewed(consultantId: string, thesisId: string): Promise<IConsultant> {
+    const currentUser = await this.getUserById(consultantId);
+    if (!currentUser || currentUser.role !== 'consultant') {
+      throw new Error('Consultant not found');
+    }
+
+    const consultantData = currentUser as IConsultant;
+
+    // Check if thesisId already exists to prevent duplicates
+    const currentReviewedTheses = consultantData.reviewedTheses || [];
+    if (currentReviewedTheses.includes(thesisId)) {
+      // If already exists, return the current user data without changes
+      return {
+        ...consultantData,
+        id: currentUser.id,
+        createdAt: currentUser.createdAt,
+        updatedAt: currentUser.updatedAt
+      } as IConsultant;
+    }
+
+    // Add thesisId if not already present
+    const updatedReviewedTheses = [...currentReviewedTheses, thesisId];
+
+    const query = `
+        UPDATE users
+        SET data = jsonb_set(data, '{reviewedTheses}', $1), updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *;
+    `;
+    const result = await this.pool.query(query, [JSON.stringify(updatedReviewedTheses), consultantId]);
+    const row = result.rows[0];
+
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as IConsultant;
+  }
+
+  async addThesisToSupervisorReviewed(supervisorId: string, thesisId: string): Promise<ISupervisor> {
+    const currentUser = await this.getUserById(supervisorId);
+    if (!currentUser || currentUser.role !== 'supervisor') {
+      throw new Error('Supervisor not found');
+    }
+
+    const supervisorData = currentUser as ISupervisor;
+
+    // Use Set to prevent duplicates
+    const updatedReviewedTheses = [...new Set([
+      ...(supervisorData.reviewedTheses || []),
+      thesisId
+    ])];
+
+    const query = `
+        UPDATE users
+        SET data = jsonb_set(data, '{reviewedTheses}', $1), updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *;
+    `;
+    const result = await this.pool.query(query, [JSON.stringify(updatedReviewedTheses), supervisorId]);
+    const row = result.rows[0];
+
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as ISupervisor;
   }
 
   // Position update methods for roles with position field
@@ -850,72 +926,72 @@ async addThesisToReviewer(reviewerId: string, thesisId: string): Promise<IReview
   // In UserModel - Add these methods
 
   // For consultants and supervisors
-async addThesisToConsultant(consultantId: string, thesisId: string): Promise<IConsultant> {
-  const currentUser = await this.getUserById(consultantId);
-  if (!currentUser || currentUser.role !== 'consultant') {
-    throw new Error('Consultant not found');
-  }
+  async addThesisToConsultant(consultantId: string, thesisId: string): Promise<IConsultant> {
+    const currentUser = await this.getUserById(consultantId);
+    if (!currentUser || currentUser.role !== 'consultant') {
+      throw new Error('Consultant not found');
+    }
 
-  const consultantData = currentUser as IConsultant;
-  
-  // Check if thesis already exists in assignedTheses
-  const assignedTheses = consultantData.assignedTheses || [];
-  if (assignedTheses.includes(thesisId)) {
-    return currentUser as IConsultant; // Thesis already assigned, return unchanged
-  }
+    const consultantData = currentUser as IConsultant;
 
-  const updatedAssignedTheses = [...assignedTheses, thesisId];
+    // Check if thesis already exists in assignedTheses
+    const assignedTheses = consultantData.assignedTheses || [];
+    if (assignedTheses.includes(thesisId)) {
+      return currentUser as IConsultant; // Thesis already assigned, return unchanged
+    }
 
-  const query = `
+    const updatedAssignedTheses = [...assignedTheses, thesisId];
+
+    const query = `
     UPDATE users
     SET data = jsonb_set(data, '{assignedTheses}', $1), updated_at = CURRENT_TIMESTAMP
     WHERE id = $2
     RETURNING *;
   `;
-  const result = await this.pool.query(query, [JSON.stringify(updatedAssignedTheses), consultantId]);
-  const row = result.rows[0];
-  
-  return {
-    ...row.data,
-    id: row.id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  } as IConsultant;
-}
+    const result = await this.pool.query(query, [JSON.stringify(updatedAssignedTheses), consultantId]);
+    const row = result.rows[0];
+
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as IConsultant;
+  }
 
   // Similar method for supervisor...
- async addThesisToSupervisor(supervisorId: string, thesisId: string): Promise<ISupervisor> {
-  const currentUser = await this.getUserById(supervisorId);
-  if (!currentUser || currentUser.role !== 'supervisor') {
-    throw new Error('Supervisor not found');
-  }
+  async addThesisToSupervisor(supervisorId: string, thesisId: string): Promise<ISupervisor> {
+    const currentUser = await this.getUserById(supervisorId);
+    if (!currentUser || currentUser.role !== 'supervisor') {
+      throw new Error('Supervisor not found');
+    }
 
-  const supervisorData = currentUser as ISupervisor;
-  
-  // Check if thesis already exists in assignedTheses
-  const assignedTheses = supervisorData.assignedTheses || [];
-  if (assignedTheses.includes(thesisId)) {
-    return currentUser as ISupervisor; // Thesis already assigned, return unchanged
-  }
+    const supervisorData = currentUser as ISupervisor;
 
-  const updatedAssignedTheses = [...assignedTheses, thesisId];
+    // Check if thesis already exists in assignedTheses
+    const assignedTheses = supervisorData.assignedTheses || [];
+    if (assignedTheses.includes(thesisId)) {
+      return currentUser as ISupervisor; // Thesis already assigned, return unchanged
+    }
 
-  const query = `
+    const updatedAssignedTheses = [...assignedTheses, thesisId];
+
+    const query = `
     UPDATE users
     SET data = jsonb_set(data, '{assignedTheses}', $1), updated_at = CURRENT_TIMESTAMP
     WHERE id = $2
     RETURNING *;
   `;
-  const result = await this.pool.query(query, [JSON.stringify(updatedAssignedTheses), supervisorId]);
-  const row = result.rows[0];
-  
-  return {
-    ...row.data,
-    id: row.id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  } as ISupervisor;
-}
+    const result = await this.pool.query(query, [JSON.stringify(updatedAssignedTheses), supervisorId]);
+    const row = result.rows[0];
+
+    return {
+      ...row.data,
+      id: row.id,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } as ISupervisor;
+  }
 
 
   async removeThesisFromConsultant(consultantId: string, thesisId: string): Promise<IConsultant> {

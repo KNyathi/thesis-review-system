@@ -1,7 +1,6 @@
-// roles.ts
 export const ROLES = {
   STUDENT: 'student',
-  CONSULTANT: 'consultant', 
+  CONSULTANT: 'consultant',
   SUPERVISOR: 'supervisor',
   REVIEWER: 'reviewer',
   HEAD_OF_DEPARTMENT: 'head_of_department',
@@ -27,5 +26,7 @@ export const ROLE_GROUPS: Record<string, UserRole[]> = {
   FACULTY: ['supervisor', 'consultant', 'reviewer', 'head_of_department', 'dean'],
   MANAGEMENT: ['head_of_department', 'dean', 'admin'],
   ACADEMIC_STAFF: ['supervisor', 'consultant', 'reviewer'],
+  ACCESS_REVIEW_1: ['supervisor', 'consultant', 'head_of_department', 'dean', 'admin', 'student'],
+  ACCESS_REVIEW_2: ['reviewer', 'head_of_department', 'dean', 'admin', 'student'],
   ALL_STAFF: ['supervisor', 'consultant', 'reviewer', 'head_of_department', 'dean', 'admin']
 };

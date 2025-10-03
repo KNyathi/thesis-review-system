@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { Pool } from 'pg';
-import { ThesisModel } from "../models/Thesis.model";
-import { UserModel, Student, Reviewer, IUser, IStudent, IReviewer } from "../models/User.model";
+import { ThesisDocument, ThesisModel } from "../models/Thesis.model";
+import { UserModel, Student, Reviewer, IUser, IStudent, IReviewer, ISupervisor, IConsultant } from "../models/User.model";
 
 const pool = new Pool({
   connectionString: process.env.DB_URL
@@ -29,176 +29,6 @@ export const getAllTheses = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to fetch theses" });
   }
 };
-
-export const deleteUser = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    // Find the user to get their role and associated data
-    const userToDelete = await userModel.getUserById(id);
-    if (!userToDelete) {
-      res.status(404).json({ error: "User not found" });
-      return;
-    }
-
-    // If deleting a student, clean up their thesis and reviewer assignments
-    if (userToDelete.role === "student") {
-      // Find and delete the student's thesis
-      const studentTheses = await thesisModel.getThesesByStudent(id);
-      for (const thesis of studentTheses) {
-        // If thesis was assigned to a reviewer, remove it from reviewer's assignedTheses
-        if (thesis.data.assignedReviewer) {
-          const reviewer = await userModel.getUserById(thesis.data.assignedReviewer);
-          if (reviewer && reviewer.role === 'reviewer') {
-            const reviewerData = reviewer as IReviewer;
-            const updatedAssignedTheses = reviewerData.assignedTheses.filter(
-              (thesisId: string) => thesisId !== thesis.id
-            );
-            // Use the reviewer-specific method
-            await userModel.removeThesisFromReviewer(reviewer.id, thesis.id);
-          }
-        }
-        // Delete the thesis
-        await thesisModel.deleteThesis(thesis.id);
-      }
-    }
-
-    // If deleting a reviewer, clean up their assigned theses
-    if (userToDelete.role === "reviewer") {
-      const reviewerData = userToDelete as IReviewer;
-      if (reviewerData.assignedTheses && reviewerData.assignedTheses.length > 0) {
-        // Update all assigned theses to remove reviewer assignment
-        for (const thesisId of reviewerData.assignedTheses) {
-          const thesis = await thesisModel.getThesisById(thesisId);
-          if (thesis) {
-            // Update thesis to remove reviewer and set status to submitted
-            await thesisModel.updateThesis(thesisId, {
-              assignedReviewer: undefined,
-              status: "submitted"
-            });
-
-            // Update student's status back to submitted and remove reviewer
-            if (thesis.data.student) {
-              await userModel.updateStudentThesisStatus(thesis.data.student, "submitted");
-              await userModel.assignReviewerToStudent(thesis.data.student, undefined as any);
-            }
-          }
-        }
-      }
-    }
-
-    // Delete the user
-    await userModel.deleteUser(id);
-
-    res.json({ message: "User deleted successfully" });
-  } catch (error) {
-    console.error("Error deleting user:", error);
-    res.status(500).json({ error: "Failed to delete user" });
-  }
-};
-
-
-export const rejectReviewer = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    
-    // Check if user is actually a reviewer
-    const user = await userModel.getUserById(id);
-    if (!user || user.role !== 'reviewer') {
-      res.status(404).json({ error: "Reviewer not found" });
-      return;
-    }
-
-    await userModel.deleteUser(id);
-    res.json({ message: "Reviewer rejected and deleted successfully" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to reject reviewer" });
-  }
-};
-
-export const assignThesis = async (req: Request, res: Response) => {
-  try {
-    const { studentId, reviewerId } = req.body;
-
-    // Find theses associated with the student
-    const studentTheses = await thesisModel.getThesesByStudent(studentId);
-    if (studentTheses.length === 0) {
-      res.status(404).json({ error: "No thesis found for the given student" });
-      return;
-    }
-
-    // For simplicity, assign the first thesis (you might want to handle multiple theses differently)
-    const thesis = studentTheses[0];
-    const thesisId = thesis.id;
-
-    // Check if reviewer exists and is approved
-    const reviewer = await userModel.getUserById(reviewerId);
-    if (!reviewer || reviewer.role !== 'reviewer') {
-      res.status(404).json({ error: "Reviewer not found" });
-      return;
-    }
-
-    const reviewerData = reviewer as IReviewer;
-  
-    // Update thesis with reviewer
-    await thesisModel.assignReviewer(thesisId, reviewerId);
-
-    // Add thesis to reviewer's assignedTheses
-    await userModel.addThesisToReviewer(reviewerId, thesisId);
-
-    // Update student's thesis status and assign reviewer
-    await userModel.updateStudentThesisStatus(studentId, "under_review");
-    await userModel.assignReviewerToStudent(studentId, reviewerId);
-
-    res.json({ message: "Thesis assigned successfully" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to assign thesis" });
-  }
-};
-
-export const reassignThesis = async (req: Request, res: Response) => {
-  try {
-    const { thesisId, oldReviewerId, newReviewerId } = req.body;
-
-    // Update thesis with new reviewer
-    const updatedThesis = await thesisModel.assignReviewer(thesisId, newReviewerId);
-    if (!updatedThesis) {
-      res.status(404).json({ error: "No thesis found for updating" });
-      return;
-    }
-
-    // Remove thesis from old reviewer's assignedTheses
-    const oldReviewer = await userModel.getUserById(oldReviewerId);
-    if (oldReviewer && oldReviewer.role === 'reviewer') {
-      await userModel.removeThesisFromReviewer(oldReviewerId, thesisId);
-    } else {
-      res.status(404).json({ error: "Old reviewer not found" });
-      return;
-    }
-
-    // Add thesis to new reviewer's assignedTheses
-    const newReviewer = await userModel.getUserById(newReviewerId);
-    if (newReviewer && newReviewer.role === 'reviewer') {
-      await userModel.addThesisToReviewer(newReviewerId, thesisId);
-    } else {
-      res.status(404).json({ error: "New reviewer not found" });
-      return;
-    }
-
-    // Update student's reviewer assignment
-    if (updatedThesis.data.student) {
-      await userModel.assignReviewerToStudent(updatedThesis.data.student, newReviewerId);
-    }
-
-    res.json({ message: "Thesis reassigned successfully" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to reassign thesis" });
-  }
-};
-
 
 
 export const getStudentsWithoutReviewers = async (req: Request, res: Response) => {
@@ -232,3 +62,202 @@ export const getUnassignedTheses = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to fetch unassigned theses" });
   }
 };
+
+
+export const deleteUser = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Find the user to get their role and associated data
+    const userToDelete = await userModel.getUserById(id);
+    if (!userToDelete) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    // Handle different user roles
+    switch (userToDelete.role) {
+      case "student":
+        await handleStudentDeletion(id);
+        break;
+
+      case "supervisor":
+        await handleSupervisorDeletion(id, userToDelete as ISupervisor);
+        break;
+
+      case "consultant":
+        await handleConsultantDeletion(id, userToDelete as IConsultant);
+        break;
+
+      case "reviewer":
+        await handleReviewerDeletion(id, userToDelete as IReviewer);
+        break;
+
+      case "head_of_department":
+      case "dean":
+      case "admin":
+        // No special cleanup needed for these roles
+        break;
+
+      default:
+        const unexpectedRole = (userToDelete as IUser).role;
+        console.warn(`Unknown role for user ${id}: ${unexpectedRole}`);
+    }
+
+    // Delete the user
+    await userModel.deleteUser(id);
+
+    res.json({ message: "User deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    res.status(500).json({ error: "Failed to delete user" });
+  }
+};
+
+// Helper functions for each role type
+async function handleStudentDeletion(studentId: string): Promise<void> {
+  // Find and delete the student's thesis
+  const studentTheses = await thesisModel.getThesesByStudent(studentId);
+
+  for (const thesis of studentTheses) {
+    // Clean up assignments from supervisors, consultants, and reviewers
+    await cleanupThesisAssignments(thesis);
+
+    // Delete the thesis
+    await thesisModel.deleteThesis(thesis.id);
+  }
+
+  // Remove student from supervisor's assigned students
+  const student = await userModel.getUserById(studentId) as IStudent;
+  if (student.supervisor) {
+    await userModel.removeStudentFromSupervisor(student.supervisor, studentId);
+  }
+
+  // Remove student from consultant's assigned students
+  if (student.consultant) {
+    await userModel.removeStudentFromConsultant(student.consultant, studentId);
+  }
+}
+
+async function handleSupervisorDeletion(supervisorId: string, supervisor: ISupervisor): Promise<void> {
+  // Handle assigned students
+  if (supervisor.assignedStudents && supervisor.assignedStudents.length > 0) {
+    for (const studentId of supervisor.assignedStudents) {
+      // Remove supervisor from student's profile
+      await userModel.updateUser(studentId, { supervisor: undefined } as Partial<Omit<IUser, 'id' | 'createdAt' | 'updatedAt'>>);
+
+      // Update student's thesis status if needed
+      const studentTheses = await thesisModel.getThesesByStudent(studentId);
+      for (const thesis of studentTheses) {
+        if (thesis.data.assignedSupervisor === supervisorId) {
+          await thesisModel.unassignSupervisor(thesis.id);
+
+          // If thesis was with supervisor, move it back to submitted
+          if (thesis.data.status === 'with_supervisor') {
+            await thesisModel.updateThesisStatus(thesis.id, 'submitted');
+          }
+        }
+      }
+    }
+  }
+
+  // Handle assigned theses
+  if (supervisor.assignedTheses && supervisor.assignedTheses.length > 0) {
+    for (const thesisId of supervisor.assignedTheses) {
+      const thesis = await thesisModel.getThesisById(thesisId);
+      if (thesis && thesis.data.assignedSupervisor === supervisorId) {
+        await thesisModel.unassignSupervisor(thesisId);
+
+        // Update thesis status if it was with supervisor
+        if (thesis.data.status === 'with_supervisor') {
+          await thesisModel.updateThesisStatus(thesisId, 'submitted');
+        }
+      }
+    }
+  }
+}
+
+async function handleConsultantDeletion(consultantId: string, consultant: IConsultant): Promise<void> {
+  // Handle assigned students
+  if (consultant.assignedStudents && consultant.assignedStudents.length > 0) {
+    for (const studentId of consultant.assignedStudents) {
+      // Remove consultant from student's profile
+      await userModel.updateUser(studentId, { consultant: undefined } as Partial<Omit<IUser, 'id' | 'createdAt' | 'updatedAt'>>);
+
+      // Update student's thesis status if needed
+      const studentTheses = await thesisModel.getThesesByStudent(studentId);
+      for (const thesis of studentTheses) {
+        if (thesis.data.assignedConsultant === consultantId) {
+          await thesisModel.unassignConsultant(thesis.id);
+
+          // If thesis was with consultant, check if it should move to supervisor
+          if (thesis.data.status === 'with_consultant') {
+            const newStatus = thesis.data.assignedSupervisor ? 'with_supervisor' : 'submitted';
+            await thesisModel.updateThesisStatus(thesis.id, newStatus);
+          }
+        }
+      }
+    }
+  }
+
+  // Handle assigned theses
+  if (consultant.assignedTheses && consultant.assignedTheses.length > 0) {
+    for (const thesisId of consultant.assignedTheses) {
+      const thesis = await thesisModel.getThesisById(thesisId);
+      if (thesis && thesis.data.assignedConsultant === consultantId) {
+        await thesisModel.unassignConsultant(thesisId);
+
+        // Update thesis status if it was with consultant
+        if (thesis.data.status === 'with_consultant') {
+          const newStatus = thesis.data.assignedSupervisor ? 'with_supervisor' : 'submitted';
+          await thesisModel.updateThesisStatus(thesisId, newStatus);
+        }
+      }
+    }
+  }
+}
+
+async function handleReviewerDeletion(reviewerId: string, reviewer: IReviewer): Promise<void> {
+  if (reviewer.assignedTheses && reviewer.assignedTheses.length > 0) {
+    for (const thesisId of reviewer.assignedTheses) {
+      const thesis = await thesisModel.getThesisById(thesisId);
+      if (thesis) {
+        // Update thesis to remove reviewer
+        await thesisModel.unassignReviewer(thesisId);
+
+        // Update thesis status if it was under review
+        if (thesis.data.status === 'under_review') {
+          // Check if there's a supervisor to send it back to
+          const newStatus = thesis.data.assignedSupervisor ? 'with_supervisor' : 'submitted';
+          await thesisModel.updateThesisStatus(thesisId, newStatus);
+        }
+
+        // Update student's status and remove reviewer
+        if (thesis.data.student) {
+          await userModel.updateStudentThesisStatus(thesis.data.student, "submitted");
+          await userModel.assignReviewerToStudent(thesis.data.student, undefined as any);
+        }
+      }
+    }
+  }
+}
+
+// Generic cleanup function for thesis assignments
+async function cleanupThesisAssignments(thesis: ThesisDocument): Promise<void> {
+  const thesisId = thesis.id;
+
+  // Remove from supervisor's assignedTheses
+  if (thesis.data.assignedSupervisor) {
+    await userModel.removeThesisFromSupervisor(thesis.data.assignedSupervisor, thesisId);
+  }
+
+  // Remove from consultant's assignedTheses
+  if (thesis.data.assignedConsultant) {
+    await userModel.removeThesisFromConsultant(thesis.data.assignedConsultant, thesisId);
+  }
+
+  // Remove from reviewer's assignedTheses
+  if (thesis.data.assignedReviewer) {
+    await userModel.removeThesisFromReviewer(thesis.data.assignedReviewer, thesisId);
+  }
+}
