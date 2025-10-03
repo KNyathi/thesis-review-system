@@ -285,7 +285,7 @@ export async function generateConsultantReviewPDF(
   );
 
   // Section 1
-  const assessment = thesis.assessment!.section1;
+  const assessment = thesis.consultantAssessment!.section1;
 
   // Table rows
   const criteria = [
@@ -532,7 +532,7 @@ export async function generateConsultantReviewPDF(
   });
   currentY -= 20;
 
-  thesis.assessment!.section2.questions.forEach((question: any, i: number) => {
+  thesis.consultantAssessment!.section2.questions.forEach((question: any, i: number) => {
     const questionText = `${i + 1}. ${question}`;
     const words = questionText.split(" ");
     let lineCount = 1;
@@ -591,9 +591,9 @@ export async function generateConsultantReviewPDF(
   });
   currentY -= 20;
 
-  const advantages = Array.isArray(thesis.assessment!.section2.advantages) 
-    ? thesis.assessment!.section2.advantages 
-    : [thesis.assessment!.section2.advantages].filter(Boolean);
+  const advantages = Array.isArray(thesis.consultantAssessment!.section2.advantages) 
+    ? thesis.consultantAssessment!.section2.advantages 
+    : [thesis.consultantAssessment!.section2.advantages].filter(Boolean);
 
   advantages.forEach((advantage: any, index: number) => {
     const itemText = `${index + 1}. ${advantage}`;
@@ -642,9 +642,9 @@ export async function generateConsultantReviewPDF(
   });
   currentY -= 20;
 
-  const disadvantages = Array.isArray(thesis.assessment!.section2.disadvantages) 
-    ? thesis.assessment!.section2.disadvantages 
-    : [thesis.assessment!.section2.disadvantages].filter(Boolean);
+  const disadvantages = Array.isArray(thesis.consultantAssessment!.section2.disadvantages) 
+    ? thesis.consultantAssessment!.section2.disadvantages 
+    : [thesis.consultantAssessment!.section2.disadvantages].filter(Boolean);
 
   disadvantages.forEach((disadvantage: any, index: number) => {
     const itemText = `${index + 1}. ${disadvantage}`;
@@ -796,18 +796,18 @@ export async function generateConsultantReviewPDF(
   currentY -= 10;
 
   // Conclusion text (Russian)
-  const isCompleteTextRu = thesis.assessment!.section2.conclusion.isComplete
+  const isCompleteTextRu = thesis.consultantAssessment!.section2.conclusion.isComplete
     ? "Да"
     : "Нет";
-  const isDeservingTextRu = thesis.assessment!.section2.conclusion.isDeserving
+  const isDeservingTextRu = thesis.consultantAssessment!.section2.conclusion.isDeserving
     ? "Да"
     : "Нет";
 
   // Conclusion text (English)
-  const isCompleteTextEn = thesis.assessment!.section2.conclusion.isComplete
+  const isCompleteTextEn = thesis.consultantAssessment!.section2.conclusion.isComplete
     ? "Yes"
     : "No";
-  const isDeservingTextEn = thesis.assessment!.section2.conclusion.isDeserving
+  const isDeservingTextEn = thesis.consultantAssessment!.section2.conclusion.isDeserving
     ? "Yes"
     : "No";
 

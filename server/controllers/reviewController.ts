@@ -36,7 +36,7 @@ export const submitReview = async (req: Request, res: Response) => {
     // Update the thesis with the review details 
     const updatedThesis = await thesisModel.updateThesis(thesisId, {
       finalGrade: grade,
-      assessment: assessment,
+      reviewerAssessment: assessment,
       status: "under_review", // Keep as under_review until signed
     })
 
@@ -55,7 +55,7 @@ export const submitReview = async (req: Request, res: Response) => {
 
     // Update thesis with PDF path
     await thesisModel.updateThesis(thesisId, {
-      reviewPdf: pdfPath
+       reviewPdfReviewer: pdfPath
     })
 
     // Update student's grade 
@@ -170,23 +170,23 @@ export const reReviewThesis = async (req: Request, res: Response) => {
     }
 
     // Delete signed review file if it exists
-    const signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
+    const signedReviewPath = path.join(__dirname, "../../server/reviews/reviewer/signed", `signed_review_${thesis.data.student}.pdf`)
     if (fs.existsSync(signedReviewPath)) {
       fs.unlinkSync(signedReviewPath)
     }
 
     // Delete unsigned review file if it exists
-    if (thesis.data.reviewPdf && fs.existsSync(thesis.data.reviewPdf)) {
-      fs.unlinkSync(thesis.data.reviewPdf)
+    if (thesis.data.reviewPdfReviewer&& fs.existsSync(thesis.data.reviewPdfReviewer)) {
+      fs.unlinkSync(thesis.data.reviewPdfReviewer)
     }
 
     // Reset thesis to under_review and clear review data
     await thesisModel.updateThesis(thesisId, {
       status: "under_review",
       finalGrade: undefined,
-      assessment: undefined,
-      reviewPdf: undefined,
-      signedReviewPath: undefined,
+      reviewerAssessment: undefined,
+      reviewPdfReviewer: undefined,
+      reviewerSignedReviewPath: undefined,
       signedDate: undefined,
     })
 
@@ -222,13 +222,13 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
       return
     }
 
-    if (!thesis.data.reviewPdf) {
+    if (!thesis.data.reviewPdfReviewer) {
       res.status(404).json({ error: "Unsigned review not found" })
       return
     }
 
     // Use full path from database
-    const unsignedReviewPath = thesis.data.reviewPdf
+    const unsignedReviewPath = thesis.data.reviewPdfReviewer
 
     if (!fs.existsSync(unsignedReviewPath)) {
       res.status(404).json({ error: "Unsigned review file not found" })
@@ -291,8 +291,8 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
     // Update thesis with signed PDF path and status
     await thesisModel.updateThesis(thesisId, {
       status: "evaluated",
-      signedReviewPath: signedReviewPath,
-      reviewPdf: signedReviewPath,
+      reviewerSignedReviewPath: signedReviewPath,
+      reviewPdfReviewer: signedReviewPath,
       signedDate: new Date(),
     })
 
@@ -334,8 +334,8 @@ export const getSignedReview = async (req: Request, res: Response) => {
     // Try to find signed review file using full path from database
     let signedReviewPath: string
 
-    if (thesis.data.signedReviewPath && fs.existsSync(thesis.data.signedReviewPath)) {
-      signedReviewPath = thesis.data.signedReviewPath
+    if (thesis.data.reviewerSignedReviewPath && fs.existsSync(thesis.data.reviewerSignedReviewPath)) {
+      signedReviewPath = thesis.data.reviewerSignedReviewPath
     } else {
       signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
     }
@@ -385,8 +385,8 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
 
     let signedReviewPath: string
 
-    if (thesis.data.signedReviewPath && fs.existsSync(thesis.data.signedReviewPath)) {
-      signedReviewPath = thesis.data.signedReviewPath
+    if (thesis.data.reviewerSignedReviewPath && fs.existsSync(thesis.data.reviewerSignedReviewPath)) {
+      signedReviewPath = thesis.data.reviewerSignedReviewPath
     } else {
       signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
     }

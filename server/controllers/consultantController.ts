@@ -1,5 +1,5 @@
 import type { Request, Response } from "express"
-import { ThesisModel } from "../models/Thesis.model"
+import { IThesis, ThesisModel } from "../models/Thesis.model"
 import { UserModel, Reviewer, IUser, IReviewer, IStudent, IConsultant } from "../models/User.model"
 import { generateReviewPDF } from "../utils/pdfGenerator"
 import path from "path"
@@ -36,8 +36,8 @@ export const submitReview = async (req: Request, res: Response) => {
 
         // Verify consultant is assigned to this thesis
         if (thesis.data.assignedConsultant !== consultant.id) {
-             res.status(403).json({ error: "Not authorized to review this thesis" });
-             return
+            res.status(403).json({ error: "Not authorized to review this thesis" });
+            return
         }
 
         let updatedThesis;
@@ -68,7 +68,7 @@ export const submitReview = async (req: Request, res: Response) => {
             );
 
 
-             res.json({
+            res.json({
                 message: "Revisions requested successfully",
                 redirectToSign: false,
                 thesisId: thesisId,
@@ -81,7 +81,7 @@ export const submitReview = async (req: Request, res: Response) => {
         if (assessment) {
             // Update the thesis with grade and assessment first
             updatedThesis = await thesisModel.updateThesis(thesisId, {
-                assessment: assessment,
+                consultantAssessment: assessment,
             });
 
             if (!updatedThesis) {
@@ -92,7 +92,7 @@ export const submitReview = async (req: Request, res: Response) => {
             // Submit the consultant review with final approval
             updatedThesis = await thesisModel.submitConsultantReview(
                 thesisId,
-                 "Thesis approved by consultant",
+                "Thesis approved by consultant",
                 'approved',
                 true
             );
@@ -106,7 +106,7 @@ export const submitReview = async (req: Request, res: Response) => {
 
             // Update thesis with PDF path
             await thesisModel.updateThesis(thesisId, {
-                reviewPdf: pdfPath,
+                reviewPdfConsultant: pdfPath,
                 status: updatedThesis.data.assignedSupervisor ? "with_supervisor" : "under_review"
             });
 
@@ -114,7 +114,7 @@ export const submitReview = async (req: Request, res: Response) => {
             await userModel.updateStudentThesisFeedback(
                 thesis.data.student,
                 {
-                    comments:  "Thesis approved by consultant",
+                    comments: "Thesis approved by consultant",
                     lastReviewDate: new Date(),
                     reviewIteration: thesis.data.currentIteration,
                     status: 'approved'
@@ -255,49 +255,70 @@ export const getCompletedReviews = async (req: Request, res: Response) => {
 
 export const reReviewThesis = async (req: Request, res: Response) => {
     try {
-        const reviewer = req.user as AuthenticatedUser & IReviewer
-        const { thesisId } = req.params
+        const consultant = req.user as AuthenticatedUser & IConsultant;
+        const { thesisId } = req.params;
 
-        // Find thesis
-        const thesis = await thesisModel.getThesisById(thesisId)
+        const thesis = await thesisModel.getThesisById(thesisId);
         if (!thesis) {
-            res.status(404).json({ error: "Thesis not found" })
+            res.status(404).json({ error: "Thesis not found" });
             return
         }
 
-        // Check reviewer access
-        if (thesis.data.assignedReviewer !== reviewer.id) {
-            res.status(403).json({ error: "Access denied" })
+        if (thesis.data.assignedConsultant !== consultant.id) {
+            res.status(403).json({ error: "Access denied" });
             return
         }
+
+        // Delete consultant review files if they exist
+        if (thesis.data.reviewPdfConsultant && fs.existsSync(thesis.data.reviewPdfConsultant)) {
+            fs.unlinkSync(thesis.data.reviewPdfConsultant);
+        }
+
+        // Reset thesis review data but keep the current iteration and review history
+        const updatedThesisData: Partial<IThesis> = {
+            status: "with_consultant",
+            consultantAssessment: undefined,
+            reviewPdfConsultant: undefined,
+            reviewIterations: thesis.data.reviewIterations.map(iteration => ({
+                iteration: iteration.iteration,
+                status: 'under_review',
+
+                consultantReview: undefined,
+                supervisorReview: undefined,
+                studentResubmissionDate: undefined
+            }))
+        };
+
+        await thesisModel.updateThesis(thesisId, updatedThesisData);
+
+        await userModel.addThesisToConsultant(consultant.id, thesisId);
+
+        // Update student status and clear previous consultant feedback
+        await userModel.updateStudentThesisStatus(thesis.data.student, "with_consultant");
+
+        // Optionally clear the student's consultant feedback
+        await userModel.updateStudentThesisFeedback(
+            thesis.data.student,
+            {
+                comments: "",
+                lastReviewDate: new Date(),
+                reviewIteration: thesis.data.currentIteration,
+                status: 'pending'
+            },
+            thesis.data.currentIteration
+        );
+
 
         // Delete signed review file if it exists
-        const signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
+        const signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesis.data.student}.pdf`)
         if (fs.existsSync(signedReviewPath)) {
             fs.unlinkSync(signedReviewPath)
         }
 
         // Delete unsigned review file if it exists
-        if (thesis.data.reviewPdf && fs.existsSync(thesis.data.reviewPdf)) {
-            fs.unlinkSync(thesis.data.reviewPdf)
+        if (thesis.data.reviewPdfConsultant && fs.existsSync(thesis.data.reviewPdfConsultant)) {
+            fs.unlinkSync(thesis.data.reviewPdfConsultant)
         }
-
-        // Reset thesis to under_review and clear review data
-        await thesisModel.updateThesis(thesisId, {
-            status: "under_review",
-            finalGrade: undefined,
-            assessment: undefined,
-            reviewPdf: undefined,
-            signedReviewPath: undefined,
-            signedDate: undefined,
-        })
-
-        // Move thesis back from reviewed to assigned
-        await userModel.removeThesisFromReviewer(reviewer.id, thesisId)
-        await userModel.addThesisToReviewer(reviewer.id, thesisId)
-
-        // Update student status
-        await userModel.updateStudentThesisStatus(thesis.data.student, "under_review")
 
         res.json({ message: "Thesis moved back for re-review successfully" })
     } catch (error) {
@@ -308,48 +329,48 @@ export const reReviewThesis = async (req: Request, res: Response) => {
 
 export const getUnsignedReview = async (req: Request, res: Response) => {
     try {
-        const reviewer = req.user as AuthenticatedUser & IReviewer
-        const { thesisId } = req.params
+        const consultant = req.user as AuthenticatedUser & IConsultant;
+        const { thesisId } = req.params;
 
         // Find thesis and check access
-        const thesis = await thesisModel.getThesisById(thesisId)
+        const thesis = await thesisModel.getThesisById(thesisId);
         if (!thesis) {
-            res.status(404).json({ error: "Thesis not found" })
-            return
+            res.status(404).json({ error: "Thesis not found" });
+            return;
         }
 
-        // Check if reviewer has access
-        if (thesis.data.assignedReviewer !== reviewer.id) {
-            res.status(403).json({ error: "Access denied" })
-            return
+        // Check if consultant has access
+        if (thesis.data.assignedConsultant !== consultant.id) {
+            res.status(403).json({ error: "Access denied" });
+            return;
         }
 
-        if (!thesis.data.reviewPdf) {
-            res.status(404).json({ error: "Unsigned review not found" })
-            return
+        if (!thesis.data.reviewPdfConsultant) {
+            res.status(404).json({ error: "Unsigned review not found" });
+            return;
         }
 
         // Use full path from database
-        const unsignedReviewPath = thesis.data.reviewPdf
+        const unsignedReviewPath = thesis.data.reviewPdfConsultant;
 
         if (!fs.existsSync(unsignedReviewPath)) {
-            res.status(404).json({ error: "Unsigned review file not found" })
-            return
+            res.status(404).json({ error: "Unsigned review file not found" });
+            return;
         }
 
-        res.setHeader("Content-Type", "application/pdf")
-        res.setHeader("Content-Disposition", `inline; filename="unsigned_review_${thesisId}.pdf"`)
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="consultant_review_${thesis.data.student}.pdf"`);
 
-        const fileStream = fs.createReadStream(unsignedReviewPath)
-        fileStream.pipe(res)
+        const fileStream = fs.createReadStream(unsignedReviewPath);
+        fileStream.pipe(res);
 
         fileStream.on("error", (error) => {
-            console.error("Error streaming unsigned review:", error)
-            res.status(500).json({ error: "Failed to stream unsigned review" })
-        })
+            console.error("Error streaming unsigned review:", error);
+            res.status(500).json({ error: "Failed to stream unsigned review" });
+        });
     } catch (error) {
-        console.error("Error getting unsigned review:", error)
-        res.status(500).json({ error: "Failed to get unsigned review" })
+        console.error("Error getting unsigned review:", error);
+        res.status(500).json({ error: "Failed to get unsigned review" });
     }
 }
 
@@ -393,8 +414,8 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
         // Update thesis with signed PDF path and status
         await thesisModel.updateThesis(thesisId, {
             status: "evaluated",
-            signedReviewPath: signedReviewPath,
-            reviewPdf: signedReviewPath,
+            consultantSignedReviewPath: signedReviewPath,
+            reviewPdfConsultant: signedReviewPath,
             signedDate: new Date(),
         })
 
@@ -436,8 +457,8 @@ export const getSignedReview = async (req: Request, res: Response) => {
         // Try to find signed review file using full path from database
         let signedReviewPath: string
 
-        if (thesis.data.signedReviewPath && fs.existsSync(thesis.data.signedReviewPath)) {
-            signedReviewPath = thesis.data.signedReviewPath
+        if (thesis.data.consultantSignedReviewPath && fs.existsSync(thesis.data.consultantSignedReviewPath)) {
+            signedReviewPath = thesis.data.consultantSignedReviewPath
         } else {
             signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
         }
@@ -487,8 +508,8 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
 
         let signedReviewPath: string
 
-        if (thesis.data.signedReviewPath && fs.existsSync(thesis.data.signedReviewPath)) {
-            signedReviewPath = thesis.data.signedReviewPath
+        if (thesis.data.consultantSignedReviewPath && fs.existsSync(thesis.data.consultantSignedReviewPath)) {
+            signedReviewPath = thesis.data.consultantSignedReviewPath
         } else {
             signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
         }

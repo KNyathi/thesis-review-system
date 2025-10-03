@@ -9,12 +9,12 @@ const consultantRouter = express.Router()
 
 // Reviewer routes
 consultantRouter.get("/assigned-theses-consultant", authenticate, isConsultant, getAssignedTheses) //complete
-consultantRouter.get("/completed-theses-consultant", authenticate, isConsultant, getCompletedReviews) //in progress
-consultantRouter.post("/submit-review-consultant/:thesisId", authenticate, isConsultant, submitReview) //working on it
-consultantRouter.post("/re-review-consultant/:thesisId", authenticate, isConsultant, reReviewThesis)
+consultantRouter.get("/completed-theses-consultant", authenticate, isConsultant, getCompletedReviews) //complete
+consultantRouter.post("/submit-review-consultant/:thesisId", authenticate, isConsultant, submitReview) //complete
+consultantRouter.post("/re-review-consultant/:thesisId", authenticate, isConsultant, reReviewThesis) //complete
 
 // Review signing routes
-consultantRouter.get("/unsigned-review-consultant/:thesisId", authenticate, isConsultant, getUnsignedReview)
+consultantRouter.get("/unsigned-review-consultant/:thesisId", authenticate, isConsultant, getUnsignedReview) //complete
 consultantRouter.get(
     "/signed-review-consultant/:thesisId",
     authenticate,

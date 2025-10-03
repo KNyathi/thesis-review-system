@@ -126,8 +126,8 @@ export const submitThesis = async (req: Request, res: Response) => {
       reviewIterations: [], // Start with empty review iterations for new submission
       currentIteration: currentIteration, // Use calculated iteration
       totalReviewCount: 0,  // Reset review count for new submission
-      reviewPdf: undefined,
-      signedReviewPath: undefined,
+      reviewPdfReviewer: undefined,
+     reviewerSignedReviewPath: undefined,
       signedDate: undefined
     }
 
@@ -182,7 +182,7 @@ export const getStudentThesis = async (req: Request, res: Response) => {
     const student = req.user as AuthenticatedUser & IStudent
 
     const theses = await thesisModel.getThesesByStudent(student.id)
-    const thesis = theses[0] // Assuming one thesis per student for now
+    const thesis = theses[0] // One thesis per student for now
 
     if (!thesis) {
       res.status(404).json({
@@ -343,7 +343,7 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
     }
 
     // Check if review exists and is signed
-    if (thesis.data.status !== "evaluated" || !thesis.data.reviewPdf) {
+    if (thesis.data.status !== "evaluated" || !thesis.data.reviewPdfReviewer) {
       res.status(404).json({ error: "Signed review not available" });
       return
     }
@@ -362,13 +362,13 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
     let filePath: string
 
     // Try to use the signed review path first, fall back to review PDF path
-    if (thesis.data.signedReviewPath && fs.existsSync(thesis.data.signedReviewPath)) {
-      filePath = thesis.data.signedReviewPath
-    } else if (thesis.data.reviewPdf && fs.existsSync(thesis.data.reviewPdf)) {
-      filePath = thesis.data.reviewPdf
+    if (thesis.data.reviewerSignedReviewPath && fs.existsSync(thesis.data.reviewerSignedReviewPath)) {
+      filePath = thesis.data.reviewerSignedReviewPath
+    } else if (thesis.data.reviewPdfReviewer && fs.existsSync(thesis.data.reviewPdfReviewer)) {
+      filePath = thesis.data.reviewPdfReviewer
     } else {
       // Fallback to default path
-      filePath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
+      filePath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesis.data.student}.pdf`)
     }
 
     if (!fs.existsSync(filePath)) {
@@ -378,7 +378,7 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
 
     // Set headers to indicate a file download
     res.setHeader("Content-Type", "application/pdf")
-    res.setHeader("Content-Disposition", `attachment; filename="${thesis.data.title}_signed_review.pdf"`)
+    res.setHeader("Content-Disposition", `attachment; filename="signed_review_${thesis.data.student}.pdf"`)
 
     // Stream the file to the response
     const fileStream = fs.createReadStream(filePath)

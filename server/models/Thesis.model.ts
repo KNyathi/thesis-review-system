@@ -66,15 +66,20 @@ export interface IThesis {
   assignedConsultant?: string;
   assignedSupervisor?: string;
   finalGrade?: string;
-  assessment?: IAssessment;
-  
+ 
+   // Separate assessments for each role
+  consultantAssessment?: IAssessment;
+  reviewerAssessment?: IAssessment;
+
   // Track all review iterations
   reviewIterations: IReviewIteration[];
   currentIteration: number;
   totalReviewCount: number; // Total number of reviews across all iterations
-  
-  reviewPdf?: string;
-  signedReviewPath?: string;
+
+  reviewPdfConsultant?: string;
+  reviewPdfReviewer?: string;
+  consultantSignedReviewPath?: string; // Consultant signed PDF
+  reviewerSignedReviewPath?: string; // Supervisor signed PDF
   signedDate?: Date;
 }
 
@@ -134,7 +139,7 @@ export class ThesisModel {
       WHERE t.id = $1
     `;
     const result = await this.pool.query(query, [id]);
-    
+
     if (!result.rows[0]) return null;
 
     const row = result.rows[0];
@@ -405,7 +410,7 @@ export class ThesisModel {
   async find(): Promise<any[]> {
     const query = 'SELECT id, data, created_at, updated_at FROM theses ORDER BY created_at DESC';
     const result = await this.pool.query(query);
-    
+
     return result.rows.map(row => ({
       ...row.data,
       id: row.id,
@@ -423,7 +428,7 @@ export class ThesisModel {
       LIMIT $1 OFFSET $2
     `;
     const result = await this.pool.query(query, [limit, offset]);
-    
+
     return result.rows.map(row => ({
       ...row.data,
       id: row.id,
@@ -482,208 +487,208 @@ export class ThesisModel {
     return result.rows;
   }
 
-// In ThesisModel - Add these methods
+  // In ThesisModel - Add these methods
 
-// Start a new review iteration
-async startNewIteration(thesisId: string): Promise<ThesisDocument> {
-  const thesis = await this.getThesisById(thesisId);
-  if (!thesis) throw new Error('Thesis not found');
+  // Start a new review iteration
+  async startNewIteration(thesisId: string): Promise<ThesisDocument> {
+    const thesis = await this.getThesisById(thesisId);
+    if (!thesis) throw new Error('Thesis not found');
 
-  const currentIteration = thesis.data.currentIteration + 1;
-  
-  const newIteration: IReviewIteration = {
-    iteration: currentIteration,
-    status: 'under_review'
-  };
+    const currentIteration = thesis.data.currentIteration + 1;
 
-  const updatedData = {
-    ...thesis.data,
-    currentIteration,
-    totalReviewCount: thesis.data.totalReviewCount + 1,
-    reviewIterations: [...(thesis.data.reviewIterations || []), newIteration]
-  };
+    const newIteration: IReviewIteration = {
+      iteration: currentIteration,
+      status: 'under_review'
+    };
 
-  const query = `
+    const updatedData = {
+      ...thesis.data,
+      currentIteration,
+      totalReviewCount: thesis.data.totalReviewCount + 1,
+      reviewIterations: [...(thesis.data.reviewIterations || []), newIteration]
+    };
+
+    const query = `
     UPDATE theses
     SET data = $1, updated_at = CURRENT_TIMESTAMP
     WHERE id = $2
     RETURNING *;
   `;
-  const result = await this.pool.query(query, [updatedData, thesisId]);
-  return result.rows[0];
-}
+    const result = await this.pool.query(query, [updatedData, thesisId]);
+    return result.rows[0];
+  }
 
-// Submit consultant review for current iteration
-async submitConsultantReview(
-  thesisId: string, 
-  comments: string, 
-  status: 'approved' | 'revisions_requested',
-  isFinalApproval: boolean = false
-): Promise<ThesisDocument> {
-  const thesis = await this.getThesisById(thesisId);
-  if (!thesis) throw new Error('Thesis not found');
+  // Submit consultant review for current iteration
+  async submitConsultantReview(
+    thesisId: string,
+    comments: string,
+    status: 'approved' | 'revisions_requested',
+    isFinalApproval: boolean = false
+  ): Promise<ThesisDocument> {
+    const thesis = await this.getThesisById(thesisId);
+    if (!thesis) throw new Error('Thesis not found');
 
-  const currentIteration = thesis.data.currentIteration;
-  const reviewIterations = [...(thesis.data.reviewIterations || [])];
-  
-  const consultantReview: IConsultantReview = {
-    comments,
-    submittedDate: new Date(),
-    status,
-    iteration: currentIteration,
-    isFinalApproval
-  };
+    const currentIteration = thesis.data.currentIteration;
+    const reviewIterations = [...(thesis.data.reviewIterations || [])];
 
-  // Update the current iteration
-  reviewIterations[currentIteration - 1] = {
-    ...reviewIterations[currentIteration - 1],
-    consultantReview,
-    status: status === 'approved' ? 'approved' : 'revisions_requested'
-  };
+    const consultantReview: IConsultantReview = {
+      comments,
+      submittedDate: new Date(),
+      status,
+      iteration: currentIteration,
+      isFinalApproval
+    };
 
-  const updatedData = {
-    ...thesis.data,
-    reviewIterations,
-    status: status === 'approved' ? 'with_supervisor' : 'revisions_requested'
-  };
+    // Update the current iteration
+    reviewIterations[currentIteration - 1] = {
+      ...reviewIterations[currentIteration - 1],
+      consultantReview,
+      status: status === 'approved' ? 'approved' : 'revisions_requested'
+    };
 
-  const query = `
+    const updatedData = {
+      ...thesis.data,
+      reviewIterations,
+      status: status === 'approved' ? 'with_supervisor' : 'revisions_requested'
+    };
+
+    const query = `
     UPDATE theses
     SET data = $1, updated_at = CURRENT_TIMESTAMP
     WHERE id = $2
     RETURNING *;
   `;
-  const result = await this.pool.query(query, [updatedData, thesisId]);
-  return result.rows[0];
-}
+    const result = await this.pool.query(query, [updatedData, thesisId]);
+    return result.rows[0];
+  }
 
-// Submit supervisor review for current iteration
-async submitSupervisorReview(
-  thesisId: string, 
-  comments: string, 
-  status: 'approved' | 'revisions_requested',
-  isFinalApproval: boolean = false
-): Promise<ThesisDocument> {
-  const thesis = await this.getThesisById(thesisId);
-  if (!thesis) throw new Error('Thesis not found');
+  // Submit supervisor review for current iteration
+  async submitSupervisorReview(
+    thesisId: string,
+    comments: string,
+    status: 'approved' | 'revisions_requested',
+    isFinalApproval: boolean = false
+  ): Promise<ThesisDocument> {
+    const thesis = await this.getThesisById(thesisId);
+    if (!thesis) throw new Error('Thesis not found');
 
-  const currentIteration = thesis.data.currentIteration;
-  const reviewIterations = [...(thesis.data.reviewIterations || [])];
-  
-  const supervisorReview: ISupervisorReview = {
-    comments,
-    submittedDate: new Date(),
-    status,
-    iteration: currentIteration,
-    isFinalApproval
-  };
+    const currentIteration = thesis.data.currentIteration;
+    const reviewIterations = [...(thesis.data.reviewIterations || [])];
 
-  // Update the current iteration
-  reviewIterations[currentIteration - 1] = {
-    ...reviewIterations[currentIteration - 1],
-    supervisorReview,
-    status: status === 'approved' ? 'approved' : 'revisions_requested'
-  };
+    const supervisorReview: ISupervisorReview = {
+      comments,
+      submittedDate: new Date(),
+      status,
+      iteration: currentIteration,
+      isFinalApproval
+    };
 
-  const newStatus = status === 'approved' 
-    ? (thesis.data.assignedReviewer ? 'under_review' : 'evaluated')
-    : 'revisions_requested';
+    // Update the current iteration
+    reviewIterations[currentIteration - 1] = {
+      ...reviewIterations[currentIteration - 1],
+      supervisorReview,
+      status: status === 'approved' ? 'approved' : 'revisions_requested'
+    };
 
-  const updatedData = {
-    ...thesis.data,
-    reviewIterations,
-    status: newStatus
-  };
+    const newStatus = status === 'approved'
+      ? (thesis.data.assignedReviewer ? 'under_review' : 'evaluated')
+      : 'revisions_requested';
 
-  const query = `
+    const updatedData = {
+      ...thesis.data,
+      reviewIterations,
+      status: newStatus
+    };
+
+    const query = `
     UPDATE theses
     SET data = $1, updated_at = CURRENT_TIMESTAMP
     WHERE id = $2
     RETURNING *;
   `;
-  const result = await this.pool.query(query, [updatedData, thesisId]);
-  return result.rows[0];
-}
+    const result = await this.pool.query(query, [updatedData, thesisId]);
+    return result.rows[0];
+  }
 
-// Student resubmits after revisions
-async studentResubmitThesis(thesisId: string): Promise<ThesisDocument> {
-  const thesis = await this.getThesisById(thesisId);
-  if (!thesis) throw new Error('Thesis not found');
+  // Student resubmits after revisions
+  async studentResubmitThesis(thesisId: string): Promise<ThesisDocument> {
+    const thesis = await this.getThesisById(thesisId);
+    if (!thesis) throw new Error('Thesis not found');
 
-  const currentIteration = thesis.data.currentIteration;
-  const reviewIterations = [...(thesis.data.reviewIterations || [])];
-  
-  // Update current iteration with resubmission date
-  reviewIterations[currentIteration - 1] = {
-    ...reviewIterations[currentIteration - 1],
-    studentResubmissionDate: new Date()
-  };
+    const currentIteration = thesis.data.currentIteration;
+    const reviewIterations = [...(thesis.data.reviewIterations || [])];
 
-  // Start new iteration
-  const newIteration: IReviewIteration = {
-    iteration: currentIteration + 1,
-    status: 'under_review'
-  };
+    // Update current iteration with resubmission date
+    reviewIterations[currentIteration - 1] = {
+      ...reviewIterations[currentIteration - 1],
+      studentResubmissionDate: new Date()
+    };
 
-  const updatedData = {
-    ...thesis.data,
-    currentIteration: currentIteration + 1,
-    totalReviewCount: thesis.data.totalReviewCount + 1,
-    reviewIterations: [...reviewIterations, newIteration],
-    status: thesis.data.assignedConsultant ? 'with_consultant' : 'with_supervisor'
-  };
+    // Start new iteration
+    const newIteration: IReviewIteration = {
+      iteration: currentIteration + 1,
+      status: 'under_review'
+    };
 
-  const query = `
+    const updatedData = {
+      ...thesis.data,
+      currentIteration: currentIteration + 1,
+      totalReviewCount: thesis.data.totalReviewCount + 1,
+      reviewIterations: [...reviewIterations, newIteration],
+      status: thesis.data.assignedConsultant ? 'with_consultant' : 'with_supervisor'
+    };
+
+    const query = `
     UPDATE theses
     SET data = $1, updated_at = CURRENT_TIMESTAMP
     WHERE id = $2
     RETURNING *;
   `;
-  const result = await this.pool.query(query, [updatedData, thesisId]);
-  return result.rows[0];
-}
+    const result = await this.pool.query(query, [updatedData, thesisId]);
+    return result.rows[0];
+  }
 
-// Update consultant/supervisor stats
-async updateConsultantStats(consultantId: string, thesisId: string, wasApproved: boolean): Promise<void> {
-  const consultant = await userModel.getUserById(consultantId);
-  if (!consultant || consultant.role !== 'consultant') return;
+  // Update consultant/supervisor stats
+  async updateConsultantStats(consultantId: string, thesisId: string, wasApproved: boolean): Promise<void> {
+    const consultant = await userModel.getUserById(consultantId);
+    if (!consultant || consultant.role !== 'consultant') return;
 
-  const consultantData = consultant as IConsultant;
-  
-  const updatedStats = {
-    totalReviews: (consultantData.reviewStats?.totalReviews || 0) + 1,
-    approvedTheses: (consultantData.reviewStats?.approvedTheses || 0) + (wasApproved ? 1 : 0),
-    averageReviewCount: 0 // Will be calculated based on all theses
-  };
+    const consultantData = consultant as IConsultant;
 
-  // Add to reviewed theses if not already there
-  const reviewedTheses = [...new Set([...(consultantData.reviewedTheses || []), thesisId])];
+    const updatedStats = {
+      totalReviews: (consultantData.reviewStats?.totalReviews || 0) + 1,
+      approvedTheses: (consultantData.reviewStats?.approvedTheses || 0) + (wasApproved ? 1 : 0),
+      averageReviewCount: 0 // Will be calculated based on all theses
+    };
 
-  await userModel.updateUser(consultantId, {
-    reviewedTheses,
-    reviewStats: updatedStats
-  } as Partial<Omit<IUser, 'id' | 'createdAt' | 'updatedAt'>>);
-}
+    // Add to reviewed theses if not already there
+    const reviewedTheses = [...new Set([...(consultantData.reviewedTheses || []), thesisId])];
 
-// Similar method for supervisor...
-async updateSupervisorStats(supervisorId: string, thesisId: string, wasApproved: boolean): Promise<void> {
-  const supervisor = await userModel.getUserById(supervisorId);
-  if (!supervisor || supervisor.role !== 'supervisor') return;
+    await userModel.updateUser(consultantId, {
+      reviewedTheses,
+      reviewStats: updatedStats
+    } as Partial<Omit<IUser, 'id' | 'createdAt' | 'updatedAt'>>);
+  }
 
-  const supervisorData = supervisor as ISupervisor;
-  
-  const updatedStats = {
-    totalReviews: (supervisorData.reviewStats?.totalReviews || 0) + 1,
-    approvedTheses: (supervisorData.reviewStats?.approvedTheses || 0) + (wasApproved ? 1 : 0),
-    averageReviewCount: 0
-  };
+  // Similar method for supervisor...
+  async updateSupervisorStats(supervisorId: string, thesisId: string, wasApproved: boolean): Promise<void> {
+    const supervisor = await userModel.getUserById(supervisorId);
+    if (!supervisor || supervisor.role !== 'supervisor') return;
 
-  const reviewedTheses = [...new Set([...(supervisorData.reviewedTheses || []), thesisId])];
+    const supervisorData = supervisor as ISupervisor;
 
-  await userModel.updateUser(supervisorId, {
-    reviewedTheses,
-    reviewStats: updatedStats
-   } as Partial<Omit<IUser, 'id' | 'createdAt' | 'updatedAt'>>);
-}
+    const updatedStats = {
+      totalReviews: (supervisorData.reviewStats?.totalReviews || 0) + 1,
+      approvedTheses: (supervisorData.reviewStats?.approvedTheses || 0) + (wasApproved ? 1 : 0),
+      averageReviewCount: 0
+    };
+
+    const reviewedTheses = [...new Set([...(supervisorData.reviewedTheses || []), thesisId])];
+
+    await userModel.updateUser(supervisorId, {
+      reviewedTheses,
+      reviewStats: updatedStats
+    } as Partial<Omit<IUser, 'id' | 'createdAt' | 'updatedAt'>>);
+  }
 
 }

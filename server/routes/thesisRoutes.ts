@@ -13,8 +13,8 @@ import upload from "../utils/multer"
 const thesisRouter = express.Router()
 
 //Student Routes
-thesisRouter.post("/submit-topic", authenticate, isStudent, submitTopic)
-thesisRouter.post("/submit-thesis", authenticate, isStudent, upload.single("thesisFile"), submitThesis)
+thesisRouter.post("/submit-topic", authenticate, isStudent, submitTopic) //complete
+thesisRouter.post("/submit-thesis", authenticate, isStudent, upload.single("thesisFile"), submitThesis) //complete
 thesisRouter.get("/my-thesis", authenticate, isStudent, getStudentThesis)
 
 // Download route (reviewer/admin)
