@@ -213,22 +213,22 @@ export const submitReview = async (req: Request, res: Response) => {
                 true
             );
 
-            // Copy the signed consultant PDF to supervisor signed directory
-            const supervisorSignedDir = path.join(__dirname, "../../server/reviews/supervisor/unsigned");
-            if (!fs.existsSync(supervisorSignedDir)) {
-                fs.mkdirSync(supervisorSignedDir, { recursive: true });
+            // Copy the signed consultant PDF to supervisor unsigned directory
+            const supervisorUnSignedDir = path.join(__dirname, "../../server/reviews/supervisor/unsigned");
+            if (!fs.existsSync(supervisorUnSignedDir)) {
+                fs.mkdirSync(supervisorUnSignedDir, { recursive: true });
             }
 
             // Use the same filename but in supervisor signed directory
             const fileName = path.basename(consultantSignedPdfPath);
-            const supervisorSignedPdfPath = path.join(supervisorSignedDir, fileName);
+            const supervisorUnSignedPdfPath = path.join(supervisorUnSignedDir, fileName);
 
             // Copy the file
-            fs.copyFileSync(consultantSignedPdfPath, supervisorSignedPdfPath);
+            fs.copyFileSync(consultantSignedPdfPath, supervisorUnSignedPdfPath);
 
-            // Update thesis with supervisor signed PDF path
+            // Update thesis with supervisor unsigned PDF path
             await thesisModel.updateThesis(thesisId, {
-                consultantSignedReviewPath: supervisorSignedPdfPath,
+                reviewPdfSupervisor: supervisorUnSignedPdfPath,
                 signedDate: new Date(),
                 status: "under_review" // Ready for final review
             });
@@ -253,11 +253,11 @@ export const submitReview = async (req: Request, res: Response) => {
             await userModel.addThesisToSupervisorReviewed(supervisor.id, thesisId);
 
             res.json({
-                message: "Thesis signed successfully using consultant's approved review",
+                message: "Thesis approved successfully by reviewer",
                 redirectToSign: true,
                 thesisId: thesisId,
-                pdfPath: supervisorSignedPdfPath,
-                action: "signed"
+                pdfPath: supervisorUnSignedPdfPath,
+                action: "unsigned"
             });
             return
         }
@@ -326,7 +326,7 @@ export const submitReview = async (req: Request, res: Response) => {
 
             // Update thesis with PDF path
             await thesisModel.updateThesis(thesisId, {
-                reviewPdfConsultant: pdfPath,
+                reviewPdfSupervisor: pdfPath,
                 status: "under_review" // Ready for final review
             });
 
@@ -493,15 +493,15 @@ export const reReviewThesis = async (req: Request, res: Response) => {
         }
 
         // Delete supervisor review files if they exist
-        if (thesis.data.reviewPdfConsultant && fs.existsSync(thesis.data.reviewPdfConsultant)) {
-            fs.unlinkSync(thesis.data.reviewPdfConsultant);
+        if (thesis.data.reviewPdfSupervisor && fs.existsSync(thesis.data.reviewPdfSupervisor)) {
+            fs.unlinkSync(thesis.data.reviewPdfSupervisor);
         }
 
         // Reset thesis review data but keep the current iteration and review history
         const updatedThesisData: Partial<IThesis> = {
             status: "with_supervisor",
             consultantAssessment: undefined,
-            reviewPdfConsultant: undefined,
+            reviewPdfSupervisor: undefined,
             reviewIterations: thesis.data.reviewIterations.map(iteration => ({
                 iteration: iteration.iteration,
                 status: 'under_review',
@@ -533,14 +533,14 @@ export const reReviewThesis = async (req: Request, res: Response) => {
         );
 
         // Delete signed review file if it exists
-        const signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesis.data.student}.pdf`)
+        const signedReviewPath = path.join(__dirname, "../../server/reviews/supervisor/signed", `signed_review1_${thesis.data.student}.pdf`)
         if (fs.existsSync(signedReviewPath)) {
             fs.unlinkSync(signedReviewPath)
         }
 
         // Delete unsigned supervisor review file if it exists
-        if (thesis.data.reviewPdfConsultant && fs.existsSync(thesis.data.reviewPdfConsultant)) {
-            fs.unlinkSync(thesis.data.reviewPdfConsultant)
+        if (thesis.data.reviewPdfSupervisor && fs.existsSync(thesis.data.reviewPdfSupervisor)) {
+            fs.unlinkSync(thesis.data.reviewPdfSupervisor)
         }
 
         res.json({ message: "Thesis moved back for supervisor re-review successfully" })
@@ -568,13 +568,13 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
             return;
         }
 
-        if (!thesis.data.reviewPdfConsultant) {
+        if (!thesis.data.reviewPdfSupervisor) {
             res.status(404).json({ error: "Unsigned review not found" });
             return;
         }
 
         // Use full path from database
-        const unsignedReviewPath = thesis.data.reviewPdfConsultant;
+        const unsignedReviewPath = thesis.data.reviewPdfSupervisor;
 
         if (!fs.existsSync(unsignedReviewPath)) {
             res.status(404).json({ error: "Unsigned review file not found" });
@@ -582,7 +582,7 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
         }
 
         res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `inline; filename="supervisor_review_${thesis.data.student}.pdf"`);
+        res.setHeader("Content-Disposition", `inline; filename="unsigned_review1_${thesis.data.student}.pdf"`);
 
         const fileStream = fs.createReadStream(unsignedReviewPath);
         fileStream.pipe(res);
@@ -599,7 +599,7 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
 
 export const uploadSignedReview = async (req: Request, res: Response) => {
     try {
-        const reviewer = req.user as AuthenticatedUser & IReviewer
+        const supervisor = req.user as AuthenticatedUser & ISupervisor
         const { thesisId } = req.params
         const { file } = req
 
@@ -612,7 +612,7 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
             return
         }
 
-        if (thesis.data.assignedReviewer !== reviewer.id) {
+        if (thesis.data.assignedSupervisor !== supervisor.id) {
             res.status(403).json({ error: "Access denied" })
             return
         }
@@ -623,13 +623,13 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
         }
 
         // Ensure signed reviews directory exists
-        const signedDir = path.join(__dirname, "../../server/reviews/signed")
+        const signedDir = path.join(__dirname, "../../server/reviews/supervisor/signed")
         if (!fs.existsSync(signedDir)) {
             fs.mkdirSync(signedDir, { recursive: true })
         }
 
         // Move uploaded file to signed reviews directory
-        const signedReviewPath = path.join(signedDir, `signed_review_${thesisId}.pdf`)
+        const signedReviewPath = path.join(signedDir, `signed_review1_${thesis.data.student}.pdf`)
         fs.renameSync(file.path, signedReviewPath)
 
         console.log(`Chrome-signed review saved to: ${signedReviewPath}`)
@@ -637,8 +637,7 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
         // Update thesis with signed PDF path and status
         await thesisModel.updateThesis(thesisId, {
             status: "evaluated",
-            consultantSignedReviewPath: signedReviewPath,
-            reviewPdfConsultant: signedReviewPath,
+            supervisorSignedReviewPath: signedReviewPath,
             signedDate: new Date(),
         })
 
@@ -667,23 +666,16 @@ export const getSignedReview = async (req: Request, res: Response) => {
             return
         }
 
-        // Check access permissions
-        const isStudent = user.role === "student" && thesis.data.student === user.id
-        const isReviewer = user.role === "reviewer" && thesis.data.assignedReviewer === user.id
-        const isAdmin = user.role === "admin"
-
-        if (!isStudent && !isReviewer && !isAdmin) {
-            res.status(403).json({ error: "Access denied" })
-            return
-        }
-
+     
         // Try to find signed review file using full path from database
         let signedReviewPath: string
 
-        if (thesis.data.consultantSignedReviewPath && fs.existsSync(thesis.data.consultantSignedReviewPath)) {
+        if (user.role === 'consultant' && thesis.data.assignedConsultant === user.id && thesis.data.consultantSignedReviewPath && fs.existsSync(thesis.data.consultantSignedReviewPath)) {
             signedReviewPath = thesis.data.consultantSignedReviewPath
+        } else if (user.role === 'supervisor' && thesis.data.assignedSupervisor === user.id ) {
+            signedReviewPath = path.join(__dirname, "../../server/reviews/supervisor/signed", `signed_review1_${thesis.data.student}.pdf`)
         } else {
-            signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
+            signedReviewPath = path.join(__dirname, "../../server/reviews/supervisor/signed", `signed_review1_${thesis.data.student}.pdf`)
         }
 
         if (!fs.existsSync(signedReviewPath)) {
@@ -692,7 +684,7 @@ export const getSignedReview = async (req: Request, res: Response) => {
         }
 
         res.setHeader("Content-Type", "application/pdf")
-        res.setHeader("Content-Disposition", `inline; filename="signed_review_${thesisId}.pdf"`)
+        res.setHeader("Content-Disposition", `inline; filename="signed_review1_${thesis.data.student}.pdf"`)
 
         const fileStream = fs.createReadStream(signedReviewPath)
         fileStream.pipe(res)
@@ -719,22 +711,12 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
             return
         }
 
-        // Check access permissions
-        const isStudent = user.role === "student" && thesis.data.student === user.id
-        const isReviewer = user.role === "reviewer" && thesis.data.assignedReviewer === user.id
-        const isAdmin = user.role === "admin"
-
-        if (!isStudent && !isReviewer && !isAdmin) {
-            res.status(403).json({ error: "Access denied" })
-            return
-        }
-
         let signedReviewPath: string
 
-        if (thesis.data.consultantSignedReviewPath && fs.existsSync(thesis.data.consultantSignedReviewPath)) {
-            signedReviewPath = thesis.data.consultantSignedReviewPath
+        if (thesis.data.supervisorSignedReviewPath && fs.existsSync(thesis.data.supervisorSignedReviewPath)) {
+            signedReviewPath = thesis.data.supervisorSignedReviewPath
         } else {
-            signedReviewPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
+            signedReviewPath = path.join(__dirname, "../../server/reviews/supervisor/signed", `signed_review1_${thesis.data.student}.pdf`)
         }
 
         if (!fs.existsSync(signedReviewPath)) {
@@ -743,7 +725,7 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
         }
 
         res.setHeader("Content-Type", "application/pdf")
-        res.setHeader("Content-Disposition", `attachment; filename="signed_review_${thesisId}.pdf"`)
+        res.setHeader("Content-Disposition", `attachment; filename="signed_review1_${thesis.data.student}.pdf"`)
 
         const fileStream = fs.createReadStream(signedReviewPath)
         fileStream.pipe(res)
@@ -760,7 +742,7 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
 
 export const signedReview = async (req: Request, res: Response) => {
     try {
-        const reviewer = req.user as AuthenticatedUser & IReviewer
+        const supervisor = req.user as AuthenticatedUser & ISupervisor
         const { thesisId } = req.params
         const { file } = req
 
@@ -780,7 +762,7 @@ export const signedReview = async (req: Request, res: Response) => {
         }
 
         // Move signed PDF to permanent storage
-        const signedPath = path.join(__dirname, "../../server/reviews/signed", `signed_review_${thesisId}.pdf`)
+        const signedPath = path.join(__dirname, "../../server/reviews/supervisor/signed", `signed_review1_${thesis.data.student}.pdf`)
         fs.renameSync(file.path, signedPath)
 
         // Update student's status
@@ -796,12 +778,12 @@ export const signedReview = async (req: Request, res: Response) => {
 // New method to get reviewer's assigned and reviewed thesis counts
 export const getReviewerStats = async (req: Request, res: Response) => {
     try {
-        const reviewer = req.user as AuthenticatedUser & IReviewer
+        const supervisor = req.user as AuthenticatedUser & ISupervisor
 
-        const assignedTheses = await thesisModel.getThesesByReviewer(reviewer.id)
+        const assignedTheses = await thesisModel.getThesesBySupervisor(supervisor.id)
         const allTheses = await thesisModel.find()
         const reviewedTheses = allTheses.filter(thesis =>
-            thesis.data.status === "evaluated" && thesis.data.assignedReviewer === reviewer.id
+            thesis.data.status === "evaluated" && thesis.data.assignedSupervisor === supervisor.id
         )
 
         res.json({

@@ -8,8 +8,9 @@ import {
   getSignedReview,
   uploadSignedReview,
   signedReview,
+  downloadSignedReview,
 } from "../controllers/reviewController"
-import { authenticate, isAdmin, isReviewer, isStudent } from "../middleware/auth"
+import { authenticate, isAdmin, isReviewer, isReviewerReview, isStudent } from "../middleware/auth"
 import upload from "../utils/multer"
 
 const reviewRouter = express.Router()
@@ -25,17 +26,7 @@ reviewRouter.get("/unsigned-review/:thesisId", authenticate, isReviewer, getUnsi
 reviewRouter.get(
   "/signed-review/:thesisId",
   authenticate,
-  (req, res, next) => {
-    if (req.user?.role === "student") {
-      isStudent(req, res, next)
-    } else if (req.user?.role === "reviewer") {
-      isReviewer(req, res, next)
-    } else if (req.user?.role === "admin") {
-      isAdmin(req, res, next)
-    } else {
-      res.status(403).json({ error: "Access denied" })
-    }
-  },
+  isReviewerReview,
   getSignedReview,
 )
 
@@ -49,5 +40,7 @@ reviewRouter.post(
 )
 
 reviewRouter.post("/signed-review/:thesisId", authenticate, isReviewer, signedReview)
+
+reviewRouter.get("/download-signed-review/:thesisId", authenticate, isReviewerReview, downloadSignedReview)
 
 export default reviewRouter

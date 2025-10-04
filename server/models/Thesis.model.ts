@@ -77,9 +77,11 @@ export interface IThesis {
   totalReviewCount: number; // Total number of reviews across all iterations
 
   reviewPdfConsultant?: string;
+  reviewPdfSupervisor?: string;
   reviewPdfReviewer?: string;
   consultantSignedReviewPath?: string; // Consultant signed PDF
-  reviewerSignedReviewPath?: string; // Supervisor signed PDF
+  supervisorSignedReviewPath?: string;
+  reviewerSignedReviewPath?: string; // Reviewer signed PDF
   signedDate?: Date;
 }
 

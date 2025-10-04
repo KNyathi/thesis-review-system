@@ -965,7 +965,7 @@ const drawMixedFontLine = (
 
   // Save PDF to file
   const pdfBytes = await pdfDoc.save();
-  const outputPath = path.join(reviewsDir, `unsigned_review_${thesis.student}.pdf`);
+  const outputPath = path.join(reviewsDir, `unsigned_review2_${thesis.student}.pdf`);
   fs.writeFileSync(outputPath, pdfBytes);
 
   return outputPath;

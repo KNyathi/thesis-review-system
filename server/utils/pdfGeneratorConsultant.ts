@@ -978,9 +978,7 @@ export async function generateConsultantReviewPDF(
 
   // Save PDF to file
   const pdfBytes = await pdfDoc.save();
-  const fileName = isSupervisor ? 
-    `supervisor_review_${thesis.student}.pdf` : 
-    `consultant_review_${thesis.student}.pdf`;
+  const fileName = `unsigned_review1_${thesis.student}.pdf`;
   const outputPath = path.join(reviewsDir, fileName);
   fs.writeFileSync(outputPath, pdfBytes);
 

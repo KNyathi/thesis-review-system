@@ -2,7 +2,7 @@ import express from "express"
 
 import { authenticate, isAdmin, isConsultant, isConsultantReview, isReviewer, isStudent } from "../middleware/auth"
 import upload from "../utils/multer"
-import { getAssignedTheses, getCompletedReviews, getSignedReview, getUnsignedReview, reReviewThesis, signedReview, submitReview, uploadSignedReview } from "../controllers/consultantController"
+import { downloadSignedReview, getAssignedTheses, getCompletedReviews, getSignedReview, getUnsignedReview, reReviewThesis, signedReview, submitReview, uploadSignedReview } from "../controllers/consultantController"
 
 
 const consultantRouter = express.Router()
@@ -20,7 +20,7 @@ consultantRouter.get(
     authenticate,
     isConsultantReview,
     getSignedReview,
-)
+) //must be complete
 
 // Chrome native tools upload route
 consultantRouter.post(
@@ -29,8 +29,10 @@ consultantRouter.post(
     isConsultant,
     upload.single("signedReview"),
     uploadSignedReview,
-)
+) //must be complete
 
-consultantRouter.post("/signed-review-consultant/:thesisId", authenticate, isConsultant, signedReview)
+consultantRouter.post("/signed-review-consultant/:thesisId", authenticate, isConsultant, signedReview) //must be complete
+
+consultantRouter.get("/download-signed-review-consultant/:thesisId", authenticate, isConsultantReview, downloadSignedReview) //must be complete
 
 export default consultantRouter
