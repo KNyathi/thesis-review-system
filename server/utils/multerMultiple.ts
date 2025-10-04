@@ -19,10 +19,9 @@ const hodStorage = multer.diskStorage({
   filename: (req, file, cb) => {
     const { thesisId } = req.params;
     const fieldName = file.fieldname; // "supervisorReview" or "reviewerReview"
-    const timestamp = Date.now();
     
     // Use temporary filename with timestamp, we'll rename in the upload function
-    const filename = `temp_hod_${fieldName.replace('Review', '')}_${thesisId}_${timestamp}.pdf`;
+    const filename = `temp_hod_${fieldName.replace('Review', '')}_${thesisId}.pdf`;
     cb(null, filename)
   },
 })

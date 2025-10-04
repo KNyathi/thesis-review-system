@@ -65,7 +65,8 @@ export const register = async (req: Request, res: Response) => {
           thesisStatus: "not_submitted",
           isTopicApproved: false,
           totalReviewAttempts: 0,
-          currentReviewIteration: 0
+          currentReviewIteration: 0,
+          roles: []
         }
         user = await Student.create(userModel, studentData)
         break
@@ -83,7 +84,10 @@ export const register = async (req: Request, res: Response) => {
             totalReviews: 0,
             approvedTheses: 0,
             averageReviewCount: 0
-          }
+          },
+          faculty: roleSpecificData.faculty || '',
+          department: roleSpecificData.department || '',
+          roles: []
         }
         user = await Consultant.create(userModel, consultantData)
         break
@@ -104,6 +108,8 @@ export const register = async (req: Request, res: Response) => {
             averageReviewCount: 0
           },
           maxStudents: roleSpecificData.maxStudents || 10,
+          faculty: roleSpecificData.faculty || '',
+          roles: []
         }
         user = await Supervisor.create(userModel, supervisorData)
         break
@@ -116,7 +122,9 @@ export const register = async (req: Request, res: Response) => {
           position: roleSpecificData.position || "",
           assignedTheses: [],
           reviewedTheses: [],
-          // Removed isApproved field
+          faculty: roleSpecificData.faculty || '',
+          department: roleSpecificData.department || '',
+          roles: []
         }
         user = await Reviewer.create(userModel, reviewerData)
         break
@@ -129,6 +137,7 @@ export const register = async (req: Request, res: Response) => {
           position: roleSpecificData.position || "",
           department: roleSpecificData.department || "",
           faculty: roleSpecificData.faculty || "",
+          roles: []
         }
         user = await HeadOfDepartment.create(userModel, hodData)
         break
@@ -140,6 +149,7 @@ export const register = async (req: Request, res: Response) => {
           institution,
           position: roleSpecificData.position || "",
           faculty: roleSpecificData.faculty || "",
+          roles: []
         }
         user = await Dean.create(userModel, deanData)
         break
@@ -150,6 +160,7 @@ export const register = async (req: Request, res: Response) => {
           fullName,
           institution,
           position: roleSpecificData.position || "",
+          roles: []
         }
         user = await Admin.create(userModel, adminData)
         break
@@ -462,7 +473,8 @@ export const registerStudent = async (req: Request, res: Response) => {
       thesisStatus: "not_submitted",
       isTopicApproved: false,
       totalReviewAttempts: 0,
-      currentReviewIteration: 0
+      currentReviewIteration: 0,
+      roles: []
     }
 
 
@@ -493,7 +505,8 @@ export const registerReviewer = async (req: Request, res: Response) => {
       fullName,
       institution,
       position,
-      expertiseAreas
+      faculty,
+      department
     } = req.body
 
     // Check if user already exists
@@ -514,7 +527,10 @@ export const registerReviewer = async (req: Request, res: Response) => {
       position: position || "",
       assignedTheses: [],
       reviewedTheses: [],
-      // Removed isApproved field
+      roles: [],
+      faculty: faculty || "",
+      department: department || "",
+
     }
 
     const user = await Reviewer.create(userModel, reviewerData)
@@ -544,7 +560,8 @@ export const registerConsultant = async (req: Request, res: Response) => {
       fullName,
       institution,
       position,
-      expertiseAreas
+      faculty,
+      department
     } = req.body
 
     const existingUser = await userModel.getUserByEmail(email)
@@ -568,7 +585,10 @@ export const registerConsultant = async (req: Request, res: Response) => {
         totalReviews: 0,
         approvedTheses: 0,
         averageReviewCount: 0
-      }
+      },
+      roles: [],
+      faculty: faculty || "",
+      department: department || "",
     }
 
 
@@ -597,7 +617,8 @@ export const registerSupervisor = async (req: Request, res: Response) => {
       institution,
       position,
       department,
-      maxStudents
+      maxStudents,
+      faculty
     } = req.body
 
     const existingUser = await userModel.getUserByEmail(email)
@@ -624,6 +645,8 @@ export const registerSupervisor = async (req: Request, res: Response) => {
         approvedTheses: 0,
         averageReviewCount: 0
       },
+      roles: [],
+      faculty: faculty || ""
     }
 
 
@@ -671,6 +694,7 @@ export const registerHeadOfDepartment = async (req: Request, res: Response) => {
       position: position || "",
       department: department || "",
       faculty: faculty || "",
+      roles: []
     }
 
     const user = await HeadOfDepartment.create(userModel, hodData)
@@ -715,6 +739,7 @@ export const registerDean = async (req: Request, res: Response) => {
       institution,
       position: position || "",
       faculty: faculty || "",
+      roles: []
     }
 
     const user = await Dean.create(userModel, deanData)

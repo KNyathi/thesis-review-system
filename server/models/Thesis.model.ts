@@ -86,8 +86,12 @@ export interface IThesis {
   hodSignedSupervisorPath?: string;
   hodSignedReviewerPath?: string;
 
+  deanSignedSupervisorPath?: string;
+  deanSignedReviewerPath?: string;
+
   signedDate?: Date;
   hodSignedDate?: Date;
+  deanSignedDate?: Date;
 }
 
 export interface ThesisDocument {

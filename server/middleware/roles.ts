@@ -26,8 +26,9 @@ export const ROLE_GROUPS: Record<string, UserRole[]> = {
   FACULTY: ['supervisor', 'consultant', 'reviewer', 'head_of_department', 'dean'],
   MANAGEMENT: ['head_of_department', 'dean', 'admin'],
   ACADEMIC_STAFF: ['supervisor', 'consultant', 'reviewer'],
-  ACCESS_REVIEW_1: ['supervisor', 'consultant', 'head_of_department', 'dean', 'admin', 'student'],
-  ACCESS_REVIEW_2: ['reviewer', 'head_of_department', 'dean', 'admin', 'student'],
+  ACCESS_REVIEW_1: ['supervisor', 'consultant', 'head_of_department', 'dean', 'admin'],
+  ACCESS_REVIEW_2: ['reviewer', 'head_of_department', 'dean', 'admin'],
+  ACCESS_REVIEW_3: ['dean', 'admin', 'student'],
   ACCESS_THESIS: ['supervisor', 'consultant', 'head_of_department', 'dean', 'admin', 'student', 'reviewer'],
   ALL_STAFF: ['supervisor', 'consultant', 'reviewer', 'head_of_department', 'dean', 'admin']
 };

@@ -274,6 +274,7 @@ export const isStaff = requireRole(ROLE_GROUPS.ALL_STAFF);
 
 export const isConsultantReview = requireRole(ROLE_GROUPS.ACCESS_REVIEW_1);
 export const isReviewerReview = requireRole(ROLE_GROUPS.ACCESS_REVIEW_2);
+export const isFinalReview = requireRole(ROLE_GROUPS.ACCESS_REVIEW_3);
 export const isThesisAccess = requireRole(ROLE_GROUPS.ACCESS_THESIS);
 
 // Multiple specific roles
