@@ -14,6 +14,7 @@ import assignRouter from "./routes/assignRoutes";
 import supervisorRouter from "./routes/supervisorRoutes";
 import studentRouter from "./routes/studentRoutes";
 import consultantRouter from "./routes/consultantRoute";
+import hodRouter from "./routes/hodRoutes";
 
 
 //Body parser
@@ -48,7 +49,8 @@ app.use(
     assignRouter,
     supervisorRouter,
     studentRouter,
-    consultantRouter
+    consultantRouter,
+    hodRouter
 );
 
 

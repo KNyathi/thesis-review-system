@@ -89,7 +89,7 @@ export const optionalAuth = async (
   next: NextFunction
 ) => {
   const token = req.header("Authorization")?.replace("Bearer ", "");
-  
+
   if (!token) {
     return next(); // Continue without user
   }
@@ -97,11 +97,11 @@ export const optionalAuth = async (
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: string };
     const user = await userModel.getUserById(decoded.id);
-    
+
     if (user) {
       req.user = user;
     }
-    
+
     next();
   } catch (err) {
     // If token is invalid, just continue without user
@@ -155,8 +155,8 @@ export const requireOwnership = (resourceUserId: string) => {
 
     // Users can only access their own resources
     if (user.id !== resourceUserId) {
-      res.status(403).json({ 
-        error: 'Access denied. You can only access your own resources.' 
+      res.status(403).json({
+        error: 'Access denied. You can only access your own resources.'
       });
       return;
     }
@@ -190,6 +190,7 @@ export const requireApprovedReviewer = (req: Request, res: Response, next: NextF
 
 
 // Generic role checker
+// Generic role checker - FIXED VERSION
 export const requireRole = (allowedRoles: UserRole | UserRole[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
@@ -197,18 +198,29 @@ export const requireRole = (allowedRoles: UserRole | UserRole[]) => {
       return;
     }
 
-    const userRole = req.user.role as UserRole;
     const rolesArray = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
-    
-    if (!rolesArray.includes(userRole)) {
-      res.status(403).json({ 
+    const hasRole = (user: IUser, role: UserRole): boolean => {
+      // Check both single role (backward compatibility) and roles array (new system)
+      return user.role === role || (user.roles && user.roles.includes(role));
+    };
+
+    const hasAnyRole = (user: IUser, roles: UserRole[]): boolean => {
+      return roles.some(role => hasRole(user, role));
+    };
+    // Check if user has ANY of the required roles
+    const userHasRole = hasAnyRole(req.user, rolesArray);
+
+    if (!userHasRole) {
+      res.status(403).json({
         error: 'Insufficient permissions',
         required: rolesArray,
-        current: userRole
+        current: req.user.role, 
+        currentAllRoles: req.user.roles || [], // The new roles array
+        userRoles: req.user.roles || [req.user.role] // All roles user has
       });
       return;
     }
-    
+
     next();
   };
 };
@@ -222,18 +234,25 @@ export const requireMinRole = (minRole: UserRole) => {
     }
 
     const userRole = req.user.role as UserRole;
+    const userRoles = req.user.roles || [userRole]; // Use roles array or fallback to single role
     const allowedRoles = ROLE_HIERARCHY[minRole];
-    
-    if (!allowedRoles.includes(userRole)) {
-      res.status(403).json({ 
+
+    // Check if user has any role that meets the minimum requirement
+    const hasRequiredRole = userRoles.some(role =>
+      allowedRoles.includes(role as UserRole)
+    );
+
+    if (!hasRequiredRole) {
+      res.status(403).json({
         error: 'Insufficient permissions',
         minimumRequired: minRole,
         current: userRole,
+        currentAllRoles: userRoles,
         allowedRoles
       });
       return;
     }
-    
+
     next();
   };
 };

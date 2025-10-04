@@ -634,15 +634,33 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
 
         console.log(`Chrome-signed review saved to: ${signedReviewPath}`)
 
+         // Update the current iteration's supervisor review status to "signed"
+        const currentIteration = thesis.data.currentIteration;
+        const updatedReviewIterations = thesis.data.reviewIterations.map((iteration, index) => {
+            if (index === currentIteration - 1) { // currentIteration is 1-based, array is 0-based
+                return {
+                    ...iteration,
+                    supervisorReview: iteration.supervisorReview ? {
+                        ...iteration.supervisorReview,
+                        status: 'signed' as const,
+                        signedDate: new Date()
+                    } : undefined
+                };
+            }
+            return iteration;
+        });
+
+
         // Update thesis with signed PDF path and status
         await thesisModel.updateThesis(thesisId, {
-            status: "evaluated",
+            status: "under_review",
             supervisorSignedReviewPath: signedReviewPath,
             signedDate: new Date(),
+            reviewIterations: updatedReviewIterations
         })
 
         // Update student status to evaluated
-        await userModel.updateStudentThesisStatus(thesis.data.student, "evaluated")
+        await userModel.updateStudentThesisStatus(thesis.data.student, "under_review")
 
         res.json({
             message: "Signed review uploaded successfully using Chrome's native tools",
@@ -751,22 +769,57 @@ export const signedReview = async (req: Request, res: Response) => {
             return
         }
 
-        // Update the thesis status to evaluated
+        
+       // Get the current thesis first to access the review iterations
+        const currentThesis = await thesisModel.getThesisById(thesisId)
+        if (!currentThesis) {
+            res.status(404).json({ error: "Thesis not found" })
+            return
+        }
+
+        // Move signed PDF to permanent storage
+        const signedPath = path.join(__dirname, "../../server/reviews/supervisor/signed", `signed_review1_${currentThesis.data.student}.pdf`)
+        fs.renameSync(file.path, signedPath)
+
+        // Update the current iteration's supervisor review status to "signed"
+        const currentIteration = currentThesis.data.currentIteration;
+        const updatedReviewIterations = currentThesis.data.reviewIterations.map((iteration, index) => {
+            if (index === currentIteration - 1) { // currentIteration is 1-based, array is 0-based
+                return {
+                    ...iteration,
+                    supervisorReview: iteration.supervisorReview ? {
+                        ...iteration.supervisorReview,
+                        status: 'signed' as const,
+                        signedDate: new Date()
+                    } : {
+                        // If no supervisor review exists yet, create one with signed status
+                        comments: "Signed by supervisor",
+                        submittedDate: new Date(),
+                        status: 'signed' as const,
+                        iteration: currentIteration,
+                        isFinalApproval: false,
+                        signedDate: new Date()
+                    }
+                };
+            }
+            return iteration;
+        });
+
+        // Update thesis with signed PDF path and review status (keep thesis status as under_review)
         const thesis = await thesisModel.updateThesis(thesisId, {
-            status: "evaluated",
+            status: "under_review", // Keep thesis status as under_review
+            supervisorSignedReviewPath: signedPath,
+            signedDate: new Date(),
+            reviewIterations: updatedReviewIterations
         })
 
         if (!thesis) {
             res.status(404).json({ error: "Thesis not found" })
             return
         }
-
-        // Move signed PDF to permanent storage
-        const signedPath = path.join(__dirname, "../../server/reviews/supervisor/signed", `signed_review1_${thesis.data.student}.pdf`)
-        fs.renameSync(file.path, signedPath)
-
+        
         // Update student's status
-        await userModel.updateStudentThesisStatus(thesis.data.student, "evaluated")
+        await userModel.updateStudentThesisStatus(thesis.data.student, "under_review")
 
         res.json({ success: true })
     } catch (error) {

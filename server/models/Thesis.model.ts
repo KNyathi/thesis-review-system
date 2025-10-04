@@ -82,7 +82,12 @@ export interface IThesis {
   consultantSignedReviewPath?: string; // Consultant signed PDF
   supervisorSignedReviewPath?: string;
   reviewerSignedReviewPath?: string; // Reviewer signed PDF
+
+  hodSignedSupervisorPath?: string;
+  hodSignedReviewerPath?: string;
+
   signedDate?: Date;
+  hodSignedDate?: Date;
 }
 
 export interface ThesisDocument {

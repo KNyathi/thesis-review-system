@@ -1,22 +1,22 @@
 import type { Request, Response } from "express"
 import bcrypt from "bcrypt"
-import { 
-  UserModel, 
-  Student, 
+import {
+  UserModel,
+  Student,
   Consultant,
   Supervisor,
-  Reviewer, 
+  Reviewer,
   HeadOfDepartment,
   Dean,
-  Admin, 
-  IUser, 
-  IStudent, 
+  Admin,
+  IUser,
+  IStudent,
   IConsultant,
   ISupervisor,
-  IReviewer, 
+  IReviewer,
   IHeadOfDepartment,
   IDean,
-  IAdmin 
+  IAdmin
 } from "../models/User.model"
 import { generateToken } from "../middleware/auth"
 import { Pool } from 'pg';
@@ -63,7 +63,9 @@ export const register = async (req: Request, res: Response) => {
           educationalProgram: roleSpecificData.educationalProgram || "",
           degreeLevel: roleSpecificData.degreeLevel || "bachelors",
           thesisStatus: "not_submitted",
-          isTopicApproved: false
+          isTopicApproved: false,
+          totalReviewAttempts: 0,
+          currentReviewIteration: 0
         }
         user = await Student.create(userModel, studentData)
         break
@@ -75,6 +77,13 @@ export const register = async (req: Request, res: Response) => {
           institution,
           position: roleSpecificData.position || "",
           assignedStudents: [],
+          assignedTheses: [],
+          reviewedTheses: [],
+          reviewStats: {
+            totalReviews: 0,
+            approvedTheses: 0,
+            averageReviewCount: 0
+          }
         }
         user = await Consultant.create(userModel, consultantData)
         break
@@ -87,6 +96,13 @@ export const register = async (req: Request, res: Response) => {
           position: roleSpecificData.position || "",
           department: roleSpecificData.department || "",
           assignedStudents: [],
+          assignedTheses: [],
+          reviewedTheses: [],
+          reviewStats: {
+            totalReviews: 0,
+            approvedTheses: 0,
+            averageReviewCount: 0
+          },
           maxStudents: roleSpecificData.maxStudents || 10,
         }
         user = await Supervisor.create(userModel, supervisorData)
@@ -145,7 +161,7 @@ export const register = async (req: Request, res: Response) => {
     // Generate JWT token
     const token = generateToken(user.id, user.role)
 
-    res.status(201).json({ 
+    res.status(201).json({
       token,
       user: {
         id: user.id,
@@ -411,16 +427,16 @@ export const deleteAccount = async (req: Request, res: Response) => {
 // Additional utility function for student registration
 export const registerStudent = async (req: Request, res: Response) => {
   try {
-    const { 
-      email, 
-      password, 
-      fullName, 
-      institution, 
-      faculty, 
-      group, 
-      subjectArea, 
-      educationalProgram, 
-      degreeLevel 
+    const {
+      email,
+      password,
+      fullName,
+      institution,
+      faculty,
+      group,
+      subjectArea,
+      educationalProgram,
+      degreeLevel
     } = req.body
 
     // Check if user already exists
@@ -444,15 +460,18 @@ export const registerStudent = async (req: Request, res: Response) => {
       educationalProgram,
       degreeLevel: degreeLevel || "bachelors",
       thesisStatus: "not_submitted",
-      isTopicApproved: false
+      isTopicApproved: false,
+      totalReviewAttempts: 0,
+      currentReviewIteration: 0
     }
+
 
     const user = await Student.create(userModel, studentData)
 
     // Generate JWT token
     const token = generateToken(user.id, user.role)
 
-    res.status(201).json({ 
+    res.status(201).json({
       token,
       user: {
         id: user.id,
@@ -468,11 +487,11 @@ export const registerStudent = async (req: Request, res: Response) => {
 // Additional utility function for reviewer registration
 export const registerReviewer = async (req: Request, res: Response) => {
   try {
-    const { 
-      email, 
-      password, 
-      fullName, 
-      institution, 
+    const {
+      email,
+      password,
+      fullName,
+      institution,
       position,
       expertiseAreas
     } = req.body
@@ -503,7 +522,7 @@ export const registerReviewer = async (req: Request, res: Response) => {
     // Generate JWT token
     const token = generateToken(user.id, user.role)
 
-    res.status(201).json({ 
+    res.status(201).json({
       token,
       user: {
         id: user.id,
@@ -519,11 +538,11 @@ export const registerReviewer = async (req: Request, res: Response) => {
 // Additional registration functions for new roles
 export const registerConsultant = async (req: Request, res: Response) => {
   try {
-    const { 
-      email, 
-      password, 
-      fullName, 
-      institution, 
+    const {
+      email,
+      password,
+      fullName,
+      institution,
       position,
       expertiseAreas
     } = req.body
@@ -543,12 +562,20 @@ export const registerConsultant = async (req: Request, res: Response) => {
       institution,
       position: position || "",
       assignedStudents: [],
+      assignedTheses: [],
+      reviewedTheses: [],
+      reviewStats: {
+        totalReviews: 0,
+        approvedTheses: 0,
+        averageReviewCount: 0
+      }
     }
+
 
     const user = await Consultant.create(userModel, consultantData)
     const token = generateToken(user.id, user.role)
 
-    res.status(201).json({ 
+    res.status(201).json({
       token,
       user: {
         id: user.id,
@@ -563,11 +590,11 @@ export const registerConsultant = async (req: Request, res: Response) => {
 
 export const registerSupervisor = async (req: Request, res: Response) => {
   try {
-    const { 
-      email, 
-      password, 
-      fullName, 
-      institution, 
+    const {
+      email,
+      password,
+      fullName,
+      institution,
       position,
       department,
       maxStudents
@@ -590,12 +617,20 @@ export const registerSupervisor = async (req: Request, res: Response) => {
       department: department || "",
       assignedStudents: [],
       maxStudents: maxStudents || 10,
+      assignedTheses: [],
+      reviewedTheses: [],
+      reviewStats: {
+        totalReviews: 0,
+        approvedTheses: 0,
+        averageReviewCount: 0
+      },
     }
+
 
     const user = await Supervisor.create(userModel, supervisorData)
     const token = generateToken(user.id, user.role)
 
-    res.status(201).json({ 
+    res.status(201).json({
       token,
       user: {
         id: user.id,
@@ -610,11 +645,11 @@ export const registerSupervisor = async (req: Request, res: Response) => {
 
 export const registerHeadOfDepartment = async (req: Request, res: Response) => {
   try {
-    const { 
-      email, 
-      password, 
-      fullName, 
-      institution, 
+    const {
+      email,
+      password,
+      fullName,
+      institution,
       position,
       department,
       faculty
@@ -641,7 +676,7 @@ export const registerHeadOfDepartment = async (req: Request, res: Response) => {
     const user = await HeadOfDepartment.create(userModel, hodData)
     const token = generateToken(user.id, user.role)
 
-    res.status(201).json({ 
+    res.status(201).json({
       token,
       user: {
         id: user.id,
@@ -656,11 +691,11 @@ export const registerHeadOfDepartment = async (req: Request, res: Response) => {
 
 export const registerDean = async (req: Request, res: Response) => {
   try {
-    const { 
-      email, 
-      password, 
-      fullName, 
-      institution, 
+    const {
+      email,
+      password,
+      fullName,
+      institution,
       position,
       faculty
     } = req.body
@@ -685,7 +720,7 @@ export const registerDean = async (req: Request, res: Response) => {
     const user = await Dean.create(userModel, deanData)
     const token = generateToken(user.id, user.role)
 
-    res.status(201).json({ 
+    res.status(201).json({
       token,
       user: {
         id: user.id,

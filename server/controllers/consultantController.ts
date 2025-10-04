@@ -1,7 +1,6 @@
 import type { Request, Response } from "express"
 import { IThesis, ThesisModel } from "../models/Thesis.model"
 import { UserModel, Reviewer, IUser, IReviewer, IStudent, IConsultant } from "../models/User.model"
-import { generateReviewPDF } from "../utils/pdfGenerator"
 import path from "path"
 import fs from "fs"
 import { Pool } from 'pg';
@@ -296,7 +295,7 @@ export const reReviewThesis = async (req: Request, res: Response) => {
         // Update student status and clear previous consultant feedback
         await userModel.updateStudentThesisStatus(thesis.data.student, "with_consultant");
 
-        // Optionally clear the student's consultant feedback
+        // Clear the student's consultant feedback
         await userModel.updateStudentThesisFeedback(
             thesis.data.student,
             {
@@ -413,13 +412,13 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
 
         // Update thesis with signed PDF path and status
         await thesisModel.updateThesis(thesisId, {
-            status: "evaluated",
+            status: "with_supervisor",
             consultantSignedReviewPath: signedReviewPath,
             signedDate: new Date(),
         })
 
         // Update student status to evaluated
-        await userModel.updateStudentThesisStatus(thesis.data.student, "evaluated")
+        await userModel.updateStudentThesisStatus(thesis.data.student, "with_supervisor")
 
         res.json({
             message: "Signed review uploaded successfully using Chrome's native tools",
@@ -531,7 +530,7 @@ export const signedReview = async (req: Request, res: Response) => {
 
         // Update the thesis status to evaluated
         const thesis = await thesisModel.updateThesis(thesisId, {
-            status: "evaluated",
+            status: "with_supervisor",
         })
 
         if (!thesis) {
@@ -544,7 +543,7 @@ export const signedReview = async (req: Request, res: Response) => {
         fs.renameSync(file.path, signedPath)
 
         // Update student's status
-        await userModel.updateStudentThesisStatus(thesis.data.student, "evaluated")
+        await userModel.updateStudentThesisStatus(thesis.data.student, "with_supervisor")
 
         res.json({ success: true })
     } catch (error) {

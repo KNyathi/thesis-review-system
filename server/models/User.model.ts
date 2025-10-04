@@ -8,6 +8,7 @@ interface IUserBase {
   fullName: string;
   institution: string;
   role: 'student' | 'consultant' | 'supervisor' | 'reviewer' | 'head_of_department' | 'dean' | 'admin';
+  roles: ('student' | 'consultant' | 'supervisor' | 'reviewer' | 'head_of_department' | 'dean' | 'admin')[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,6 +55,8 @@ export interface IStudent extends IUserBase {
 export interface IConsultant extends IUserBase {
   role: 'consultant';
   position: string;
+  faculty: string;
+  department: string;
   assignedStudents: string[];
   assignedTheses: string[];
   reviewedTheses: string[];
@@ -68,6 +71,7 @@ export interface ISupervisor extends IUserBase {
   role: 'supervisor';
   position: string;
   department: string;
+  faculty: string;
   assignedStudents: string[];
   assignedTheses: string[];
   reviewedTheses: string[];
@@ -83,6 +87,8 @@ export interface ISupervisor extends IUserBase {
 export interface IReviewer extends IUserBase {
   role: 'reviewer';
   position: string;
+  faculty: string;
+  department: string;
   assignedTheses: string[];
   reviewedTheses: string[];
 }
