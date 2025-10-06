@@ -69,6 +69,15 @@ export const approveThesisTopic = async (req: Request, res: Response) => {
             return;
         }
 
+          // Check if this is a supervisor-proposed topic waiting for student response
+        if (studentData.topicProposedBy === 'supervisor' && 
+            studentData.studentTopicResponse?.status === 'pending') {
+            res.status(400).json({
+                error: "This topic is waiting for student response. Cannot approve/reject as supervisor."
+            });
+            return;
+        }
+
         // Check if topic is already approved
         if (studentData.isTopicApproved) {
             res.status(400).json({
@@ -81,6 +90,12 @@ export const approveThesisTopic = async (req: Request, res: Response) => {
         const updateData: any = {
             isTopicApproved: approved
         };
+
+          // Set topic proposed by if not set (for student-submitted topics)
+        if (!studentData.topicProposedBy) {
+            updateData.topicProposedBy = 'student';
+        }
+
 
         // Store rejection comments if topic is rejected
         if (!approved) {
@@ -99,6 +114,7 @@ export const approveThesisTopic = async (req: Request, res: Response) => {
                 thesisTopic: (updatedStudent as IStudent).thesisTopic,
                 isTopicApproved: (updatedStudent as IStudent).isTopicApproved,
                 fullName: updatedStudent.fullName,
+                topicProposedBy: (updatedStudent as IStudent).topicProposedBy,
                 ...(!approved && { rejectionComments: (updatedStudent as IStudent).topicRejectionComments })
             }
         });
@@ -148,6 +164,92 @@ export const getPendingApprovals = async (req: Request, res: Response) => {
     }
 };
 
+export const proposeThesisTopic = async (req: Request, res: Response) => {
+    try {
+        const { studentId } = req.params;
+        const { proposedTopic } = req.body;
+        const supervisorId = (req.user as AuthenticatedUser).id;
+
+        // Validate input
+        if (!proposedTopic || proposedTopic.trim() === '') {
+            res.status(400).json({
+                error: "Proposed topic is required"
+            });
+            return;
+        }
+
+        // Get student data
+        const student = await userModel.getUserById(studentId);
+        if (!student || student.role !== 'student') {
+            res.status(404).json({
+                error: "Student not found"
+            });
+            return;
+        }
+
+        const studentData = student as IStudent;
+
+        // Check if student is assigned to this supervisor
+        if (studentData.supervisor !== supervisorId) {
+            res.status(403).json({
+                error: "You are not assigned as supervisor for this student"
+            });
+            return;
+        }
+
+        // Check if student already has an approved topic
+        if (studentData.isTopicApproved) {
+            res.status(400).json({
+                error: "Student already has an approved thesis topic"
+            });
+            return;
+        }
+
+        // Check if there's a pending supervisor proposal
+        if (studentData.topicProposedBy === 'supervisor' && 
+            studentData.studentTopicResponse?.status === 'pending') {
+            res.status(400).json({
+                error: "There is already a pending topic proposal waiting for student response"
+            });
+            return;
+        }
+
+        // Prepare update data
+        const updateData: any = {
+            thesisTopic: proposedTopic.trim(),
+            isTopicApproved: false,
+            topicProposedBy: 'supervisor',
+            topicProposedAt: new Date(),
+            topicRejectionComments: null,
+            studentTopicResponse: {
+                status: 'pending', // Set to pending for student response
+                respondedAt: null,
+                comments: null
+            }
+        };
+
+        const updatedStudent = await userModel.updateUser(studentId, updateData);
+
+        res.status(200).json({
+            message: "Thesis topic proposed successfully. Waiting for student response.",
+            student: {
+                id: updatedStudent.id,
+                thesisTopic: (updatedStudent as IStudent).thesisTopic,
+                isTopicApproved: (updatedStudent as IStudent).isTopicApproved,
+                fullName: updatedStudent.fullName,
+                topicProposedBy: (updatedStudent as IStudent).topicProposedBy,
+                topicProposedAt: (updatedStudent as IStudent).topicProposedAt,
+                studentTopicResponse: (updatedStudent as IStudent).studentTopicResponse
+            }
+        });
+
+    } catch (error: any) {
+        console.error('Error proposing thesis topic:', error);
+        res.status(500).json({
+            error: error.message || "Failed to propose thesis topic"
+        });
+    }
+};
 
 export const submitReview = async (req: Request, res: Response) => {
     try {

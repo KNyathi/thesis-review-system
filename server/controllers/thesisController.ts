@@ -44,9 +44,44 @@ export const submitTopic = async (req: Request, res: Response) => {
       return
     }
 
+    const studentData = student as IStudent
+
+    // Check if there's a pending supervisor proposal waiting for student response
+    if (studentData.topicProposedBy === 'supervisor' &&
+      studentData.studentTopicResponse?.status === 'pending') {
+      res.status(400).json({
+        error: "You have a pending topic proposal from your supervisor. Please respond to it first before submitting your own topic."
+      })
+      return
+    }
+
+    // Check if topic is already approved
+    if (studentData.isTopicApproved) {
+      res.status(400).json({
+        error: "Thesis topic is already approved. You cannot submit a new topic."
+      })
+      return
+    }
+
+    // Check if student already submitted a topic that's pending approval
+    if (studentData.thesisTopic && studentData.thesisTopic.trim() !== '' &&
+      studentData.topicProposedBy === 'student' &&
+      !studentData.isTopicApproved) {
+      res.status(400).json({
+        error: "You already have a submitted topic waiting for supervisor approval."
+      })
+      return
+    }
+
+
     // Update the student's thesis topic - isTopicApproved remains false by default
     const updatedStudent = await userModel.updateUser(studentId, {
-      thesisTopic: thesisTopic.trim()
+      thesisTopic: thesisTopic.trim(),
+      topicProposedBy: 'student',
+      topicSubmittedAt: new Date(),
+      topicRejectionComments: null,
+      studentTopicResponse: null
+
     } as Partial<Omit<IUser, 'id' | 'createdAt' | 'updatedAt'>>)
 
     //NOTIFY SUPERVISOR THAT TOPIC HAS BEEN SENT (TO BE DONE)
@@ -55,7 +90,9 @@ export const submitTopic = async (req: Request, res: Response) => {
       student: {
         id: updatedStudent.id,
         thesisTopic: (updatedStudent as IStudent).thesisTopic,
-        isTopicApproved: (updatedStudent as IStudent).isTopicApproved
+        isTopicApproved: (updatedStudent as IStudent).isTopicApproved,
+        topicProposedBy: (updatedStudent as IStudent).topicProposedBy,
+        topicSubmittedAt: (updatedStudent as IStudent).topicSubmittedAt
       }
     })
   } catch (err) {

@@ -214,3 +214,94 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
         res.status(500).json({ error: "Failed to download final signed reviews" });
     }
 };
+
+
+
+export const respondToProposedTopic = async (req: Request, res: Response) => {
+    try {
+        const studentId = (req.user as AuthenticatedUser).id;
+        const { accepted, comments } = req.body;
+
+        // Validate input
+        if (typeof accepted !== 'boolean') {
+            res.status(400).json({
+                error: "Acceptance status is required and must be boolean"
+            });
+            return;
+        }
+
+        if (!accepted && (!comments || comments.trim() === '')) {
+            res.status(400).json({
+                error: "Comments are required when rejecting a proposed thesis topic"
+            });
+            return;
+        }
+
+        // Get student data
+        const student = await userModel.getUserById(studentId);
+        if (!student || student.role !== 'student') {
+            res.status(404).json({
+                error: "Student not found"
+            });
+            return;
+        }
+
+        const studentData = student as IStudent;
+
+        // Check if there is a supervisor-proposed topic pending response
+        if (studentData.topicProposedBy !== 'supervisor' || 
+            !studentData.studentTopicResponse || 
+            studentData.studentTopicResponse.status !== 'pending') {
+            res.status(400).json({
+                error: "No pending topic proposal found from supervisor"
+            });
+            return;
+        }
+
+        // Check if topic is already approved through other means
+        if (studentData.isTopicApproved) {
+            res.status(400).json({
+                error: "Thesis topic is already approved"
+            });
+            return;
+        }
+
+        // Prepare update data based on student response
+        const updateData: any = {
+            studentTopicResponse: {
+                status: accepted ? 'accepted' : 'rejected',
+                respondedAt: new Date(),
+                comments: accepted ? null : comments.trim()
+            }
+        };
+
+        // If student accepts the topic, mark it as approved
+        if (accepted) {
+            updateData.isTopicApproved = true;
+        } else {
+            // If rejected, clear the proposed topic but keep the history
+            updateData.thesisTopic = null;
+            updateData.isTopicApproved = false;
+        }
+
+        const updatedStudent = await userModel.updateUser(studentId, updateData);
+
+        res.status(200).json({
+            message: `Thesis topic ${accepted ? 'accepted' : 'rejected'} successfully`,
+            student: {
+                id: updatedStudent.id,
+                thesisTopic: (updatedStudent as IStudent).thesisTopic,
+                isTopicApproved: (updatedStudent as IStudent).isTopicApproved,
+                fullName: updatedStudent.fullName,
+                topicProposedBy: (updatedStudent as IStudent).topicProposedBy,
+                studentTopicResponse: (updatedStudent as IStudent).studentTopicResponse
+            }
+        });
+
+    } catch (error: any) {
+        console.error('Error responding to proposed topic:', error);
+        res.status(500).json({
+            error: error.message || "Failed to respond to proposed topic"
+        });
+    }
+};

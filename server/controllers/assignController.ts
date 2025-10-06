@@ -190,30 +190,6 @@ export const assignThesisTeam = async (req: Request, res: Response) => {
 
       const reviewerData = reviewer as IReviewer;
 
-      // SECURITY: Check if reviewer is in the same faculty as student
-      if (reviewerData.faculty !== studentData.faculty) {
-        res.status(400).json({
-          error: "Reviewer must be in the same faculty as the student",
-          details: {
-            studentFaculty: studentData.faculty,
-            reviewerFaculty: reviewerData.faculty
-          }
-        });
-        return;
-      }
-
-      // SECURITY: Check reviewer's department if HOD is assigning
-      if (assigner.role === 'head_of_department' && reviewerData.department !== assigner.department) {
-        res.status(400).json({
-          error: "Reviewer must be in the same department as you",
-          details: {
-            yourDepartment: assigner.department,
-            reviewerDepartment: reviewerData.department
-          }
-        });
-        return;
-      }
-
       // Remove from old reviewer first
       if (currentReviewerId && currentReviewerId !== reviewerId) {
         if (hasExistingThesis && thesisId) {

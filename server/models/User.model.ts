@@ -31,6 +31,18 @@ export interface IStudent extends IUserBase {
   consultant?: string;
   topicRejectionComments?: string;
 
+  // Topic proposal tracking
+  topicProposedBy?: 'student' | 'supervisor';
+  topicProposedAt?: Date;
+  topicSubmittedAt?: Date;
+  
+  // Student response to supervisor-proposed topic
+  studentTopicResponse?: {
+    status: 'pending' | 'accepted' | 'rejected';
+    respondedAt?: Date;
+    comments?: string;
+  };
+  
   consultantFeedback?: {
     comments?: string;
     lastReviewDate?: Date;

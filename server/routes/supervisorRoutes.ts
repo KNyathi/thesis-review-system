@@ -1,12 +1,13 @@
 import express from 'express';
 import upload from "../utils/multer"
 import { authenticate, isConsultantReview, isSupervisor } from '../middleware/auth';
-import { approveThesisTopic, downloadSignedReview, getAssignedTheses, getCompletedReviews, getPendingApprovals, getSignedReview, getUnsignedReview, reReviewThesis, signedReview, submitReview, uploadSignedReview } from '../controllers/supervisorController';
+import { approveThesisTopic, downloadSignedReview, getAssignedTheses, getCompletedReviews, getPendingApprovals, getSignedReview, getUnsignedReview, proposeThesisTopic, reReviewThesis, signedReview, submitReview, uploadSignedReview } from '../controllers/supervisorController';
 
 const supervisorRouter = express.Router();
 
 // Routes for team assignment - using management role group
-supervisorRouter.put('/:studentId/approve-topic', authenticate, isSupervisor, approveThesisTopic); //completed
+supervisorRouter.put('/:studentId/approve-topic-supervisor', authenticate, isSupervisor, approveThesisTopic); //completed
+supervisorRouter.put('/:studentId/propose-topic-supervisor', authenticate, isSupervisor, proposeThesisTopic);
 
 // Supervisor gets pending approvals
 supervisorRouter.get('/pending-approvals', authenticate, isSupervisor, getPendingApprovals);
