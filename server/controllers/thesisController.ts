@@ -155,6 +155,12 @@ export const submitThesis = async (req: Request, res: Response) => {
       fileUrl: `/uploads/theses/${req.file.filename}`,
       submissionDate: new Date(),
       status: "submitted" as const,
+      plagiarismCheck: {
+        isChecked: false,
+        attempts: 0,
+        maxAttempts: 2, 
+        isApproved: false
+      },
       assignedReviewer: '',
       assignedSupervisor: '',
       assignedConsultant: '',

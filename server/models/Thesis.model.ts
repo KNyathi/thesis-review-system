@@ -67,6 +67,18 @@ export interface IThesis {
   assignedSupervisor?: string;
   finalGrade?: string;
  
+  // Plagiarism tracking
+  plagiarismCheck: {
+    isChecked: boolean;
+    checkedFileUrl?: string; // Separate URL for plagiarism-checked file
+    attempts: number;
+    maxAttempts: number;
+    lastCheckDate?: Date;
+    similarityScore?: number;
+    reportUrl?: string;
+    isApproved: boolean;
+  };
+
    // Separate assessments for each role
   consultantAssessment?: IAssessment;
   reviewerAssessment?: IAssessment;

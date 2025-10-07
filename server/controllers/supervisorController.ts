@@ -270,6 +270,38 @@ export const submitReview = async (req: Request, res: Response) => {
             return
         }
 
+        // PLAGIARISM CHECK VALIDATION - REQUIRED BEFORE ANY SUPERVISOR SIGNING
+        const plagiarismCheck = thesis.data.plagiarismCheck;
+        
+        // Check if plagiarism check was performed
+        if (!plagiarismCheck.isChecked) {
+            res.status(400).json({ 
+                error: "Cannot proceed: Thesis must pass plagiarism check before supervisor review",
+                requiredAction: "plagiarism_check"
+            });
+            return
+        }
+
+        // Check if plagiarism check is approved
+        if (!plagiarismCheck.isApproved) {
+            res.status(400).json({ 
+                error: `Cannot proceed: Thesis failed plagiarism check (Similarity: ${plagiarismCheck.similarityScore}%)`,
+                similarityScore: plagiarismCheck.similarityScore,
+                threshold: 15, // Your approval threshold
+                requiredAction: "plagiarism_revision"
+            });
+            return
+        }
+
+        // Verify the plagiarism-checked file exists
+        if (!plagiarismCheck.checkedFileUrl || !fs.existsSync(plagiarismCheck.checkedFileUrl)) {
+            res.status(400).json({ 
+                error: "Cannot proceed: Plagiarism-checked thesis file not found",
+                requiredAction: "plagiarism_recheck"
+            });
+            return
+        }
+        
         let updatedThesis;
         let pdfPath = null;
 

@@ -16,6 +16,7 @@ import studentRouter from "./routes/studentRoutes";
 import consultantRouter from "./routes/consultantRoute";
 import hodRouter from "./routes/hodRoutes";
 import deanRouter from "./routes/deanRoutes";
+import plagiarismRouter from "./routes/plagiarismRoutes";
 
 
 //Body parser
@@ -24,7 +25,7 @@ app.use(express.json({ limit: "50mb" }));
 //cookie parse
 app.use(cookieParser());
 
-// cors => cros origin resource sharing
+// cors => cross origin resource sharing
 const allowedOrigins: string | string[] = process.env.ORIGIN
   ? JSON.parse(process.env.ORIGIN)
   : ""; 
@@ -52,7 +53,8 @@ app.use(
     studentRouter,
     consultantRouter,
     hodRouter,
-    deanRouter
+    deanRouter,
+    plagiarismRouter
 );
 
 

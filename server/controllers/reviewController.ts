@@ -33,11 +33,70 @@ export const submitReview = async (req: Request, res: Response) => {
       return
     }
 
+    // Check if supervisor has signed the review (supervisorSignedReviewPath exists and file exists)
+    if (!thesis.data.supervisorSignedReviewPath) {
+      res.status(400).json({
+        error: "Cannot submit review: Supervisor has not signed their review yet"
+      })
+      return
+    }
+
+    // Verify the supervisor signed file actually exists on the filesystem
+    const supervisorSignedPath = thesis.data.supervisorSignedReviewPath;
+    if (!fs.existsSync(supervisorSignedPath)) {
+      res.status(400).json({
+        error: "Cannot submit review: Supervisor signed review file not found"
+      })
+      return
+    }
+
+    // PLAGIARISM CHECK VALIDATION - REQUIRED BEFORE ANY SUPERVISOR SIGNING
+    const plagiarismCheck = thesis.data.plagiarismCheck;
+
+    // Check if plagiarism check was performed
+    if (!plagiarismCheck.isChecked) {
+      res.status(400).json({
+        error: "Cannot proceed: Thesis must pass plagiarism check before supervisor review",
+        requiredAction: "plagiarism_check"
+      });
+      return
+    }
+
+    // Check if plagiarism check is approved
+    if (!plagiarismCheck.isApproved) {
+      res.status(400).json({
+        error: `Cannot proceed: Thesis failed plagiarism check (Similarity: ${plagiarismCheck.similarityScore}%)`,
+        similarityScore: plagiarismCheck.similarityScore,
+        threshold: 15,
+        requiredAction: "plagiarism_revision"
+      });
+      return
+    }
+
+    // Verify the plagiarism-checked file exists
+    if (!plagiarismCheck.checkedFileUrl || !fs.existsSync(plagiarismCheck.checkedFileUrl)) {
+      res.status(400).json({
+        error: "Cannot proceed: Plagiarism-checked thesis file not found",
+        requiredAction: "plagiarism_recheck"
+      });
+      return
+    }
+
+
+    // Validate required fields
+    if (!grade || !assessment) {
+      res.status(400).json({
+        error: "Grade and assessment are required"
+      })
+      return
+    }
+
     // Update the thesis with the review details 
     const updatedThesis = await thesisModel.updateThesis(thesisId, {
       finalGrade: grade,
       reviewerAssessment: assessment,
       status: "under_review", // Keep as under_review until signed
+
     })
 
     if (!updatedThesis) {
@@ -55,7 +114,7 @@ export const submitReview = async (req: Request, res: Response) => {
 
     // Update thesis with PDF path
     await thesisModel.updateThesis(thesisId, {
-       reviewPdfReviewer: pdfPath
+      reviewPdfReviewer: pdfPath
     })
 
     // Update student's grade 
@@ -79,6 +138,7 @@ export const submitReview = async (req: Request, res: Response) => {
   }
 }
 
+//ONLY ACCESS FINAL VERSION OF THESIS
 export const getAssignedTheses = async (req: Request, res: Response) => {
   try {
     const reviewer = req.user as AuthenticatedUser & IReviewer
@@ -89,23 +149,47 @@ export const getAssignedTheses = async (req: Request, res: Response) => {
     // Fetch student details for each thesis
     const thesesWithStudents = await Promise.all(
       assignedTheses.map(async (thesis) => {
-        const student = await userModel.getUserById(thesis.data.student)
+        // Check if supervisor has signed and the file exists
+        const hasSupervisorSigned = thesis.data.supervisorSignedReviewPath &&
+          fs.existsSync(thesis.data.supervisorSignedReviewPath)
+
+        const hasValidPlagiarismCheck = thesis.data.plagiarismCheck.isChecked &&
+          thesis.data.plagiarismCheck.isApproved &&
+          thesis.data.plagiarismCheck.checkedFileUrl &&
+          fs.existsSync(thesis.data.plagiarismCheck.checkedFileUrl) &&
+          thesis.data.plagiarismCheck.reportUrl;
+
+        if (!hasSupervisorSigned || !hasValidPlagiarismCheck) {
+          return null; // Skip this thesis
+        }
+
+        const student = await userModel.getUserById(thesis.data.student);
         return {
           ...thesis.data,
           id: thesis.id,
           createdAt: thesis.created_at,
           updatedAt: thesis.updated_at,
+          // Use the plagiarism-checked file for reviewers
+          fileUrl: thesis.data.plagiarismCheck.checkedFileUrl,
           student: student ? {
             id: student.id,
             fullName: student.fullName,
             email: student.email,
             institution: student.institution
-          } : null
-        }
+          } : null,
+          plagiarismInfo: {
+            similarityScore: thesis.data.plagiarismCheck.similarityScore,
+            attempts: thesis.data.plagiarismCheck.attempts,
+            lastCheckDate: thesis.data.plagiarismCheck.lastCheckDate
+          }
+        };
       })
-    )
+    );
 
-    res.json(thesesWithStudents)
+    // Remove null values
+    const filteredTheses = thesesWithStudents.filter(thesis => thesis !== null);
+
+    res.json(filteredTheses);
   } catch (error) {
     console.error(error)
     res.status(500).json({ error: "Failed to fetch assigned theses" })
@@ -128,7 +212,7 @@ export const getCompletedReviews = async (req: Request, res: Response) => {
     const reviewsWithStudents = await Promise.all(
       reviewedTheses.map(async (thesis) => {
         const student = await userModel.getUserById(thesis.student)
-        console.log("the: ", thesis)
+
         return {
           ...thesis,
           id: thesis.id,
@@ -169,6 +253,39 @@ export const reReviewThesis = async (req: Request, res: Response) => {
       return
     }
 
+    // Check if supervisor has signed the review (supervisorSignedReviewPath exists and file exists)
+    if (!thesis.data.supervisorSignedReviewPath) {
+      res.status(400).json({
+        error: "Cannot submit review: Supervisor has not signed their review yet"
+      })
+      return
+    }
+
+    // Verify the supervisor signed file actually exists on the filesystem
+    const supervisorSignedPath = thesis.data.supervisorSignedReviewPath;
+    if (!fs.existsSync(supervisorSignedPath)) {
+      res.status(400).json({
+        error: "Cannot submit review: Supervisor signed review file not found"
+      })
+      return
+    }
+
+    // Check if plagiarism check is completed and approved
+    if (!thesis.data.plagiarismCheck.isChecked || !thesis.data.plagiarismCheck.isApproved) {
+      res.status(400).json({
+        error: "Cannot submit review: Thesis has not passed plagiarism check"
+      })
+      return
+    }
+
+    // Verify the plagiarism-checked file exists
+    if (!thesis.data.plagiarismCheck.checkedFileUrl || !fs.existsSync(thesis.data.plagiarismCheck.checkedFileUrl)) {
+      res.status(400).json({
+        error: "Cannot submit review: Plagiarism-checked thesis file not found"
+      })
+      return
+    }
+
     // Delete signed review file if it exists
     const signedReviewPath = path.join(__dirname, "../../server/reviews/reviewer/signed", `signed_review2_${thesis.data.student}.pdf`)
     if (fs.existsSync(signedReviewPath)) {
@@ -176,7 +293,7 @@ export const reReviewThesis = async (req: Request, res: Response) => {
     }
 
     // Delete unsigned review file if it exists
-    if (thesis.data.reviewPdfReviewer&& fs.existsSync(thesis.data.reviewPdfReviewer)) {
+    if (thesis.data.reviewPdfReviewer && fs.existsSync(thesis.data.reviewPdfReviewer)) {
       fs.unlinkSync(thesis.data.reviewPdfReviewer)
     }
 
