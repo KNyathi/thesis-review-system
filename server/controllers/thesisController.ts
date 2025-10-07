@@ -152,7 +152,7 @@ export const submitThesis = async (req: Request, res: Response) => {
     const thesisData = {
       title: req.body.title,
       student: studentId,
-      fileUrl: `/uploads/theses/${req.file.filename}`,
+      fileUrl: `server/uploads/theses/${req.file.filename}`,
       submissionDate: new Date(),
       status: "submitted" as const,
       plagiarismCheck: {

@@ -77,6 +77,7 @@ export interface IThesis {
     similarityScore?: number;
     reportUrl?: string;
     isApproved: boolean;
+    documentId?: string;
   };
 
    // Separate assessments for each role

@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import path from "path"
 import fs from "fs"
 import { ThesisModel, IThesis, IReviewIteration } from "../models/Thesis.model";
-import { UserModel, Student, Reviewer, IUser, IStudent, IReviewer, ISupervisor } from "../models/User.model";
+import { UserModel, Student, Reviewer, IUser, IStudent, IReviewer, ISupervisor, IHeadOfDepartment, IDean } from "../models/User.model";
 import { generateConsultantReviewPDF } from "../utils/pdfGeneratorConsultant";
 
 const pool = new Pool({
@@ -69,8 +69,8 @@ export const approveThesisTopic = async (req: Request, res: Response) => {
             return;
         }
 
-          // Check if this is a supervisor-proposed topic waiting for student response
-        if (studentData.topicProposedBy === 'supervisor' && 
+        // Check if this is a supervisor-proposed topic waiting for student response
+        if (studentData.topicProposedBy === 'supervisor' &&
             studentData.studentTopicResponse?.status === 'pending') {
             res.status(400).json({
                 error: "This topic is waiting for student response. Cannot approve/reject as supervisor."
@@ -91,7 +91,7 @@ export const approveThesisTopic = async (req: Request, res: Response) => {
             isTopicApproved: approved
         };
 
-          // Set topic proposed by if not set (for student-submitted topics)
+        // Set topic proposed by if not set (for student-submitted topics)
         if (!studentData.topicProposedBy) {
             updateData.topicProposedBy = 'student';
         }
@@ -206,7 +206,7 @@ export const proposeThesisTopic = async (req: Request, res: Response) => {
         }
 
         // Check if there's a pending supervisor proposal
-        if (studentData.topicProposedBy === 'supervisor' && 
+        if (studentData.topicProposedBy === 'supervisor' &&
             studentData.studentTopicResponse?.status === 'pending') {
             res.status(400).json({
                 error: "There is already a pending topic proposal waiting for student response"
@@ -272,10 +272,10 @@ export const submitReview = async (req: Request, res: Response) => {
 
         // PLAGIARISM CHECK VALIDATION - REQUIRED BEFORE ANY SUPERVISOR SIGNING
         const plagiarismCheck = thesis.data.plagiarismCheck;
-        
+
         // Check if plagiarism check was performed
         if (!plagiarismCheck.isChecked) {
-            res.status(400).json({ 
+            res.status(400).json({
                 error: "Cannot proceed: Thesis must pass plagiarism check before supervisor review",
                 requiredAction: "plagiarism_check"
             });
@@ -284,7 +284,7 @@ export const submitReview = async (req: Request, res: Response) => {
 
         // Check if plagiarism check is approved
         if (!plagiarismCheck.isApproved) {
-            res.status(400).json({ 
+            res.status(400).json({
                 error: `Cannot proceed: Thesis failed plagiarism check (Similarity: ${plagiarismCheck.similarityScore}%)`,
                 similarityScore: plagiarismCheck.similarityScore,
                 threshold: 15, // Your approval threshold
@@ -294,14 +294,14 @@ export const submitReview = async (req: Request, res: Response) => {
         }
 
         // Verify the plagiarism-checked file exists
-        if (!plagiarismCheck.checkedFileUrl || !fs.existsSync(plagiarismCheck.checkedFileUrl)) {
-            res.status(400).json({ 
+        if (!plagiarismCheck.checkedFileUrl) {
+            res.status(400).json({
                 error: "Cannot proceed: Plagiarism-checked thesis file not found",
                 requiredAction: "plagiarism_recheck"
             });
             return
         }
-        
+
         let updatedThesis;
         let pdfPath = null;
 
@@ -768,7 +768,7 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
 
         console.log(`Chrome-signed review saved to: ${signedReviewPath}`)
 
-         // Update the current iteration's supervisor review status to "signed"
+        // Update the current iteration's supervisor review status to "signed"
         const currentIteration = thesis.data.currentIteration;
         const updatedReviewIterations = thesis.data.reviewIterations.map((iteration, index) => {
             if (index === currentIteration - 1) { // currentIteration is 1-based, array is 0-based
@@ -818,13 +818,13 @@ export const getSignedReview = async (req: Request, res: Response) => {
             return
         }
 
-     
+
         // Try to find signed review file using full path from database
         let signedReviewPath: string
 
         if (user.role === 'consultant' && thesis.data.assignedConsultant === user.id && thesis.data.consultantSignedReviewPath && fs.existsSync(thesis.data.consultantSignedReviewPath)) {
             signedReviewPath = thesis.data.consultantSignedReviewPath
-        } else if (user.role === 'supervisor' && thesis.data.assignedSupervisor === user.id ) {
+        } else if (user.role === 'supervisor' && thesis.data.assignedSupervisor === user.id) {
             signedReviewPath = path.join(__dirname, "../../server/reviews/supervisor/signed", `signed_review1_${thesis.data.student}.pdf`)
         } else {
             signedReviewPath = path.join(__dirname, "../../server/reviews/supervisor/signed", `signed_review1_${thesis.data.student}.pdf`)
@@ -903,8 +903,8 @@ export const signedReview = async (req: Request, res: Response) => {
             return
         }
 
-        
-       // Get the current thesis first to access the review iterations
+
+        // Get the current thesis first to access the review iterations
         const currentThesis = await thesisModel.getThesisById(thesisId)
         if (!currentThesis) {
             res.status(404).json({ error: "Thesis not found" })
@@ -951,7 +951,7 @@ export const signedReview = async (req: Request, res: Response) => {
             res.status(404).json({ error: "Thesis not found" })
             return
         }
-        
+
         // Update student's status
         await userModel.updateStudentThesisStatus(thesis.data.student, "under_review")
 
@@ -981,5 +981,346 @@ export const getReviewerStats = async (req: Request, res: Response) => {
     } catch (error) {
         console.error(error)
         res.status(500).json({ error: "Failed to fetch reviewer stats" })
+    }
+}
+
+
+// Download Thesis
+export const downloadThesis = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const user = req.user as AuthenticatedUser;
+
+        if (!user) {
+            res.status(401).json({ error: "User not authenticated" });
+            return;
+        }
+
+        const thesis = await thesisModel.getThesisById(id);
+        if (!thesis) {
+            res.status(404).json({ error: "Thesis not found" });
+            return;
+        }
+
+        // Get the student to verify assignments
+        const student = await userModel.getUserById(thesis.data.student);
+        if (!student) {
+            res.status(404).json({ error: "Student not found" });
+            return;
+        }
+
+        // Enhanced permission checking
+        let isAllowed = false;
+
+        switch (user.role) {
+            case "admin":
+                // Admin can access everything
+                isAllowed = true;
+                break;
+
+            case "student":
+                // Student can only access their own thesis
+                isAllowed = thesis.data.student === user.id;
+                break;
+
+            case "reviewer":
+                // Reviewer must be assigned to this specific thesis
+                isAllowed = thesis.data.assignedReviewer === user.id;
+                break;
+
+            case "supervisor":
+                // Supervisor must be assigned to this student
+                const studentAsIStudent = student as IStudent;
+                isAllowed = studentAsIStudent.supervisor === user.id;
+                break;
+
+            case "consultant":
+                // Consultant must be assigned to this student
+                const studentAsIStudentForConsultant = student as IStudent;
+                isAllowed = studentAsIStudentForConsultant.consultant === user.id;
+                break;
+
+            case "head_of_department":
+                // Head of Department must be in the same faculty as the student
+                const studentAsIStudentForHOD = student as IStudent;
+                const hod = user as IHeadOfDepartment;
+                isAllowed = studentAsIStudentForHOD.faculty === hod.faculty;
+                break;
+
+            case "dean":
+                // Dean must be in the same faculty as the student
+                const studentAsIStudentForDean = student as IStudent;
+                const dean = user as IDean;
+                isAllowed = studentAsIStudentForDean.faculty === dean.faculty;
+                break;
+
+            default:
+                isAllowed = false;
+        }
+
+        if (!isAllowed) {
+            res.status(403).json({
+                error: "Access denied",
+                message: "You are not authorized to access this thesis"
+            });
+            return;
+        }
+
+        if (!thesis.data.plagiarismCheck.checkedFileUrl) {
+            res.status(400).json({ error: "Checked file URL not found in database" });
+            return;
+        }
+
+        const filePath = path.join(__dirname, "../../server/uploads/checked-theses", path.basename(thesis.data.plagiarismCheck.checkedFileUrl))
+
+        if (!fs.existsSync(filePath)) {
+            res.status(404).json({ error: "File not found" })
+            return
+        }
+
+        // Set headers to indicate a file download
+        res.setHeader("Content-Type", "application/pdf")
+        res.setHeader("Content-Disposition", `attachment; filename="thesis_${thesis.data.student}.pdf"`)
+
+        // Stream the file to the response
+        const fileStream = fs.createReadStream(filePath)
+        fileStream.pipe(res)
+
+        fileStream.on("error", (error) => {
+            console.error("Error streaming file:", error)
+            res.status(500).json({ error: "Download failed" })
+        })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Download failed" })
+    }
+}
+
+export const viewThesis = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params
+        const user = req.user as AuthenticatedUser
+
+        if (!user) {
+            res.status(401).json({ error: "User not authenticated" })
+            return
+        }
+
+        const thesis = await thesisModel.getThesisById(id)
+        if (!thesis) {
+            res.status(404).json({ error: "Thesis not found" })
+            return
+        }
+
+
+        // Get the student to verify assignments
+        const student = await userModel.getUserById(thesis.data.student);
+        if (!student) {
+            res.status(404).json({ error: "Student not found" });
+            return;
+        }
+
+        // Enhanced permission checking
+        let isAllowed = false;
+
+        switch (user.role) {
+            case "admin":
+                // Admin can access everything
+                isAllowed = true;
+                break;
+
+            case "student":
+                // Student can only access their own thesis
+                isAllowed = thesis.data.student === user.id;
+                break;
+
+            case "reviewer":
+                // Reviewer must be assigned to this specific thesis
+                isAllowed = thesis.data.assignedReviewer === user.id;
+                break;
+
+            case "supervisor":
+                // Supervisor must be assigned to this student
+                const studentAsIStudent = student as IStudent;
+                isAllowed = studentAsIStudent.supervisor === user.id;
+                break;
+
+            case "consultant":
+                // Consultant must be assigned to this student
+                const studentAsIStudentForConsultant = student as IStudent;
+                isAllowed = studentAsIStudentForConsultant.consultant === user.id;
+                break;
+
+            case "head_of_department":
+                // Head of Department must be in the same faculty as the student
+                const studentAsIStudentForHOD = student as IStudent;
+                const hod = user as IHeadOfDepartment;
+                isAllowed = studentAsIStudentForHOD.faculty === hod.faculty;
+                break;
+
+            case "dean":
+                // Dean must be in the same faculty as the student
+                const studentAsIStudentForDean = student as IStudent;
+                const dean = user as IDean;
+                isAllowed = studentAsIStudentForDean.faculty === dean.faculty;
+                break;
+
+            default:
+                isAllowed = false;
+        }
+
+        if (!isAllowed) {
+            res.status(403).json({
+                error: "Access denied",
+                message: "You are not authorized to access this thesis"
+            });
+            return;
+        }
+
+
+        if (!thesis.data.plagiarismCheck.checkedFileUrl) {
+            res.status(400).json({ error: "Checked file URL not found in database" });
+            return;
+        }
+
+        const filePath = path.join(__dirname, "../../server/uploads/checked-theses", path.basename(thesis.data.plagiarismCheck.checkedFileUrl))
+
+        if (!fs.existsSync(filePath)) {
+            res.status(404).json({ error: "File not found" })
+            return
+        }
+
+        // Set headers to indicate a file download
+        res.setHeader("Content-Type", "application/pdf")
+        res.setHeader("Content-Disposition", `inline; filename="thesis_${thesis.data.student}.pdf"`)
+
+        // Stream the file to the response
+        const fileStream = fs.createReadStream(filePath)
+        fileStream.pipe(res)
+
+        fileStream.on("error", (error) => {
+            console.error("Error streaming file:", error)
+            res.status(500).json({ error: "View failed" })
+        })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "View failed" })
+    }
+}
+
+
+
+// Get student's thesis status and grade
+export const getThesisStatus = async (req: Request, res: Response) => {
+    try {
+        const student = req.user as AuthenticatedUser & IStudent
+
+        const theses = await thesisModel.getThesesByStudent(student.id)
+        const thesis = theses[0] // Assuming one thesis per student
+
+        const response = {
+            thesisStatus: student.thesisStatus || "not_submitted",
+            thesisGrade: student.thesisGrade || null,
+            thesisTopic: student.thesisTopic || null,
+            hasThesis: !!thesis,
+            thesis: thesis ? {
+                id: thesis.id,
+                title: thesis.data.title,
+                submissionDate: thesis.data.submissionDate,
+                status: thesis.data.status,
+                assignedReviewer: thesis.data.assignedReviewer,
+            } : null
+        }
+
+        res.json(response)
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Failed to get thesis status" })
+    }
+}
+
+// Delete student's thesis
+export const deleteThesis = async (req: Request, res: Response) => {
+    try {
+        const student = req.user as AuthenticatedUser & IStudent;
+
+        const theses = await thesisModel.getThesesByStudent(student.id);
+
+        for (const thesis of theses) {
+            // Remove from reviewer's assigned theses if assigned
+            if (thesis.data.assignedReviewer) {
+                const reviewer = await userModel.getUserById(thesis.data.assignedReviewer);
+                if (reviewer && reviewer.role === 'reviewer') {
+                    await userModel.removeThesisFromReviewer(reviewer.id, thesis.id);
+                }
+            }
+
+            // Remove from consultant's assigned theses if assigned
+            if (thesis.data.assignedConsultant) {
+                const consultant = await userModel.getUserById(thesis.data.assignedConsultant);
+                if (consultant && consultant.role === 'consultant') {
+                    // Remove from assignedTheses array
+                    await userModel.removeThesisFromConsultant(consultant.id, thesis.id);
+                    // Remove from assignedStudents array
+                    await userModel.removeStudentFromConsultant(consultant.id, student.id);
+                }
+            }
+
+            // Remove from supervisor's assigned theses if assigned
+            if (thesis.data.assignedSupervisor) {
+                const supervisor = await userModel.getUserById(thesis.data.assignedSupervisor);
+                if (supervisor && supervisor.role === 'supervisor') {
+                    // Remove from assignedTheses array
+                    await userModel.removeThesisFromSupervisor(supervisor.id, thesis.id);
+                    // Remove from assignedStudents array
+                    await userModel.removeStudentFromSupervisor(supervisor.id, student.id);
+                }
+            }
+
+            // Delete the thesis file
+            const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl));
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+
+            // Delete the thesis record
+            await thesisModel.deleteThesis(thesis.id);
+        }
+
+        // Reset student's thesis info using separate methods
+        await userModel.updateStudentThesisStatus(student.id, "not_submitted");
+        await userModel.updateStudentThesisInfo(student.id, {
+            thesisFile: undefined,
+            thesisTopic: undefined,
+            thesisGrade: undefined,
+        });
+
+
+        res.json({ message: "Thesis deleted successfully" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Failed to delete thesis" });
+    }
+};
+
+// Update student's thesis topic
+export const updateThesisTopic = async (req: Request, res: Response) => {
+    try {
+        const student = req.user as AuthenticatedUser & IStudent
+        const { thesisTopic } = req.body
+
+        if (!thesisTopic) {
+            res.status(400).json({ error: "Thesis topic is required" })
+            return
+        }
+
+        await userModel.updateStudentThesisInfo(student.id, {
+            thesisTopic: thesisTopic,
+        })
+
+        res.json({ message: "Thesis topic updated successfully" })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({ error: "Failed to update thesis topic" })
     }
 }

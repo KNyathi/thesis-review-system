@@ -5,7 +5,7 @@ import { checkPlagiarismStart, checkPlagiarismSupervisor } from '../controllers/
 const plagiarismRouter = express.Router();
 
 // Review signing routes
-plagiarismRouter.get("/plagiarism-supervisor/:thesisId", authenticate, isStudent, checkPlagiarismSupervisor) 
-plagiarismRouter.get("/plagiarism-start/:thesisId", authenticate, isStudent, checkPlagiarismStart) 
+plagiarismRouter.post("/plagiarism-supervisor/:thesisId", authenticate, isStudent, checkPlagiarismSupervisor) 
+plagiarismRouter.post("/plagiarism-start/:thesisId", authenticate, isStudent, checkPlagiarismStart) 
 
 export default plagiarismRouter;

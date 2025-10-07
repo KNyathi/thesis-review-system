@@ -33,6 +33,7 @@ export const checkPlagiarismSupervisor = async (req: Request, res: Response) => 
     }
 
     const thesis = await thesisModel.getThesisById(thesisId);
+
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" });
       return;
@@ -46,7 +47,7 @@ export const checkPlagiarismSupervisor = async (req: Request, res: Response) => 
 
     // Check if maximum attempts reached
     if (thesis.data.plagiarismCheck.attempts >= thesis.data.plagiarismCheck.maxAttempts) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: "Maximum plagiarism check attempts reached",
         attempts: thesis.data.plagiarismCheck.attempts,
         maxAttempts: thesis.data.plagiarismCheck.maxAttempts
@@ -55,17 +56,26 @@ export const checkPlagiarismSupervisor = async (req: Request, res: Response) => 
     }
 
     // Check if file exists
-    if (!thesis.data.fileUrl || !fs.existsSync(thesis.data.fileUrl)) {
-      res.status(400).json({ error: "Thesis file not found" });
+    if (!thesis.data.fileUrl) {
+      res.status(400).json({ error: "Thesis file not found here" });
       return;
     }
 
-    // Perform plagiarism check
-    const fileName = path.basename(thesis.data.fileUrl);
-    const result = await plagiarismService.checkDocument(thesis.data.fileUrl, fileName);
+
+    const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl))
+
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "File not found" })
+      return
+    }
+
+
+    // File found, proceed with plagiarism check
+    const fileName = path.basename(filePath);
+    const result = await plagiarismService.checkDocument(filePath, fileName, thesisId, student);
 
     if (!result.success) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: result.error || "Plagiarism check failed",
         attempt: (thesis.data.plagiarismCheck?.attempts || 0) + 1
       });
@@ -128,19 +138,28 @@ export const checkPlagiarismStart = async (req: Request, res: Response) => {
       return;
     }
 
-  
+
     // Check if file exists
-    if (!thesis.data.fileUrl || !fs.existsSync(thesis.data.fileUrl)) {
+    if (!thesis.data.fileUrl) {
       res.status(400).json({ error: "Thesis file not found" });
       return;
     }
 
-    // Perform plagiarism check
-    const fileName = path.basename(thesis.data.fileUrl);
-    const result = await plagiarismService.checkDocument(thesis.data.fileUrl, fileName);
+    const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl))
+
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "File not found" })
+      return
+    }
+
+
+    // File found, proceed with plagiarism check
+    const fileName = path.basename(filePath);
+    const result = await plagiarismService.checkDocument(filePath, fileName, thesisId, student);
+
 
     if (!result.success) {
-      res.status(400).json({ 
+      res.status(400).json({
         error: result.error || "Plagiarism check failed",
         attempt: (thesis.data.plagiarismCheck?.attempts || 0) + 1
       });
