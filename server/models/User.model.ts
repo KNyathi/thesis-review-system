@@ -35,14 +35,14 @@ export interface IStudent extends IUserBase {
   topicProposedBy?: 'student' | 'supervisor';
   topicProposedAt?: Date;
   topicSubmittedAt?: Date;
-  
+
   // Student response to supervisor-proposed topic
   studentTopicResponse?: {
     status: 'pending' | 'accepted' | 'rejected';
     respondedAt?: Date;
     comments?: string;
   };
-  
+
   consultantFeedback?: {
     comments?: string;
     lastReviewDate?: Date;
@@ -198,7 +198,12 @@ export class UserModel {
 
   // Get users by role
   async getUsersByRole(role: string): Promise<IUser[]> {
-    const query = `SELECT * FROM users WHERE data->>'role' = $1 ORDER BY created_at DESC`;
+    const query = `
+    SELECT * FROM users 
+    WHERE data->>'role' = $1 
+    OR data->'roles' ? $1
+    ORDER BY created_at DESC
+  `;
     const result = await this.pool.query(query, [role]);
     return result.rows.map(row => ({
       ...row.data,
@@ -210,7 +215,11 @@ export class UserModel {
 
   // Get all students
   async getStudents(): Promise<IStudent[]> {
-    const query = `SELECT * FROM users WHERE data->>'role' = 'student' ORDER BY created_at DESC`;
+    const query = `
+    SELECT * FROM users 
+    WHERE data->>'role' = 'student' 
+    ORDER BY created_at DESC
+  `;
     const result = await this.pool.query(query);
     return result.rows.map(row => ({
       ...row.data,
@@ -222,7 +231,12 @@ export class UserModel {
 
   // Get all consultants
   async getConsultants(): Promise<IConsultant[]> {
-    const query = `SELECT * FROM users WHERE data->>'role' = 'consultant' ORDER BY created_at DESC`;
+    const query = `
+    SELECT * FROM users 
+    WHERE data->>'role' = 'consultant' 
+    OR data->'roles' ? 'consultant'
+    ORDER BY created_at DESC
+  `;
     const result = await this.pool.query(query);
     return result.rows.map(row => ({
       ...row.data,
@@ -234,7 +248,12 @@ export class UserModel {
 
   // Get all supervisors
   async getSupervisors(): Promise<ISupervisor[]> {
-    const query = `SELECT * FROM users WHERE data->>'role' = 'supervisor' ORDER BY created_at DESC`;
+    const query = `
+    SELECT * FROM users 
+    WHERE data->>'role' = 'supervisor' 
+    OR data->'roles' ? 'supervisor'
+    ORDER BY created_at DESC
+  `;
     const result = await this.pool.query(query);
     return result.rows.map(row => ({
       ...row.data,
@@ -246,7 +265,12 @@ export class UserModel {
 
   // Get all reviewers
   async getReviewers(): Promise<IReviewer[]> {
-    const query = `SELECT * FROM users WHERE data->>'role' = 'reviewer' ORDER BY created_at DESC`;
+    const query = `
+    SELECT * FROM users 
+    WHERE data->>'role' = 'reviewer' 
+    OR data->'roles' ? 'reviewer'
+    ORDER BY created_at DESC
+  `;
     const result = await this.pool.query(query);
     return result.rows.map(row => ({
       ...row.data,
@@ -258,7 +282,12 @@ export class UserModel {
 
   // Get all heads of department
   async getHeadsOfDepartment(): Promise<IHeadOfDepartment[]> {
-    const query = `SELECT * FROM users WHERE data->>'role' = 'head_of_department' ORDER BY created_at DESC`;
+    const query = `
+    SELECT * FROM users 
+    WHERE data->>'role' = 'head_of_department' 
+    OR data->'roles' ? 'head_of_department'
+    ORDER BY created_at DESC
+  `;
     const result = await this.pool.query(query);
     return result.rows.map(row => ({
       ...row.data,
@@ -270,7 +299,12 @@ export class UserModel {
 
   // Get all deans
   async getDeans(): Promise<IDean[]> {
-    const query = `SELECT * FROM users WHERE data->>'role' = 'dean' ORDER BY created_at DESC`;
+    const query = `
+    SELECT * FROM users 
+    WHERE data->>'role' = 'dean' 
+    OR data->'roles' ? 'dean'
+    ORDER BY created_at DESC
+  `;
     const result = await this.pool.query(query);
     return result.rows.map(row => ({
       ...row.data,
@@ -282,7 +316,12 @@ export class UserModel {
 
   // Get all admins
   async getAdmins(): Promise<IAdmin[]> {
-    const query = `SELECT * FROM users WHERE data->>'role' = 'admin' ORDER BY created_at DESC`;
+    const query = `
+    SELECT * FROM users 
+    WHERE data->>'role' = 'admin' 
+    OR data->'roles' ? 'admin'
+    ORDER BY created_at DESC
+  `;
     const result = await this.pool.query(query);
     return result.rows.map(row => ({
       ...row.data,

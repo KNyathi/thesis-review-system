@@ -10,6 +10,8 @@ import {
   IConsultant,
   ISupervisor,
 } from "../models/User.model";
+import { createTitlePage } from "./titlePage.component";
+import { createVolumeExercisePage } from "./volumeExercise.component";
 import { Pool } from 'pg';
 
 const pool = new Pool({
@@ -23,6 +25,12 @@ export async function generateConsultantReviewPDF(
   reviewer: IConsultant | ISupervisor,
   isSupervisor: boolean = false
 ): Promise<string> {
+  // Get student data
+  const student = await Student.findById(userModel, thesis.student);
+  if (!student) {
+    throw new Error("Student not found");
+  }
+
   // Determine the directory based on role
   const role = isSupervisor ? 'supervisor' : 'consultant';
   const reviewsDir = path.join(__dirname, `../reviews/${role}/unsigned`);
@@ -37,9 +45,6 @@ export async function generateConsultantReviewPDF(
   // Register fontkit
   pdfDoc.registerFontkit(fontkit);
 
-  // Add a new page
-  const page = pdfDoc.addPage([595, 842]); // A4 size
-
   // Register fonts
   const regularFontBytes = fs.readFileSync(
     path.join(__dirname, "../assets/fonts/Arial_Cyr.ttf")
@@ -51,6 +56,18 @@ export async function generateConsultantReviewPDF(
   // Embed both fonts
   const font = await pdfDoc.embedFont(regularFontBytes);
   const boldFont = await pdfDoc.embedFont(boldFontBytes);
+
+  // Create Component 1: Title Page
+  await createTitlePage(pdfDoc, font, boldFont, thesis, student);
+
+  // Create Component 2: Volume Exercise Page
+  await createVolumeExercisePage(pdfDoc, font, boldFont, thesis, student);
+
+
+  // Add a new page
+  const page = pdfDoc.addPage([595, 842]); // A4 size
+
+
 
   // Improved text wrapping function with basic bold support
   const drawWrappedText = (
@@ -291,7 +308,7 @@ export async function generateConsultantReviewPDF(
   // University name
   currentY = drawCenteredWrappedText(
     page,
-    "<<МОСКОВСКИЙ ТЕХНИЧЕСКИЙ УНИВЕРСИТЕТ СВЯЗИ И ИНФОРМАТИКИ>>",
+    "«МОСКОВСКИЙ ТЕХНИЧЕСКИЙ УНИВЕРСИТЕТ СВЯЗИ И ИНФОРМАТИКИ»",
     currentY,
     maxWidth,
     12,
@@ -335,12 +352,6 @@ export async function generateConsultantReviewPDF(
   );
 
   currentY -= 30;
-
-  // Get student data
-  const student = await Student.findById(userModel, thesis.student);
-  if (!student) {
-    throw new Error("Student not found");
-  }
 
   // Student information section with proper wrapping
   const leftMargin = 50;

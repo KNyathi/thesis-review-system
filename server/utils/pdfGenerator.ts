@@ -29,21 +29,14 @@ export async function generateReviewPDF(
     throw new Error("Student not found");
   }
 
-  // Find dean with the same faculty as the student - REQUIRED, no fallback
-  const deanQuery = `
-  SELECT * FROM users 
-  WHERE role = 'dean' 
-  AND faculty = $1 
-  LIMIT 1
-`;
-  const deanResult = await pool.query(deanQuery, [student.faculty]);
-  const dean = deanResult.rows[0];
+
+  const deans = await userModel.getDeans();
+  const dean = deans.find(h => h.faculty === student.faculty);
 
   if (!dean) {
     throw new Error(`Dean not found for faculty: ${student.faculty}`);
   }
-
-  const deanName = dean.fullname;
+  const deanName = dean.fullName;
 
   // Ensure reviews directory exists
   const reviewsDir = path.join(__dirname, "../reviews/reviewer/unsigned");
@@ -311,7 +304,7 @@ export async function generateReviewPDF(
   // University name
   currentY = drawCenteredWrappedText(
     page,
-    "<<МОСКОВСКИЙ ТЕХНИЧЕСКИЙ УНИВЕРСИТЕТ СВЯЗИ И ИНФОРМАТИКИ>>",
+    "«МОСКОВСКИЙ ТЕХНИЧЕСКИЙ УНИВЕРСИТЕТ СВЯЗИ И ИНФОРМАТИКИ»",
     currentY,
     maxWidth,
     12,
