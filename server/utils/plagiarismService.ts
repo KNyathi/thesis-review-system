@@ -68,7 +68,7 @@ export class PlagiarismService {
                             Author: [
                                 {
                                     FirstName: this.extractFirstName(studentData.fullName) || "Student",
-                                    LastName: this.extractLastName(studentData.fullName) || "User",
+                                    LastName: this.extractLastName(studentData.fullName) || "Use",
                                     CustomID: `uni_${studentData.id || 'unknown'}`
                                 }
                             ]
