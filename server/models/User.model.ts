@@ -36,6 +36,9 @@ export interface IStudent extends IUserBase {
   topicProposedAt?: Date;
   topicSubmittedAt?: Date;
 
+  studentSignedRevOneAt?: Date;
+  studentSignedRevTwoAt?: Date;
+
   // Student response to supervisor-proposed topic
   studentTopicResponse?: {
     status: 'pending' | 'accepted' | 'rejected';

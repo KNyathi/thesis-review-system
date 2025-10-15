@@ -270,6 +270,12 @@ export const submitReview = async (req: Request, res: Response) => {
             return
         }
 
+        const student = await userModel.getUserById(thesis.data.student);
+        if (!student) {
+            res.status(404).json({ error: "Student not found for this thesis" });
+            return;
+        }
+
         // PLAGIARISM CHECK VALIDATION - REQUIRED BEFORE ANY SUPERVISOR SIGNING
         const plagiarismCheck = thesis.data.plagiarismCheck;
 
@@ -338,6 +344,26 @@ export const submitReview = async (req: Request, res: Response) => {
                 }
 
             }
+
+
+            // VALIDATION 1: Check if student has submitted thesis content
+            if (!(student as IStudent).thesisContent) {
+                res.status(400).json({
+                    error: "Cannot proceed: Student has not submitted thesis content",
+                    requiredAction: "await_student_submission"
+                });
+                return;
+            }
+
+            // VALIDATION 2: Check if student has signed their submission
+            if (!(student as IStudent).studentSignedRevOneAt) {
+                res.status(400).json({
+                    error: "Cannot proceed: Student must sign their thesis submission before supervisor review",
+                    requiredAction: "await_student_signature"
+                });
+                return;
+            }
+
 
             // Submit supervisor review (just signing)
             updatedThesis = await thesisModel.submitSupervisorReview(
@@ -463,6 +489,25 @@ export const submitReview = async (req: Request, res: Response) => {
                 reviewPdfSupervisor: pdfPath,
                 status: "under_review" // Ready for final review
             });
+
+            // VALIDATION 1: Check if student has submitted thesis content
+            if (!(student as IStudent).thesisContent) {
+                res.status(400).json({
+                    error: "Cannot proceed: Student has not submitted thesis content",
+                    requiredAction: "await_student_submission"
+                });
+                return;
+            }
+
+            // VALIDATION 2: Check if student has signed their submission
+            if (!(student as IStudent).studentSignedRevOneAt) {
+                res.status(400).json({
+                    error: "Cannot proceed: Student must sign their thesis submission before supervisor review",
+                    requiredAction: "await_student_signature"
+                });
+                return;
+            }
+
 
             // Update student with supervisor feedback and approval
             await userModel.updateStudentSupervisorFeedback(
@@ -631,6 +676,22 @@ export const reReviewThesis = async (req: Request, res: Response) => {
             fs.unlinkSync(thesis.data.reviewPdfSupervisor);
         }
 
+        const student = await userModel.getUserById(thesis.data.student);
+        if (!student) {
+            res.status(404).json({ error: "Student not found for this thesis" });
+            return;
+        }
+
+
+        const studentUpdateData: any = {
+            studentSignedAt: undefined
+        };
+
+        if ('studentSignedRevOneAt' in student) {
+            studentUpdateData.studentSignedRevOneAt = undefined;
+        }
+
+        await userModel.updateUser(thesis.data.student, studentUpdateData);
         // Reset thesis review data but keep the current iteration and review history
         const updatedThesisData: Partial<IThesis> = {
             status: "with_supervisor",
@@ -702,6 +763,23 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
             return;
         }
 
+        // Find the student associated with this thesis
+        const student = await userModel.getUserById(thesis.data.student);
+        if (!student) {
+            res.status(404).json({ error: "Student not found for this thesis" });
+            return;
+        }
+
+        // Check if student has signed (studentSignedRevOneAt is defined)
+        if (!(student as IStudent).studentSignedRevOneAt) {
+            res.status(400).json({ 
+                error: "Cannot access unsigned review: Student has not signed their submission yet",
+                requiredAction: "await_student_signature"
+            });
+            return;
+        }
+
+        
         if (!thesis.data.reviewPdfSupervisor) {
             res.status(404).json({ error: "Unsigned review not found" });
             return;

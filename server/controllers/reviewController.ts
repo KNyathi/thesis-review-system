@@ -339,6 +339,23 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
       return
     }
 
+    // Find the student associated with this thesis
+        const student = await userModel.getUserById(thesis.data.student);
+        if (!student) {
+            res.status(404).json({ error: "Student not found for this thesis" });
+            return;
+        }
+
+        // Check if student has signed 
+        if (!(student as IStudent).studentSignedRevTwoAt) {
+            res.status(400).json({ 
+                error: "Cannot access unsigned review: Student has not signed their submission yet",
+                requiredAction: "await_student_signature"
+            });
+            return;
+        }
+
+
     if (!thesis.data.reviewPdfReviewer) {
       res.status(404).json({ error: "Unsigned review not found" })
       return
