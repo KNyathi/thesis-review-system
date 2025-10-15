@@ -62,6 +62,33 @@ export interface IStudent extends IUserBase {
 
   totalReviewAttempts: number;
   currentReviewIteration: number;
+
+  // Thesis content structure
+  thesisContent?: {
+    sourceData: string[]; 
+    introduction: {
+      title: string;
+      percentage: string;
+      deadline: string;
+    };
+    chapters: {
+      title: string;
+      percentage: string;
+      deadline: string;
+      subchapters: string[]; 
+    }[];
+    conclusion: {
+      title: string;
+      percentage: string;
+      deadline: string;
+    };
+    sources: {
+      title: string;
+    };
+    appendix: {
+      title: string;
+    };
+  };
 }
 
 export interface IConsultant extends IUserBase {

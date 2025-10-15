@@ -22,6 +22,11 @@ export async function createVolumeExercisePage(
     let currentY = 780;
 
 
+    if (!student.thesisContent) {
+        throw new Error("Student thesis content unavailable");
+    }
+
+
     // Function to check if we need a new page
     const checkNewPage = (requiredSpace: number): PDFPage => {
         if (currentY - requiredSpace < 50) {
@@ -31,50 +36,41 @@ export async function createVolumeExercisePage(
         return page;
     };
 
-    // Text wrapping function
-    const drawWrappedText = (
-        page: PDFPage,
-        text: string,
-        x: number,
-        y: number,
-        maxWidth: number,
-        fontSize: number,
-        font: PDFFont,
-        lineHeight: number = 15,
-        color = rgb(0, 0, 0)
-    ): number => {
+    // Helper function to draw text with line wrapping for long content
+    function drawWrappedText(text: string, x: number, maxWidth: number, lineHeight: number = 15) {
         const words = text.split(' ');
-        const lines: string[] = [];
-        let currentLine = words[0];
+        let line = '';
+        let lines = [];
 
-        for (let i = 1; i < words.length; i++) {
-            const word = words[i];
-            const testLine = currentLine + ' ' + word;
-            const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+        for (const word of words) {
+            const testLine = line + word + ' ';
+            const testWidth = font.widthOfTextAtSize(testLine, 12);
 
-            if (testWidth > maxWidth && currentLine !== '') {
-                lines.push(currentLine);
-                currentLine = word;
+            if (testWidth > maxWidth && line !== '') {
+                lines.push(line);
+                line = word + ' ';
             } else {
-                currentLine = testLine;
+                line = testLine;
             }
         }
-        lines.push(currentLine);
+        lines.push(line);
 
-        let currentY = y;
-        lines.forEach(line => {
-            page.drawText(line, {
+        for (const lineText of lines) {
+            checkNewPage(lineHeight);
+            updatePageReference();
+
+            page.drawText(lineText.trim(), {
                 x,
                 y: currentY,
-                size: fontSize,
-                font,
-                color,
+                size: 12,
+                font: font,
             });
-            currentY -= lineHeight;
-        });
 
-        return currentY;
-    };
+            currentY -= lineHeight;
+            updatePageContentBounds();
+        }
+    }
+
 
     const drawCenteredWrappedText = (
         page: PDFPage,
@@ -645,9 +641,11 @@ export async function createVolumeExercisePage(
 
     currentY -= 10;
 
+    const content = student?.thesisContent;
 
-// WORK ON THIS TABLE - ADDING THE CHAPTER STRUCTURE TABLE
-  checkNewPage(200);
+
+    // WORK ON THIS TABLE - ADDING THE CHAPTER STRUCTURE TABLE
+    checkNewPage(200);
 
     // Table column definitions
     const col1X = leftMargin; // Content column
@@ -666,7 +664,7 @@ export async function createVolumeExercisePage(
         if (currentPage !== page) {
             // Draw vertical line for the completed page before switching
             drawVerticalLineForCurrentPage();
-            
+
             currentPage = page;
             pageStartY = currentY;
             pageEndY = currentY;
@@ -694,11 +692,29 @@ export async function createVolumeExercisePage(
         pageEndY = currentY;
     }
 
+
+    // Helper function to draw multi-line text that spans multiple lines
+    function drawMultiLineText(lines: string[], x: number, initialOffset: number = 0) {
+        lines.forEach((line, index) => {
+            checkNewPage(15);
+            updatePageReference();
+
+            page.drawText(line, {
+                x: x,
+                y: currentY - (initialOffset + (index * 15)),
+                size: 12,
+                font: font,
+            });
+        });
+
+        currentY -= (lines.length * 15) + initialOffset;
+        updatePageContentBounds();
+    }
+
     currentY -= 30;
     pageStartY = currentY;
 
-
-    // 1. Source data section
+    // 1. Source data section - DYNAMIC
     page.drawText("1. Исходные данные", {
         x: col1X + 30,
         y: currentY,
@@ -706,48 +722,25 @@ export async function createVolumeExercisePage(
         font: font,
     });
 
-    // Source data items (only in first column)
-    page.drawText("- Высокоуровневый язык программирования С#", {
-        x: col1X + 25,
-        y: currentY - 15,
-        size: 12,
-        font: font,
+    currentY -= 20;
+    // Source data items (only in first column) - DYNAMIC
+    content?.sourceData.forEach((item, index) => {
+        checkNewPage(15);
+        updatePageReference();
+
+        const text = `- ${item}`;
+
+        // Always use text wrapping for consistency
+        drawWrappedText(text, col1X + 25, col1Width - 30, 15);
     });
 
-    page.drawText("- Набор библиотек для задач: System, Zenject,", {
-        x: col1X + 25,
-        y: currentY - 30,
-        size: 12,
-        font: font,
-    });
 
-    page.drawText("  OpenXR, XR ToolKit", {
-        x: col1X + 25,
-        y: currentY - 45,
-        size: 12,
-        font: font,
-    });
-
-    page.drawText("- Движок: Unity 3D", {
-        x: col1X + 25,
-        y: currentY - 60,
-        size: 12,
-        font: font,
-    });
-
-    page.drawText("- Среда разработки: Visual Studio", {
-        x: col1X + 25,
-        y: currentY - 75,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 160;
+    currentY -= 20;
     updatePageContentBounds();
 
     // 2. Content section header
     checkNewPage(100);
-    updatePageReference(); // Always update page reference after checkNewPage
+    updatePageReference();
 
     page.drawText("2. Содержание расчетно-пояснительной записки", {
         x: col1X + 30,
@@ -781,25 +774,25 @@ export async function createVolumeExercisePage(
     currentY -= 40;
     updatePageContentBounds();
 
-    // Introduction row
+    // Introduction row - DYNAMIC
     checkNewPage(20);
     updatePageReference();
 
-    page.drawText("Введение", {
+    page.drawText(content.introduction.title, {
         x: col1X + 5,
         y: currentY,
         size: 12,
         font: font,
     });
 
-    page.drawText("5%", {
+    page.drawText(content.introduction.percentage, {
         x: col2X + 5,
         y: currentY,
         size: 12,
         font: font,
     });
 
-    page.drawText("4.03.2025", {
+    page.drawText(content.introduction.deadline, {
         x: col3X + 5,
         y: currentY,
         size: 12,
@@ -809,297 +802,87 @@ export async function createVolumeExercisePage(
     currentY -= 30;
     updatePageContentBounds();
 
-    // Chapter 1 - Main row
-    checkNewPage(20);
-    updatePageReference();
+    // Chapters - DYNAMIC
+    content.chapters.forEach(chapter => {
+        // Main chapter row
+        checkNewPage(20);
+        updatePageReference();
 
-    page.drawText("Глава 1. Аналитический раздел", {
-        x: col1X + 5,
-        y: currentY,
-        size: 12,
-        font: font,
+        // Handle long chapter titles with wrapping
+        if (font.widthOfTextAtSize(chapter.title, 12) > col1Width - 10) {
+            drawWrappedText(chapter.title, col1X + 5, col1Width - 10, 15);
+            // Adjust positions for percentage and date after wrapped title
+            const lastTextY = currentY + 15; // Since currentY was decremented in drawWrappedText
+            page.drawText(chapter.percentage, {
+                x: col2X + 5,
+                y: lastTextY,
+                size: 12,
+                font: font,
+            });
+            page.drawText(chapter.deadline, {
+                x: col3X + 5,
+                y: lastTextY,
+                size: 12,
+                font: font,
+            });
+        } else {
+            page.drawText(chapter.title, {
+                x: col1X + 5,
+                y: currentY,
+                size: 12,
+                font: font,
+            });
+
+            page.drawText(chapter.percentage, {
+                x: col2X + 5,
+                y: currentY,
+                size: 12,
+                font: font,
+            });
+
+            page.drawText(chapter.deadline, {
+                x: col3X + 5,
+                y: currentY,
+                size: 12,
+                font: font,
+            });
+            currentY -= 20;
+        }
+
+        updatePageContentBounds();
+
+        // Subchapters (only in first column) - DYNAMIC
+        chapter.subchapters.forEach(subchapter => {
+            checkNewPage(15);
+            updatePageReference();
+
+            // Use text wrapping for long subchapter titles
+            drawWrappedText(subchapter, col1X + 15, col1Width - 20);
+        });
+
+        currentY -= 10; // Extra spacing between chapters
+        updatePageContentBounds();
     });
 
-    page.drawText("25%", {
-        x: col2X + 5,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    page.drawText("26.03.2025", {
-        x: col3X + 5,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 20;
-    updatePageContentBounds();
-
-    // Chapter 1 sub-items (only in first column)
-    checkNewPage(100);
-    updatePageReference();
-
-    page.drawText("1.1. Актуальность работы", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 15;
-    checkNewPage(15);
-    updatePageReference();
-
-    page.drawText("1.2. Анализ VR-Симуляторов", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 15;
-    checkNewPage(30);
-    updatePageReference();
-
-    page.drawText("1.3. Особенности сборки беспилотных летательных", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    page.drawText("аппаратов (БПЛА)", {
-        x: col1X + 15,
-        y: currentY - 15,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 30;
-    checkNewPage(15);
-    updatePageReference();
-
-    page.drawText("1.4. Анализ существующих решений", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 30;
-    updatePageContentBounds();
-
-    // Chapter 2 - Main row
-    checkNewPage(20);
-    updatePageReference();
-
-    page.drawText("Глава 2. Проектирование платформы", {
-        x: col1X + 5,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    page.drawText("30%", {
-        x: col2X + 5,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    page.drawText("11.04.2025", {
-        x: col3X + 5,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 20;
-    updatePageContentBounds();
-
-    // Chapter 2 sub-items (only in first column)
-    checkNewPage(100);
-    updatePageReference();
-
-    page.drawText("2.1. Цель и задачи главы", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 15;
-    checkNewPage(15);
-    updatePageReference();
-
-    page.drawText("2.2. Обоснование выбора инструментов и технологий", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 15;
-    checkNewPage(15);
-    updatePageReference();
-
-    page.drawText("2.3. Архитектура приложения", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 15;
-    checkNewPage(15);
-    updatePageReference();
-
-    page.drawText("2.4. Модули", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 30;
-    updatePageContentBounds();
-
-    // Chapter 3 - Main row
-    checkNewPage(20);
-    updatePageReference();
-
-    page.drawText("Глава 3. Разработка симулятора", {
-        x: col1X + 5,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    page.drawText("35%", {
-        x: col2X + 5,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    page.drawText("29.04.2025", {
-        x: col3X + 5,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 20;
-    updatePageContentBounds();
-
-    // Chapter 3 sub-items (only in first column)
-    checkNewPage(150);
-    updatePageReference();
-
-    page.drawText("3.1. Подготовительный план", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 15;
-    checkNewPage(30);
-    updatePageReference();
-
-    page.drawText("3.2. Проектирование взаимодействий в виртуальной", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    page.drawText("среде", {
-        x: col1X + 15,
-        y: currentY - 15,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 30;
-    checkNewPage(15);
-    updatePageReference();
-
-    page.drawText("3.3. Реализация механики сборки дрона", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 15;
-    checkNewPage(15);
-    updatePageReference();
-
-    page.drawText("3.4. Внедрение обучающих сценариев", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 15;
-    checkNewPage(15);
-    updatePageReference();
-
-    page.drawText("3.5. Интеграция Zenject и управление зависимостими", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 15;
-    checkNewPage(15);
-    updatePageReference();
-
-    page.drawText("3.6. Тестирование, отладка и оптимизация", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 15;
-    checkNewPage(15);
-    updatePageReference();
-
-    page.drawText("3.7. Пользовательский опыт", {
-        x: col1X + 15,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 30;
-    updatePageContentBounds();
-
-    // Final sections
+    // Final sections - DYNAMIC
     checkNewPage(60);
     updatePageReference();
 
-    page.drawText("Заключение", {
+    page.drawText(content.conclusion.title, {
         x: col1X + 5,
         y: currentY,
         size: 12,
         font: font,
     });
 
-    page.drawText("5%", {
+    page.drawText(content.conclusion.percentage, {
         x: col2X + 5,
         y: currentY,
         size: 12,
         font: font,
     });
 
-    page.drawText("19.05.2025", {
+    page.drawText(content.conclusion.deadline, {
         x: col3X + 5,
         y: currentY,
         size: 12,
@@ -1110,7 +893,7 @@ export async function createVolumeExercisePage(
     checkNewPage(20);
     updatePageReference();
 
-    page.drawText("Список использованных источников", {
+    page.drawText(content.sources.title, {
         x: col1X + 5,
         y: currentY,
         size: 12,
@@ -1121,7 +904,7 @@ export async function createVolumeExercisePage(
     checkNewPage(20);
     updatePageReference();
 
-    page.drawText("Приложения", {
+    page.drawText(content.appendix.title, {
         x: col1X + 5,
         y: currentY,
         size: 12,
@@ -1135,7 +918,6 @@ export async function createVolumeExercisePage(
 
     // Additional sections
     checkNewPage(150);
-
     currentY -= 40;
 
 
@@ -1181,7 +963,7 @@ export async function createVolumeExercisePage(
         });
         page.drawLine({
             start: { x: leftMargin + 220 + 150, y: currentY - 2 },
-            end: { x: leftMargin + 220 + 150 + signatureLineLength, y: currentY - 2 },
+            end: { x: leftMargin + 220 + 180 + signatureLineLength, y: currentY - 2 },
             thickness: 1,
             color: rgb(0, 0, 0),
         });
@@ -1212,7 +994,7 @@ export async function createVolumeExercisePage(
 
         page.drawLine({
             start: { x: leftMargin + 220 + 150, y: currentY - 2 },
-            end: { x: leftMargin + 220 + 150 + signatureLineLength, y: currentY - 2 },
+            end: { x: leftMargin + 220 + 180 + signatureLineLength, y: currentY - 2 },
             thickness: 1,
             color: rgb(0, 0, 0),
         });
