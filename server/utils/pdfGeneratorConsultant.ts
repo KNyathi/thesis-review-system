@@ -47,10 +47,10 @@ export async function generateConsultantReviewPDF(
 
   // Register fonts
   const regularFontBytes = fs.readFileSync(
-    path.join(__dirname, "../assets/fonts/Arial_Cyr.ttf")
+    path.join(__dirname, "../assets/fonts/timesnrcyrmt.ttf")
   );
   const boldFontBytes = fs.readFileSync(
-    path.join(__dirname, "../assets/fonts/Arial_Cyr_Bold.ttf")
+    path.join(__dirname, "../assets/fonts/timesnrcyrmt_bold.ttf")
   );
 
   // Embed both fonts
@@ -270,7 +270,7 @@ export async function generateConsultantReviewPDF(
   // Header section with proper wrapping
   const maxWidth = 500;
   const centerX = 595 / 2;
-  let currentY = 800;
+  let currentY = 780;
 
   // Ministry line 1
   currentY = drawCenteredWrappedText(
@@ -590,7 +590,7 @@ export async function generateConsultantReviewPDF(
       // If no rows can fit, create new page
       if (rowsToDraw === 0) {
         currentPage = pdfDoc.addPage([595, 842]);
-        currentTableYStart = 800;
+        currentTableYStart = 780;
         currentY = currentTableYStart;
 
         // Recalculate how many rows we can fit on new page
@@ -750,7 +750,7 @@ export async function generateConsultantReviewPDF(
   // Check if we need a new page for Section 2
   if (currentY < 150) {
     currentPage = pdfDoc.addPage([595, 842]);
-    currentY = 800;
+    currentY = 780;
   }
 
   // Section 2 Header
@@ -780,7 +780,7 @@ export async function generateConsultantReviewPDF(
     // Check if we need a new page before drawing
     if (currentY < 50) {
       currentPage = pdfDoc.addPage([595, 842]);
-      currentY = 800;
+      currentY = 780;
     }
 
     // Draw the question with wrapping
@@ -801,7 +801,7 @@ export async function generateConsultantReviewPDF(
 
   if (currentY < 100) {
     currentPage = pdfDoc.addPage([595, 842]);
-    currentY = 800;
+    currentY = 780;
   }
 
   currentPage.drawText(
@@ -834,7 +834,7 @@ export async function generateConsultantReviewPDF(
     // Check page space before drawing
     if (currentY < 50) {
       currentPage = pdfDoc.addPage([595, 842]);
-      currentY = 800;
+      currentY = 780;
     }
 
     // Draw the advantage with text wrapping
@@ -855,7 +855,7 @@ export async function generateConsultantReviewPDF(
 
   if (currentY < 100) {
     currentPage = pdfDoc.addPage([595, 842]);
-    currentY = 800;
+    currentY = 780;
   }
 
   currentPage.drawText("Недостатки, замечания: ", {
@@ -876,7 +876,7 @@ export async function generateConsultantReviewPDF(
     // Check if we need a new page before drawing
     if (currentY < 50) {
       currentPage = pdfDoc.addPage([595, 842]);
-      currentY = 800;
+      currentY = 780;
     }
 
     // Draw the disadvantage with wrapping
@@ -896,7 +896,7 @@ export async function generateConsultantReviewPDF(
   currentY -= 30;
   if (currentY < 150) {
     currentPage = pdfDoc.addPage([595, 842]);
-    currentY = 800;
+    currentY = 780;
   }
 
   currentPage.drawText("Заключение:", {
@@ -947,7 +947,7 @@ export async function generateConsultantReviewPDF(
     // Check if we need a new page for signatures
     if (currentY - signatureConfig.blockHeight < 50) {
       currentPage = pdfDoc.addPage([595, 842]);
-      currentY = 800;
+      currentY = 780;
     }
 
     // Determine which signatures to show
@@ -989,7 +989,7 @@ export async function generateConsultantReviewPDF(
 
       currentPage.drawText(signature.role, {
         x: signatureConfig.rightX,
-        y: yPos - 10,
+        y: yPos - 15,
         size: 9,
         font: font,
       });

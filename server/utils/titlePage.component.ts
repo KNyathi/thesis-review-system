@@ -22,7 +22,7 @@ export async function createTitlePage(
     const page = pdfDoc.addPage([595, 842]);
     const maxWidth = 500;
     const centerX = 595 / 2;
-    let currentY = 800;
+    let currentY = 780;
 
 
     const hods = await userModel.getHeadsOfDepartment();
@@ -47,92 +47,92 @@ export async function createTitlePage(
     const consultantName = consultant?.fullName || "";
 
     // Centered wrapped text function
-   const drawCenteredWrappedText = (
-    page: PDFPage,
-    text: string,
-    y: number,
-    maxWidth: number, // This should be the actual maximum width for the text
-    fontSize: number,
-    font: PDFFont,
-    lineHeight: number = 15,
-    color = rgb(0, 0, 0)
-): number => {
-    const words = text.split(' ');
-    const lines: string[] = [];
-    let currentLine = words[0];
+    const drawCenteredWrappedText = (
+        page: PDFPage,
+        text: string,
+        y: number,
+        maxWidth: number, // This should be the actual maximum width for the text
+        fontSize: number,
+        font: PDFFont,
+        lineHeight: number = 15,
+        color = rgb(0, 0, 0)
+    ): number => {
+        const words = text.split(' ');
+        const lines: string[] = [];
+        let currentLine = words[0];
 
-    for (let i = 1; i < words.length; i++) {
-        const word = words[i];
-        const testLine = currentLine + ' ' + word;
-        const testWidth = font.widthOfTextAtSize(testLine, fontSize);
+        for (let i = 1; i < words.length; i++) {
+            const word = words[i];
+            const testLine = currentLine + ' ' + word;
+            const testWidth = font.widthOfTextAtSize(testLine, fontSize);
 
-        if (testWidth > maxWidth && currentLine !== '') {
-            lines.push(currentLine);
-            currentLine = word;
-        } else {
-            currentLine = testLine;
-        }
-    }
-    lines.push(currentLine);
-
-    let currentY = y;
-    const centerX = 595 / 2;
-
-    lines.forEach(line => {
-        const lineWidth = font.widthOfTextAtSize(line, fontSize);
-        
-        // Ensure the line doesn't extend beyond page boundaries
-        const leftBound = centerX - (maxWidth / 2);
-        const rightBound = centerX + (maxWidth / 2);
-        const actualLeft = centerX - (lineWidth / 2);
-        
-        // If the line is too wide, we need to handle it differently
-        if (lineWidth > maxWidth) {
-            // For overly long lines, we need to break them further
-            const longWords = line.split(' ');
-            let subLine = '';
-            const subLines: string[] = [];
-            
-            for (const word of longWords) {
-                const testSubLine = subLine ? subLine + ' ' + word : word;
-                const testSubWidth = font.widthOfTextAtSize(testSubLine, fontSize);
-                
-                if (testSubWidth > maxWidth && subLine !== '') {
-                    subLines.push(subLine);
-                    subLine = word;
-                } else {
-                    subLine = testSubLine;
-                }
+            if (testWidth > maxWidth && currentLine !== '') {
+                lines.push(currentLine);
+                currentLine = word;
+            } else {
+                currentLine = testLine;
             }
-            if (subLine) subLines.push(subLine);
-            
-            // Draw the sublines
-            subLines.forEach(subLine => {
-                const subLineWidth = font.widthOfTextAtSize(subLine, fontSize);
-                page.drawText(subLine, {
-                    x: centerX - subLineWidth / 2,
+        }
+        lines.push(currentLine);
+
+        let currentY = y;
+        const centerX = 595 / 2;
+
+        lines.forEach(line => {
+            const lineWidth = font.widthOfTextAtSize(line, fontSize);
+
+            // Ensure the line doesn't extend beyond page boundaries
+            const leftBound = centerX - (maxWidth / 2);
+            const rightBound = centerX + (maxWidth / 2);
+            const actualLeft = centerX - (lineWidth / 2);
+
+            // If the line is too wide, we need to handle it differently
+            if (lineWidth > maxWidth) {
+                // For overly long lines, we need to break them further
+                const longWords = line.split(' ');
+                let subLine = '';
+                const subLines: string[] = [];
+
+                for (const word of longWords) {
+                    const testSubLine = subLine ? subLine + ' ' + word : word;
+                    const testSubWidth = font.widthOfTextAtSize(testSubLine, fontSize);
+
+                    if (testSubWidth > maxWidth && subLine !== '') {
+                        subLines.push(subLine);
+                        subLine = word;
+                    } else {
+                        subLine = testSubLine;
+                    }
+                }
+                if (subLine) subLines.push(subLine);
+
+                // Draw the sublines
+                subLines.forEach(subLine => {
+                    const subLineWidth = font.widthOfTextAtSize(subLine, fontSize);
+                    page.drawText(subLine, {
+                        x: centerX - subLineWidth / 2,
+                        y: currentY,
+                        size: fontSize,
+                        font,
+                        color,
+                    });
+                    currentY -= lineHeight;
+                });
+            } else {
+                // Normal line that fits within maxWidth
+                page.drawText(line, {
+                    x: centerX - lineWidth / 2,
                     y: currentY,
                     size: fontSize,
                     font,
                     color,
                 });
                 currentY -= lineHeight;
-            });
-        } else {
-            // Normal line that fits within maxWidth
-            page.drawText(line, {
-                x: centerX - lineWidth / 2,
-                y: currentY,
-                size: fontSize,
-                font,
-                color,
-            });
-            currentY -= lineHeight;
-        }
-    });
+            }
+        });
 
-    return currentY;
-};
+        return currentY;
+    };
 
     currentY = drawCenteredWrappedText(
         page,
@@ -295,12 +295,12 @@ export async function createTitlePage(
         topicText,
         currentY,
         maxWidth - 50,
-        12,
+        14,
         font,
         18
     );
 
-    currentY -= 150;
+    currentY -= 130;
 
     // Student and supervisors table
     const tableLeft = 180;
