@@ -647,7 +647,224 @@ export async function createVolumeExercisePage(
 
     //WORK ON THIS TABLE
 
+    currentY -= 20;
 
+    // WORK ON THIS TABLE - ADDING THE CHAPTER STRUCTURE TABLE
+    checkNewPage(200);
+
+    // Table headers
+    const col1X = leftMargin; // Chapter column
+    const col2X = leftMargin + 300; // Percentage column
+    const col3X = leftMargin + 380; // Date column
+    
+
+    currentY -= 20;
+
+    // Chapter 1 data
+    page.drawText("Глава 1. Аналитический раздел", {
+        x: col1X,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("1.1. Актуальность работы", {
+        x: col1X + 20,
+        y: currentY - 15,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("1.2. Анализ VR-Симуляторов", {
+        x: col1X + 20,
+        y: currentY - 30,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("1.3. Особенности сборки беспилотных летательных аппаратов (БПЛА)", {
+        x: col1X + 20,
+        y: currentY - 45,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("1.4. Анализ существующих решений", {
+        x: col1X + 20,
+        y: currentY - 60,
+        size: 12,
+        font: font,
+    });
+
+    // Percentage and date for Chapter 1
+    page.drawText("30%", {
+        x: col2X,
+        y: currentY - 30,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("11.04.2025", {
+        x: col3X,
+        y: currentY - 30,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 80;
+
+    // Chapter 2 data
+    page.drawText("Глава 2. Проектирование платформы", {
+        x: col1X,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("2.1. Цель и задачи главы", {
+        x: col1X + 20,
+        y: currentY - 15,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("2.2. Обоснование выбора инструментов и технологий", {
+        x: col1X + 20,
+        y: currentY - 30,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("2.3. Архитектура приложения", {
+        x: col1X + 20,
+        y: currentY - 45,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("2.4. Модули", {
+        x: col1X + 20,
+        y: currentY - 60,
+        size: 12,
+        font: font,
+    });
+
+    // Percentage and date for Chapter 2
+    page.drawText("35%", {
+        x: col2X,
+        y: currentY - 30,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("29.04.2025", {
+        x: col3X,
+        y: currentY - 30,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 80;
+
+    // Chapter 3 data
+    page.drawText("Глава 3. Разработка симулятора", {
+        x: col1X,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("3.1. Подготовительный план", {
+        x: col1X + 20,
+        y: currentY - 15,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("3.2. Проектирование взаимодействий в виртуальной среде", {
+        x: col1X + 20,
+        y: currentY - 30,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("3.3. Реализация механики сборки дрона", {
+        x: col1X + 20,
+        y: currentY - 45,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("3.4. Внедрение обучающих сценариев", {
+        x: col1X + 20,
+        y: currentY - 60,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("3.5. Интеграция Zenject и управление зависимостими", {
+        x: col1X + 20,
+        y: currentY - 75,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("3.6. Тестирование, отладка и оптимизация", {
+        x: col1X + 20,
+        y: currentY - 90,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("3.7. Пользовательский опыт", {
+        x: col1X + 20,
+        y: currentY - 105,
+        size: 12,
+        font: font,
+    });
+
+    // Percentage and date for Chapter 3
+    page.drawText("5%", {
+        x: col2X,
+        y: currentY - 60,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("19.05.2025", {
+        x: col3X,
+        y: currentY - 60,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 125;
+
+    // Final sections (no percentage/date)
+    page.drawText("Заключение", {
+        x: col1X,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("Список использованных источников", {
+        x: col1X,
+        y: currentY - 15,
+        size: 12,
+        font: font,
+    });
+    
+    page.drawText("Приложения", {
+        x: col1X,
+        y: currentY - 30,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 50;
+
+  
     // Additional sections
     checkNewPage(150);
     page.drawText("3. Консультанты по BKP (с указанием относящихся к ним разделов проекта):", {
