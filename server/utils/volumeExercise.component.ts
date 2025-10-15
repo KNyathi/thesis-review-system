@@ -579,7 +579,7 @@ export async function createVolumeExercisePage(
             });
             page.drawLine({
                 start: { x: leftMargin, y: currentY - 2 },
-                end: { x: leftMargin + lineWidth, y: currentY - 2 },
+                end: { x: leftMargin + lineWidth + 300, y: currentY - 2 },
                 thickness: 1,
                 color: rgb(0, 0, 0),
             });
@@ -643,296 +643,311 @@ export async function createVolumeExercisePage(
         color: rgb(0, 0, 0),
     });
 
-    currentY -= 30;
+    currentY -= 300;
 
-//WORK ON THIS TABLE
-    // Section 1: Initial data
-    checkNewPage(40);
-    page.drawText("1. Исходные данные", {
-        x: leftMargin,
-        y: currentY,
-        size: 10,
-        font: boldFont,
-    });
-    currentY -= 20;
+    //WORK ON THIS TABLE
 
-    const initialData = [
-        "• Высокоуровневый язык программирования С#",
-        "• Набор библиотек для задач: System, Zenject, OpenXR, XR ToolKit",
-        "• Движок: Unity 3D",
-        "• Среда разработки: Visual Studio"
-    ];
-
-    initialData.forEach(data => {
-        checkNewPage(20);
-        currentY = drawWrappedText(
-            page,
-            data,
-            leftMargin + 10,
-            currentY,
-            maxWidth - 10,
-            10,
-            font,
-            14
-        );
-    });
-
-    currentY -= 20;
-
-    // Section 2: Content
-    checkNewPage(40);
-    page.drawText("2. Содержание расчетно-пояснительной записки (перечень подлежащих разработке вопросов)", {
-        x: leftMargin,
-        y: currentY,
-        size: 10,
-        font: boldFont,
-    });
-    currentY -= 20;
-
-    const contentStructure = [
-        "Введение",
-        "Глава 1. Анализ предметной области",
-        "Глава 2. Проектирование платформы",
-        "Глава 3. Разработка симулятора",
-        "Заключение",
-        "Список использованных источников",
-        "Приложения"
-    ];
-
-    contentStructure.forEach(item => {
-        checkNewPage(20);
-        page.drawText(item, {
-            x: leftMargin + 10,
-            y: currentY,
-            size: 10,
-            font: font,
-        });
-        currentY -= 16;
-    });
-
-    currentY -= 20;
-
-    // TABLE SECTION - With proper borders and 75%:25% ratio
-    checkNewPage(100);
-    page.drawText("Объем работы в % и сроки выполнения по разделам", {
-        x: leftMargin,
-        y: currentY,
-        size: 10,
-        font: boldFont,
-    });
-    currentY -= 30;
-
-    // Table data
-    const tableData = [
-        { percent: "5%", date: "4.03.2025" },
-        { percent: "25%", date: "26.03.2025" },
-        { percent: "30%", date: "11.04.2025" },
-        { percent: "35%", date: "29.04.2025" },
-        { percent: "5%", date: "19.05.2025" }
-    ];
-
-    const tableLeft = leftMargin;
-    const tableWidth = 400;
-    const percentColWidth = tableWidth * 0.75; // 75% for content
-    const dateColWidth = tableWidth * 0.25;    // 25% for dates
-    const rowHeight = 20;
-    const tableTop = currentY;
-
-    // Draw table borders
-    // Outer border
-    page.drawRectangle({
-        x: tableLeft,
-        y: currentY - (tableData.length * rowHeight),
-        width: tableWidth,
-        height: tableData.length * rowHeight,
-        borderColor: rgb(0, 0, 0),
-        borderWidth: 1,
-    });
-
-    // Vertical line for column separation (75%:25%)
-    const verticalLineX = tableLeft + percentColWidth;
-    page.drawLine({
-        start: { x: verticalLineX, y: currentY },
-        end: { x: verticalLineX, y: currentY - (tableData.length * rowHeight) },
-        thickness: 1,
-        color: rgb(0, 0, 0),
-    });
-
-    // Horizontal lines for rows
-    for (let i = 0; i <= tableData.length; i++) {
-        const lineY = currentY - (i * rowHeight);
-        page.drawLine({
-            start: { x: tableLeft, y: lineY },
-            end: { x: tableLeft + tableWidth, y: lineY },
-            thickness: 1,
-            color: rgb(0, 0, 0),
-        });
-    }
-
-    // Draw table content
-    tableData.forEach((row, index) => {
-        const rowY = currentY - (index * rowHeight) - (rowHeight / 2) + 5;
-
-        // Percent column (centered in 75% section)
-        const percentTextWidth = font.widthOfTextAtSize(row.percent, 10);
-        const percentX = tableLeft + (percentColWidth / 2) - (percentTextWidth / 2);
-        page.drawText(row.percent, {
-            x: percentX,
-            y: rowY,
-            size: 10,
-            font: font,
-        });
-
-        // Date column (centered in 25% section)
-        const dateTextWidth = font.widthOfTextAtSize(row.date, 10);
-        const dateX = verticalLineX + (dateColWidth / 2) - (dateTextWidth / 2);
-        page.drawText(row.date, {
-            x: dateX,
-            y: rowY,
-            size: 10,
-            font: font,
-        });
-    });
-
-    currentY -= (tableData.length * rowHeight) + 30;
 
     // Additional sections
     checkNewPage(150);
     page.drawText("3. Консультанты по BKP (с указанием относящихся к ним разделов проекта):", {
         x: leftMargin,
         y: currentY,
-        size: 10,
-        font: boldFont,
-    });
-    currentY -= 30;
-
-    // Consultant table
-    const consultantTableLeft = leftMargin + 20;
-    page.drawText("Симонов Сергей Евгеньевич", {
-        x: consultantTableLeft,
-        y: currentY,
-        size: 10,
-        font: font,
-    });
-    currentY -= 15;
-
-    page.drawText("(подпись)", {
-        x: consultantTableLeft,
-        y: currentY,
-        size: 10,
-        font: font,
-    });
-    currentY -= 15;
-
-    page.drawText("(ФИО)", {
-        x: consultantTableLeft,
-        y: currentY,
-        size: 10,
+        size: 12,
         font: font,
     });
     currentY -= 30;
+
+    // Consultant table - HORIZONTAL LAYOUT
+    const signatureLineLength = 120;
+    const nameLeft = leftMargin + 150 + 220;
+
+    // Get consultant data
+    const consultants = await userModel.getConsultants();
+    const consultant = consultants.find(c => c.id === student.consultant);
+
+    if (consultant) {
+        const consultantName = consultant.fullName;
+
+        // First consultant - signature line and name in same row
+        page.drawLine({
+            start: { x: leftMargin + 220, y: currentY - 2 },
+            end: { x: leftMargin + 220 + signatureLineLength, y: currentY - 2 },
+            thickness: 1,
+            color: rgb(0, 0, 0),
+        });
+
+        page.drawText("(подпись)", {
+            x: leftMargin + 220,
+            y: currentY - 15,
+            size: 9,
+            font: font,
+        });
+
+        page.drawText(consultantName, {
+            x: nameLeft,
+            y: currentY,
+            size: 12,
+            font: font,
+        });
+        page.drawLine({
+            start: { x: leftMargin + 220 + 150, y: currentY - 2 },
+            end: { x: leftMargin + 220 + 150 + signatureLineLength, y: currentY - 2 },
+            thickness: 1,
+            color: rgb(0, 0, 0),
+        });
+
+        page.drawText("(ФИО)", {
+            x: nameLeft,
+            y: currentY - 15,
+            size: 9,
+            font: font,
+        });
+
+        currentY -= 40;
+
+        // Second consultant line (empty for now)
+        page.drawLine({
+            start: { x: leftMargin + 220, y: currentY - 2 },
+            end: { x: leftMargin + signatureLineLength + 220, y: currentY - 2 },
+            thickness: 1,
+            color: rgb(0, 0, 0),
+        });
+
+        page.drawText("(подпись)", {
+            x: leftMargin + 220,
+            y: currentY - 15,
+            size: 10,
+            font: font,
+        });
+
+        page.drawLine({
+            start: { x: leftMargin + 220 + 150, y: currentY - 2 },
+            end: { x: leftMargin + 220 + 150 + signatureLineLength, y: currentY - 2 },
+            thickness: 1,
+            color: rgb(0, 0, 0),
+        });
+
+        page.drawText("(ФИО)", {
+            x: nameLeft,
+            y: currentY - 15,
+            size: 10,
+            font: font,
+        });
+    } else {
+        // No consultant - show empty signature lines
+        for (let i = 0; i < 2; i++) {
+            page.drawLine({
+                start: { x: leftMargin, y: currentY },
+                end: { x: leftMargin + signatureLineLength, y: currentY },
+                thickness: 1,
+                color: rgb(0, 0, 0),
+            });
+
+            page.drawText("(подпись)", {
+                x: leftMargin,
+                y: currentY - 15,
+                size: 10,
+                font: font,
+            });
+
+            page.drawText("_________________________", {
+                x: nameLeft,
+                y: currentY,
+                size: 12,
+                font: font,
+            });
+
+            page.drawText("(ФИО)", {
+                x: nameLeft,
+                y: currentY - 15,
+                size: 10,
+                font: font,
+            });
+
+            currentY -= 40;
+        }
+    }
+
+    currentY -= 50;
 
     // Deadline section
     checkNewPage(100);
-    page.drawText("4. Срок сдачи студентом законченной BKP:", {
-        x: leftMargin,
-        y: currentY,
-        size: 10,
-        font: boldFont,
-    });
-    currentY -= 30;
+    // Deadline - underline to right margin
+    const deadlineText = "4. Срок сдачи студентом законченной BKP:";
+    const deadlineTextWidth = font.widthOfTextAtSize(deadlineText, 12);
 
-    page.drawText(`Дата выдачи задания: ______ ${currentYear}`, {
+    page.drawText(deadlineText, {
         x: leftMargin,
         y: currentY,
-        size: 10,
+        size: 12,
         font: font,
     });
-    currentY -= 40;
 
-    // Supervisor signature
+    // Underline to right margin
+    page.drawLine({
+        start: { x: leftMargin + deadlineTextWidth, y: currentY - 2 },
+        end: { x: leftMargin + 500, y: currentY - 2 },
+        thickness: 1,
+        color: rgb(0, 0, 0),
+    });
+
+    currentY -= 20;
+
+    // Date of issue - underline to right margin
+    const dateIssueText = "Дата выдачи задания: ";
+    const dateIssueTextWidth = font.widthOfTextAtSize(dateIssueText, 12);
+
+    page.drawText(dateIssueText, {
+        x: leftMargin + 10,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    // Underline to right margin
+    page.drawLine({
+        start: { x: leftMargin + dateIssueTextWidth + 10, y: currentY - 2 },
+        end: { x: leftMargin + 500, y: currentY - 2 },
+        thickness: 1,
+        color: rgb(0, 0, 0),
+    });
+
+    currentY -= 20;
+
+    // Supervisor signature - HORIZONTAL LAYOUT
     checkNewPage(120);
-    const signatureLeft = leftMargin + 150;
-    page.drawText("Руководитель", {
-        x: signatureLeft,
-        y: currentY,
-        size: 10,
-        font: font,
-    });
-    currentY -= 15;
 
-    page.drawText("Городничев Михаил Геннадьевич", {
-        x: signatureLeft,
+    // Get supervisor data
+    const supervisors = await userModel.getSupervisors();
+    const supervisor = supervisors.find(s => s.id === student.supervisor);
+    if (!supervisor) {
+        throw new Error(`Supervisor not found for student: ${student.fullName}`);
+    }
+
+    const supervisorName = supervisor.fullName;
+
+    // Supervisor signature line and name in same row - underline to right margin
+    const supervisorSignatureLabel = "Руководитель";
+    const supervisorSignatureWidth = font.widthOfTextAtSize(supervisorSignatureLabel, 12);
+
+    page.drawText(supervisorSignatureLabel, {
+        x: leftMargin + 10,
         y: currentY,
-        size: 10,
+        size: 12,
         font: font,
     });
-    currentY -= 15;
+
+    // Signature line to right margin
+    page.drawLine({
+        start: { x: leftMargin + supervisorSignatureWidth + 10, y: currentY - 2 },
+        end: { x: leftMargin + 500, y: currentY - 2 },
+        thickness: 1,
+        color: rgb(0, 0, 0),
+    });
 
     page.drawText("(подпись)", {
-        x: signatureLeft,
-        y: currentY,
-        size: 10,
+        x: leftMargin + 180,
+        y: currentY - 15,
+        size: 9,
         font: font,
     });
-    currentY -= 15;
+
+    // Supervisor name
+    page.drawText(supervisorName, {
+        x: leftMargin + supervisorSignatureWidth + 240,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
 
     page.drawText("(ФИО)", {
-        x: signatureLeft,
-        y: currentY,
-        size: 10,
+        x: leftMargin + supervisorSignatureWidth + 240,
+        y: currentY - 15,
+        size: 9,
         font: font,
     });
-    currentY -= 15;
 
-    page.drawText("штатная", {
-        x: signatureLeft,
-        y: currentY,
-        size: 10,
-        font: font,
-    });
-    currentY -= 15;
-
-    page.drawText("(штатная или почасовая)", {
-        x: signatureLeft,
-        y: currentY,
-        size: 10,
-        font: font,
-    });
-    currentY -= 15;
-
-    page.drawText("нагрузка", {
-        x: signatureLeft,
-        y: currentY,
-        size: 10,
-        font: font,
-    });
     currentY -= 30;
 
-    // Student acceptance
+    // Workload type - UNDERLINE ONLY "штатная"
+    const workloadUnderlinePart = "штатная";
+    const workloadNormalPart = " нагрузка";
+    const workloadLabel = "(штатная или почасовая)";
+
+    const workloadUnderlineWidth = font.widthOfTextAtSize(workloadUnderlinePart, 12);
+    const workloadNormalWidth = font.widthOfTextAtSize(workloadNormalPart, 12);
+
+    // Draw "штатная" with underline
+    page.drawText(workloadUnderlinePart, {
+        x: leftMargin+200,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    // Underline only "штатная"
+    page.drawLine({
+        start: { x: leftMargin +10, y: currentY - 2 },
+        end: { x: leftMargin + workloadUnderlineWidth+ 400, y: currentY - 2 },
+        thickness: 1,
+        color: rgb(0, 0, 0),
+    });
+
+    // Draw " нагрузка" without underline
+    page.drawText(workloadNormalPart, {
+        x: leftMargin + workloadUnderlineWidth + 400,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    // Draw the label below
+    page.drawText(workloadLabel, {
+        x: leftMargin +200,
+        y: currentY - 15,
+        size: 9,
+        font: font,
+    });
+
+    currentY -= 40;
+
+    // Student acceptance - HORIZONTAL LAYOUT
     checkNewPage(60);
-    page.drawText("Задание принял к исполнению", {
-        x: leftMargin,
+    const acceptanceText = "Задание принял к исполнению";
+    const acceptanceTextWidth = font.widthOfTextAtSize(acceptanceText, 12);
+
+    page.drawText(acceptanceText, {
+        x: leftMargin + 10,
         y: currentY,
-        size: 10,
+        size: 12,
         font: font,
     });
-    currentY -= 30;
+
+    // Signature line to right margin
+    page.drawLine({
+        start: { x: leftMargin + acceptanceTextWidth + 10, y: currentY },
+        end: { x: leftMargin + 500, y: currentY },
+        thickness: 1,
+        color: rgb(0, 0, 0),
+    });
 
     page.drawText("(подпись студента)", {
-        x: leftMargin,
-        y: currentY,
-        size: 10,
+        x: leftMargin + 250,
+        y: currentY - 15,
+        size: 9,
         font: font,
     });
-    currentY -= 30;
+
+
+    currentY -= 40;
 
     // Note at the bottom
     checkNewPage(30);
     page.drawText("Примечание: Настоящее задание прилагается к законченной BKP", {
         x: leftMargin,
         y: currentY,
-        size: 10,
+        size: 12,
         font: font,
     });
 
