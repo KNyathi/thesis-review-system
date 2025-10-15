@@ -171,7 +171,7 @@ export async function createVolumeExercisePage(
         "ОБЪЕМНОЕ ЗАДАНИЕ",
         currentY,
         maxWidth,
-        18,
+        15,
         boldFont,
         15
     );
@@ -327,7 +327,7 @@ export async function createVolumeExercisePage(
         "ЗАДАНИЕ",
         currentY,
         maxWidth,
-        14,
+        13,
         boldFont,
         15
     );
@@ -643,230 +643,502 @@ export async function createVolumeExercisePage(
         color: rgb(0, 0, 0),
     });
 
-    currentY -= 300;
+    currentY -= 10;
 
-    //WORK ON THIS TABLE
 
-    currentY -= 20;
+// WORK ON THIS TABLE - ADDING THE CHAPTER STRUCTURE TABLE
+  checkNewPage(200);
 
-    // WORK ON THIS TABLE - ADDING THE CHAPTER STRUCTURE TABLE
-    checkNewPage(200);
+    // Table column definitions
+    const col1X = leftMargin; // Content column
+    const col1Width = 350; // Width for content column
+    const col2X = col1X + col1Width; // Percentage column
+    const col2Width = 60; // Width for percentage column
+    const col3X = col2X + col2Width; // Date column
 
-    // Table headers
-    const col1X = leftMargin; // Chapter column
-    const col2X = leftMargin + 300; // Percentage column
-    const col3X = leftMargin + 380; // Date column
-    
+    // Track pages for vertical line management
+    let currentPage = page; // Track current page
+    let pageStartY = currentY; // Track where content starts on each page
+    let pageEndY = currentY; // Track where content ends on each page
 
-    currentY -= 20;
+    // Function to update current page reference and reset page Y tracking
+    function updatePageReference() {
+        if (currentPage !== page) {
+            // Draw vertical line for the completed page before switching
+            drawVerticalLineForCurrentPage();
+            
+            currentPage = page;
+            pageStartY = currentY;
+            pageEndY = currentY;
+        }
+    }
 
-    // Chapter 1 data
-    page.drawText("Глава 1. Аналитический раздел", {
-        x: col1X,
+    // Function to draw vertical line for current page section only
+    function drawVerticalLineForCurrentPage() {
+        const topY = pageStartY + 10;
+        const bottomY = pageEndY - 10;
+
+        // Only draw if we have meaningful content height
+        if (topY - bottomY > 30) { // At least 30 units of height
+            currentPage.drawLine({
+                start: { x: col2X, y: topY },
+                end: { x: col2X, y: bottomY },
+                thickness: 1,
+                color: rgb(0, 0, 0),
+            });
+        }
+    }
+
+    // Function to update page end Y and draw vertical line
+    function updatePageContentBounds() {
+        pageEndY = currentY;
+    }
+
+    currentY -= 30;
+    pageStartY = currentY;
+
+
+    // 1. Source data section
+    page.drawText("1. Исходные данные", {
+        x: col1X + 30,
         y: currentY,
         size: 12,
         font: font,
     });
-    
-    page.drawText("1.1. Актуальность работы", {
-        x: col1X + 20,
+
+    // Source data items (only in first column)
+    page.drawText("- Высокоуровневый язык программирования С#", {
+        x: col1X + 25,
         y: currentY - 15,
         size: 12,
         font: font,
     });
-    
-    page.drawText("1.2. Анализ VR-Симуляторов", {
-        x: col1X + 20,
+
+    page.drawText("- Набор библиотек для задач: System, Zenject,", {
+        x: col1X + 25,
         y: currentY - 30,
         size: 12,
         font: font,
     });
-    
-    page.drawText("1.3. Особенности сборки беспилотных летательных аппаратов (БПЛА)", {
-        x: col1X + 20,
+
+    page.drawText("  OpenXR, XR ToolKit", {
+        x: col1X + 25,
         y: currentY - 45,
         size: 12,
         font: font,
     });
-    
-    page.drawText("1.4. Анализ существующих решений", {
-        x: col1X + 20,
+
+    page.drawText("- Движок: Unity 3D", {
+        x: col1X + 25,
         y: currentY - 60,
         size: 12,
         font: font,
     });
 
-    // Percentage and date for Chapter 1
-    page.drawText("30%", {
-        x: col2X,
-        y: currentY - 30,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("11.04.2025", {
-        x: col3X,
-        y: currentY - 30,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 80;
-
-    // Chapter 2 data
-    page.drawText("Глава 2. Проектирование платформы", {
-        x: col1X,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("2.1. Цель и задачи главы", {
-        x: col1X + 20,
-        y: currentY - 15,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("2.2. Обоснование выбора инструментов и технологий", {
-        x: col1X + 20,
-        y: currentY - 30,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("2.3. Архитектура приложения", {
-        x: col1X + 20,
-        y: currentY - 45,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("2.4. Модули", {
-        x: col1X + 20,
-        y: currentY - 60,
-        size: 12,
-        font: font,
-    });
-
-    // Percentage and date for Chapter 2
-    page.drawText("35%", {
-        x: col2X,
-        y: currentY - 30,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("29.04.2025", {
-        x: col3X,
-        y: currentY - 30,
-        size: 12,
-        font: font,
-    });
-
-    currentY -= 80;
-
-    // Chapter 3 data
-    page.drawText("Глава 3. Разработка симулятора", {
-        x: col1X,
-        y: currentY,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("3.1. Подготовительный план", {
-        x: col1X + 20,
-        y: currentY - 15,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("3.2. Проектирование взаимодействий в виртуальной среде", {
-        x: col1X + 20,
-        y: currentY - 30,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("3.3. Реализация механики сборки дрона", {
-        x: col1X + 20,
-        y: currentY - 45,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("3.4. Внедрение обучающих сценариев", {
-        x: col1X + 20,
-        y: currentY - 60,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("3.5. Интеграция Zenject и управление зависимостими", {
-        x: col1X + 20,
+    page.drawText("- Среда разработки: Visual Studio", {
+        x: col1X + 25,
         y: currentY - 75,
         size: 12,
         font: font,
     });
-    
-    page.drawText("3.6. Тестирование, отладка и оптимизация", {
-        x: col1X + 20,
-        y: currentY - 90,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("3.7. Пользовательский опыт", {
-        x: col1X + 20,
-        y: currentY - 105,
-        size: 12,
-        font: font,
-    });
 
-    // Percentage and date for Chapter 3
-    page.drawText("5%", {
-        x: col2X,
-        y: currentY - 60,
-        size: 12,
-        font: font,
-    });
-    
-    page.drawText("19.05.2025", {
-        x: col3X,
-        y: currentY - 60,
-        size: 12,
-        font: font,
-    });
+    currentY -= 160;
+    updatePageContentBounds();
 
-    currentY -= 125;
+    // 2. Content section header
+    checkNewPage(100);
+    updatePageReference(); // Always update page reference after checkNewPage
 
-    // Final sections (no percentage/date)
-    page.drawText("Заключение", {
-        x: col1X,
+    page.drawText("2. Содержание расчетно-пояснительной записки", {
+        x: col1X + 30,
         y: currentY,
         size: 12,
         font: font,
     });
-    
-    page.drawText("Список использованных источников", {
-        x: col1X,
+
+    page.drawText("(перечень подлежащих разработке вопросов)", {
+        x: col1X + 25,
         y: currentY - 15,
         size: 12,
         font: font,
     });
-    
-    page.drawText("Приложения", {
-        x: col1X,
-        y: currentY - 30,
+
+    // Fixed text wrapping for second column header
+    page.drawText("Объем работы в % и", {
+        x: col2X + 5,
+        y: currentY,
         size: 12,
         font: font,
     });
 
-    currentY -= 50;
+    page.drawText("сроки выполнения по разделам", {
+        x: col2X + 5,
+        y: currentY - 15,
+        size: 12,
+        font: font,
+    });
 
-  
+    currentY -= 40;
+    updatePageContentBounds();
+
+    // Introduction row
+    checkNewPage(20);
+    updatePageReference();
+
+    page.drawText("Введение", {
+        x: col1X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("5%", {
+        x: col2X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("4.03.2025", {
+        x: col3X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 30;
+    updatePageContentBounds();
+
+    // Chapter 1 - Main row
+    checkNewPage(20);
+    updatePageReference();
+
+    page.drawText("Глава 1. Аналитический раздел", {
+        x: col1X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("25%", {
+        x: col2X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("26.03.2025", {
+        x: col3X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 20;
+    updatePageContentBounds();
+
+    // Chapter 1 sub-items (only in first column)
+    checkNewPage(100);
+    updatePageReference();
+
+    page.drawText("1.1. Актуальность работы", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 15;
+    checkNewPage(15);
+    updatePageReference();
+
+    page.drawText("1.2. Анализ VR-Симуляторов", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 15;
+    checkNewPage(30);
+    updatePageReference();
+
+    page.drawText("1.3. Особенности сборки беспилотных летательных", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("аппаратов (БПЛА)", {
+        x: col1X + 15,
+        y: currentY - 15,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 30;
+    checkNewPage(15);
+    updatePageReference();
+
+    page.drawText("1.4. Анализ существующих решений", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 30;
+    updatePageContentBounds();
+
+    // Chapter 2 - Main row
+    checkNewPage(20);
+    updatePageReference();
+
+    page.drawText("Глава 2. Проектирование платформы", {
+        x: col1X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("30%", {
+        x: col2X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("11.04.2025", {
+        x: col3X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 20;
+    updatePageContentBounds();
+
+    // Chapter 2 sub-items (only in first column)
+    checkNewPage(100);
+    updatePageReference();
+
+    page.drawText("2.1. Цель и задачи главы", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 15;
+    checkNewPage(15);
+    updatePageReference();
+
+    page.drawText("2.2. Обоснование выбора инструментов и технологий", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 15;
+    checkNewPage(15);
+    updatePageReference();
+
+    page.drawText("2.3. Архитектура приложения", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 15;
+    checkNewPage(15);
+    updatePageReference();
+
+    page.drawText("2.4. Модули", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 30;
+    updatePageContentBounds();
+
+    // Chapter 3 - Main row
+    checkNewPage(20);
+    updatePageReference();
+
+    page.drawText("Глава 3. Разработка симулятора", {
+        x: col1X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("35%", {
+        x: col2X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("29.04.2025", {
+        x: col3X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 20;
+    updatePageContentBounds();
+
+    // Chapter 3 sub-items (only in first column)
+    checkNewPage(150);
+    updatePageReference();
+
+    page.drawText("3.1. Подготовительный план", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 15;
+    checkNewPage(30);
+    updatePageReference();
+
+    page.drawText("3.2. Проектирование взаимодействий в виртуальной", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("среде", {
+        x: col1X + 15,
+        y: currentY - 15,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 30;
+    checkNewPage(15);
+    updatePageReference();
+
+    page.drawText("3.3. Реализация механики сборки дрона", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 15;
+    checkNewPage(15);
+    updatePageReference();
+
+    page.drawText("3.4. Внедрение обучающих сценариев", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 15;
+    checkNewPage(15);
+    updatePageReference();
+
+    page.drawText("3.5. Интеграция Zenject и управление зависимостими", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 15;
+    checkNewPage(15);
+    updatePageReference();
+
+    page.drawText("3.6. Тестирование, отладка и оптимизация", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 15;
+    checkNewPage(15);
+    updatePageReference();
+
+    page.drawText("3.7. Пользовательский опыт", {
+        x: col1X + 15,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 30;
+    updatePageContentBounds();
+
+    // Final sections
+    checkNewPage(60);
+    updatePageReference();
+
+    page.drawText("Заключение", {
+        x: col1X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("5%", {
+        x: col2X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    page.drawText("19.05.2025", {
+        x: col3X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 20;
+    checkNewPage(20);
+    updatePageReference();
+
+    page.drawText("Список использованных источников", {
+        x: col1X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    currentY -= 20;
+    checkNewPage(20);
+    updatePageReference();
+
+    page.drawText("Приложения", {
+        x: col1X + 5,
+        y: currentY,
+        size: 12,
+        font: font,
+    });
+
+    updatePageContentBounds();
+
+    // Draw vertical lines once at the end for each page section
+    drawVerticalLineForCurrentPage();
+
     // Additional sections
     checkNewPage(150);
+
+    currentY -= 40;
+
+
     page.drawText("3. Консультанты по BKP (с указанием относящихся к ним разделов проекта):", {
         x: leftMargin,
         y: currentY,
@@ -1097,7 +1369,7 @@ export async function createVolumeExercisePage(
 
     // Draw "штатная" with underline
     page.drawText(workloadUnderlinePart, {
-        x: leftMargin+200,
+        x: leftMargin + 200,
         y: currentY,
         size: 12,
         font: font,
@@ -1105,8 +1377,8 @@ export async function createVolumeExercisePage(
 
     // Underline only "штатная"
     page.drawLine({
-        start: { x: leftMargin +10, y: currentY - 2 },
-        end: { x: leftMargin + workloadUnderlineWidth+ 400, y: currentY - 2 },
+        start: { x: leftMargin + 10, y: currentY - 2 },
+        end: { x: leftMargin + workloadUnderlineWidth + 400, y: currentY - 2 },
         thickness: 1,
         color: rgb(0, 0, 0),
     });
@@ -1121,7 +1393,7 @@ export async function createVolumeExercisePage(
 
     // Draw the label below
     page.drawText(workloadLabel, {
-        x: leftMargin +200,
+        x: leftMargin + 200,
         y: currentY - 15,
         size: 9,
         font: font,
