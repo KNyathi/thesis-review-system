@@ -55,10 +55,10 @@ export async function generateReviewPDF(
 
   // Register fonts
   const regularFontBytes = fs.readFileSync(
-    path.join(__dirname, "../assets/fonts/Arial_Cyr.ttf")
+    path.join(__dirname, "../assets/fonts/timesnrcyrmt.ttf")
   );
   const boldFontBytes = fs.readFileSync(
-    path.join(__dirname, "../assets/fonts/Arial_Cyr_Bold.ttf")
+    path.join(__dirname, "../assets/fonts/timesnrcyrmt_bold.ttf")
   );
 
   // Embed both fonts
@@ -456,7 +456,7 @@ export async function generateReviewPDF(
     },
   ];
 
-  // Table configuration
+    // Table configuration
   let currentPage = page;
   const column1X = 50;
   const column2X = 400;
@@ -557,11 +557,8 @@ export async function generateReviewPDF(
     let currentY = startY;
     const minPageBottom = 50; // Minimum Y position before creating new page
 
-    // Section title
-    const sectionTitle = "РАЗДЕЛ I. Оценка BKP";
-    const titleWidth = boldFont.widthOfTextAtSize(sectionTitle, 11);
-    currentPage.drawText(sectionTitle, {
-      x: centerX - titleWidth / 2,
+    currentPage.drawText("РАЗДЕЛ I. Оценка BKP", {
+      x: 50,
       y: currentY + 20,
       size: 12,
       font: boldFont,
@@ -588,7 +585,7 @@ export async function generateReviewPDF(
       // If no rows can fit, create new page
       if (rowsToDraw === 0) {
         currentPage = pdfDoc.addPage([595, 842]);
-        currentTableYStart = 800;
+        currentTableYStart = 780;
         currentY = currentTableYStart;
 
         // Recalculate how many rows we can fit on new page
@@ -677,7 +674,7 @@ export async function generateReviewPDF(
           column1X + padding,
           currentYTable + rowHeight - padding - 8, // Start from top of cell
           columnWidth - padding * 2,
-          12,
+          12, // Smaller font size for better fit
           font,
           12 // Line height
         );
@@ -692,7 +689,7 @@ export async function generateReviewPDF(
           x: scoreX,
           y: scoreY,
           size: 12,
-          font: boldFont,
+          font: font,
         });
 
         // Draw horizontal line
@@ -748,7 +745,7 @@ export async function generateReviewPDF(
   // Check if we need a new page for Section 2
   if (currentY < 150) {
     currentPage = pdfDoc.addPage([595, 842]);
-    currentY = 800;
+    currentY = 780;
   }
 
   // Section 2 Header
@@ -772,13 +769,13 @@ export async function generateReviewPDF(
   });
   currentY -= 20;
 
-  thesis.reviewerAssessment!.section2.questions.forEach((question: any, i: number) => {
+  thesis.consultantAssessment!.section2.questions.forEach((question: any, i: number) => {
     const questionText = `${i + 1}. ${question}`;
 
     // Check if we need a new page before drawing
     if (currentY < 50) {
       currentPage = pdfDoc.addPage([595, 842]);
-      currentY = 800;
+      currentY = 780;
     }
 
     // Draw the question with wrapping
@@ -799,7 +796,7 @@ export async function generateReviewPDF(
 
   if (currentY < 100) {
     currentPage = pdfDoc.addPage([595, 842]);
-    currentY = 800;
+    currentY = 780;
   }
 
   currentPage.drawText(
@@ -822,9 +819,9 @@ export async function generateReviewPDF(
   });
   currentY -= 20;
 
-  const advantages = Array.isArray(thesis.reviewerAssessment!.section2.advantages)
-    ? thesis.reviewerAssessment!.section2.advantages
-    : [thesis.reviewerAssessment!.section2.advantages].filter(Boolean);
+  const advantages = Array.isArray(thesis.consultantAssessment!.section2.advantages)
+    ? thesis.consultantAssessment!.section2.advantages
+    : [thesis.consultantAssessment!.section2.advantages].filter(Boolean);
 
   advantages.forEach((advantage: any, index: number) => {
     const itemText = `${index + 1}. ${advantage}`;
@@ -832,7 +829,7 @@ export async function generateReviewPDF(
     // Check page space before drawing
     if (currentY < 50) {
       currentPage = pdfDoc.addPage([595, 842]);
-      currentY = 800;
+      currentY = 780;
     }
 
     // Draw the advantage with text wrapping
@@ -853,7 +850,7 @@ export async function generateReviewPDF(
 
   if (currentY < 100) {
     currentPage = pdfDoc.addPage([595, 842]);
-    currentY = 800;
+    currentY = 780;
   }
 
   currentPage.drawText("Недостатки, замечания: ", {
@@ -864,9 +861,9 @@ export async function generateReviewPDF(
   });
   currentY -= 20;
 
-  const disadvantages = Array.isArray(thesis.reviewerAssessment!.section2.disadvantages)
-    ? thesis.reviewerAssessment!.section2.disadvantages
-    : [thesis.reviewerAssessment!.section2.disadvantages].filter(Boolean);
+  const disadvantages = Array.isArray(thesis.consultantAssessment!.section2.disadvantages)
+    ? thesis.consultantAssessment!.section2.disadvantages
+    : [thesis.consultantAssessment!.section2.disadvantages].filter(Boolean);
 
   disadvantages.forEach((disadvantage: any, index: number) => {
     const itemText = `${index + 1}. ${disadvantage}`;
@@ -874,7 +871,7 @@ export async function generateReviewPDF(
     // Check if we need a new page before drawing
     if (currentY < 50) {
       currentPage = pdfDoc.addPage([595, 842]);
-      currentY = 800;
+      currentY = 780;
     }
 
     // Draw the disadvantage with wrapping
@@ -894,15 +891,16 @@ export async function generateReviewPDF(
   currentY -= 30;
   if (currentY < 150) {
     currentPage = pdfDoc.addPage([595, 842]);
-    currentY = 800;
+    currentY = 780;
   }
 
-  currentPage.drawText("Заключение: ", {
+  currentPage.drawText("Заключение:", {
     x: 50,
     y: currentY,
     size: 12,
     font: boldFont,
   });
+
 
   currentY -= 20;
 
@@ -912,7 +910,7 @@ export async function generateReviewPDF(
   }
 
   // Draw final grade with bold formatting using **
-  const gradeText = `**Итоговая оценка ВКР** - ${thesis.finalGrade}.`;
+  const gradeText = `**Итоговая****оценка****ВКР** - ${thesis.finalGrade}.`;
   currentY = drawWrappedText(
     currentPage,
     gradeText,
@@ -930,7 +928,7 @@ export async function generateReviewPDF(
   const isDeservingTextRu = thesis.reviewerAssessment!.section2.conclusion.isDeserving ? "**Да**" : "**Нет**";
 
   // Russian conclusion with bold formatting
-  const russianConclusion = `**Заключение:** Считаю, что данная выпускная квалификационная работа является законченной работой - ${isCompleteTextRu}, а её автор заслуживает присуждения квалификации **${student.degreeLevel}** - ${isDeservingTextRu}`;
+  const russianConclusion = `**Заключение:** Считаю, что данная выпускная квалификационная работа является законченной работой - ${isCompleteTextRu}, а её автор заслуживает присуждения квалификации ${student.degreeLevel} - ${isDeservingTextRu}`;
   currentY = drawWrappedText(
     currentPage,
     russianConclusion,
@@ -1009,12 +1007,12 @@ export async function generateReviewPDF(
         x: signatureConfig.rightX,
         y: yPos,
         size: 12,
-        font: boldFont,
+        font: font,
       });
 
       currentPage.drawText(signature.role, {
         x: signatureConfig.rightX,
-        y: yPos - 10,
+        y: yPos - 15,
         size: 9,
         font: font,
       });

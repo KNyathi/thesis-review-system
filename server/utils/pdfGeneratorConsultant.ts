@@ -401,7 +401,7 @@ export async function generateConsultantReviewPDF(
 
 
   // Reviewer information with wrapping - only show for supervisors
-  if (!isSupervisor) {
+  if (isSupervisor) {
     const reviewerRole = "Руководитель ВКР";
     const reviewerPosition = 'position' in reviewer ? reviewer.position : '';
     const reviewerInfo = `${reviewer.fullName}, ${reviewer.institution}${reviewerPosition ? ', ' + reviewerPosition : ''}`;
@@ -952,13 +952,16 @@ export async function generateConsultantReviewPDF(
 
     // Determine which signatures to show
     const signatures = [];
+    if (isSupervisor) {
 
-    signatures.push({
-      role: "(Ф.И.О научного руководителя)",
-      name: currentReviewer.fullName,
-      label: "(эл. подпись научного руководителя)",
-      roleType: 'supervisor'
-    });
+      signatures.push({
+        role: "(Ф.И.О научного руководителя)",
+        name: currentReviewer.fullName,
+        label: "(эл. подпись научного руководителя)",
+        roleType: 'supervisor'
+      });
+    }
+
 
     // Draw each signature block with proper spacing
     signatures.forEach((signature, index) => {
