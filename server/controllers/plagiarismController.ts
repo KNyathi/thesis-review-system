@@ -22,13 +22,13 @@ interface AuthenticatedUser {
 
 export const checkPlagiarismSupervisor = async (req: Request, res: Response) => {
   try {
-    const studentId = (req.user as AuthenticatedUser).id;
+    const supervisorId = (req.user as AuthenticatedUser).id;
     const { thesisId } = req.params;
 
     // Get student and thesis
-    const student = await userModel.getUserById(studentId);
-    if (!student || student.role !== 'student') {
-      res.status(404).json({ error: "Student not found" });
+    const supervisor = await userModel.getUserById(supervisorId);
+    if (!supervisor || supervisor.role !== 'supervisor') {
+      res.status(404).json({ error: "Supervisor not found" });
       return;
     }
 
@@ -40,10 +40,19 @@ export const checkPlagiarismSupervisor = async (req: Request, res: Response) => 
     }
 
     // Check if student owns this thesis
-    if (thesis.data.student !== studentId) {
+    if (thesis.data.assignedSupervisor !== supervisorId) {
       res.status(403).json({ error: "Access denied" });
       return;
     }
+
+    // Get student who owns this thesis and has this supervisor
+    const student = await userModel.getUserById(thesis.data.student);
+    if (!student) {
+      res.status(404).json({ error: "Student not found" });
+      return;
+    }
+
+
 
     // Check if maximum attempts reached
     if (thesis.data.plagiarismCheck.attempts >= thesis.data.plagiarismCheck.maxAttempts) {
@@ -92,7 +101,7 @@ export const checkPlagiarismSupervisor = async (req: Request, res: Response) => 
         lastCheckDate: new Date(),
         similarityScore: result.similarityScore,
         reportUrl: result.reportUrl,
-        isApproved: result.similarityScore <= 15 // Example threshold: 15%
+        isApproved: result.similarityScore <= 15 // threshold: 15%
       }
     });
 
@@ -116,25 +125,33 @@ export const checkPlagiarismSupervisor = async (req: Request, res: Response) => 
 
 export const checkPlagiarismStart = async (req: Request, res: Response) => {
   try {
-    const studentId = (req.user as AuthenticatedUser).id;
+    const supervisorId = (req.user as AuthenticatedUser).id;
     const { thesisId } = req.params;
 
     // Get student and thesis
-    const student = await userModel.getUserById(studentId);
-    if (!student || student.role !== 'student') {
-      res.status(404).json({ error: "Student not found" });
+    const supervisor = await userModel.getUserById(supervisorId);
+    if (!supervisor || supervisor.role !== 'supervisor') {
+      res.status(404).json({ error: "Supervisor not found" });
       return;
     }
 
     const thesis = await thesisModel.getThesisById(thesisId);
+
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" });
       return;
     }
 
     // Check if student owns this thesis
-    if (thesis.data.student !== studentId) {
+    if (thesis.data.assignedSupervisor !== supervisorId) {
       res.status(403).json({ error: "Access denied" });
+      return;
+    }
+
+    // Get student who owns this thesis and has this supervisor
+    const student = await userModel.getUserById(thesis.data.student);
+    if (!student) {
+      res.status(404).json({ error: "Student not found" });
       return;
     }
 
