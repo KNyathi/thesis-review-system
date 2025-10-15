@@ -19,8 +19,10 @@ export interface IStudent extends IUserBase {
   faculty: string;
   group: string;
   subjectArea: string;
+  workload?: 'штатная' | 'почасовая';
   educationalProgram: string;
   degreeLevel: 'bachelors' | 'masters' | 'specialist';
+  workType?: 'бакалаврская работа' | 'Дипломный проект' | 'дипломная работа' | 'магистерская дисссертация';
   thesisTopic?: string;
   thesisStatus?: 'not_submitted' | 'submitted' | 'with_consultant' | 'with_supervisor' | 'under_review' | 'evaluated' | 'revisions_requested';
   thesisGrade?: string;

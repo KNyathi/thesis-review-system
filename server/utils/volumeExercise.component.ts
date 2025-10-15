@@ -26,6 +26,12 @@ export async function createVolumeExercisePage(
         throw new Error("Student thesis content unavailable");
     }
 
+    // Get supervisor data
+    const supervisors = await userModel.getSupervisors();
+    const supervisor = supervisors.find(s => s.id === student.supervisor);
+    if (!supervisor) {
+        throw new Error(`Supervisor not found for student: ${student.fullName}`);
+    }
 
     // Function to check if we need a new page
     const checkNewPage = (requiredSpace: number): PDFPage => {
@@ -228,7 +234,10 @@ export async function createVolumeExercisePage(
 
     // Department - Underlined instead of underscores
     checkNewPage(40);
-    const departmentText = "Кафедра             Математическая кибернетика и информационные технологии";
+
+    const departmentName = supervisor.department;
+
+    const departmentText = `Кафедра             ${departmentName}`;
     const departmentWidth = font.widthOfTextAtSize(departmentText, 12);
     page.drawText(departmentText, {
         x: leftMargin,
@@ -439,7 +448,7 @@ export async function createVolumeExercisePage(
 
     // Work form - WITH WRAPPING
     const workFormPrefix = "Форма выполнения выпускной квалификационной работы      ";
-    const workFormText = "Бакалаврская работа"; //to change this
+    const workFormText = student?.workType || '';
     const workFormPrefixWidth = font.widthOfTextAtSize(workFormPrefix, 12);
     const workFormTextWidth = font.widthOfTextAtSize(workFormText, 12);
 
@@ -1089,12 +1098,7 @@ export async function createVolumeExercisePage(
     // Supervisor signature - HORIZONTAL LAYOUT
     checkNewPage(120);
 
-    // Get supervisor data
-    const supervisors = await userModel.getSupervisors();
-    const supervisor = supervisors.find(s => s.id === student.supervisor);
-    if (!supervisor) {
-        throw new Error(`Supervisor not found for student: ${student.fullName}`);
-    }
+
 
     const supervisorName = supervisor.fullName;
 
@@ -1141,8 +1145,7 @@ export async function createVolumeExercisePage(
 
     currentY -= 30;
 
-    // Workload type - UNDERLINE ONLY "штатная"
-    const workloadUnderlinePart = "штатная";
+    const workloadUnderlinePart = student?.workload || '';
     const workloadNormalPart = " нагрузка";
     const workloadLabel = "(штатная или почасовая)";
 
@@ -1157,7 +1160,6 @@ export async function createVolumeExercisePage(
         font: font,
     });
 
-    // Underline only "штатная"
     page.drawLine({
         start: { x: leftMargin + 10, y: currentY - 2 },
         end: { x: leftMargin + workloadUnderlineWidth + 400, y: currentY - 2 },
