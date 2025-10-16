@@ -5,6 +5,7 @@ import fs from "fs";
 import { ThesisModel } from '../models/Thesis.model';
 import UserModel from '../models/User.model';
 import { Pool } from 'pg';
+import axios from 'axios';
 
 const pool = new Pool({
     connectionString: process.env.DB_URL
@@ -26,6 +27,7 @@ export interface PlagiarismCheckResult {
         plagiarism?: number;
         selfCite?: number;
     };
+    downloadedPdfUrl?: string;
 }
 
 export interface Author {
@@ -49,6 +51,14 @@ export interface DocAttributes {
     }>;
 }
 
+export interface DownloadResult {
+    success: boolean;
+    filePath?: string;
+    fileName?: string;
+    error?: string;
+    fileSize?: number;
+}
+
 export class PlagiarismService {
     private wsdlUrl: string;
     private login: string;
@@ -64,7 +74,8 @@ export class PlagiarismService {
         this.companyName = process.env.ANTIPLAGIAT_COMPANY_NAME || 'testapi';
         this.baseUrl = process.env.ANTIPLAGIAT_BASE_URL || 'https://testapi.antiplagiat.ru';
     }
-
+    
+    
     private async getClient(): Promise<any> {
         if (!this.client) {
             this.client = await soap.createClientAsync(this.wsdlUrl, {
@@ -73,25 +84,25 @@ export class PlagiarismService {
                 envelopeKey: 'soap'
             });
 
-             this.client.on('request', (xml: string) => {
-            console.log('=== SOAP REQUEST ===');
-            console.log(xml);
-            console.log('=== END SOAP REQUEST ===');
-        });
+            this.client.on('request', (xml: string) => {
+                console.log('=== SOAP REQUEST ===');
+                console.log(xml);
+                console.log('=== END SOAP REQUEST ===');
+            });
 
-        this.client.on('response', (xml: string) => {
-            console.log('=== SOAP RESPONSE ===');
-            console.log(xml);
-            console.log('=== END SOAP RESPONSE ===');
-        });
-        
+            this.client.on('response', (xml: string) => {
+                console.log('=== SOAP RESPONSE ===');
+                console.log(xml);
+                console.log('=== END SOAP RESPONSE ===');
+            });
+
             const basicAuth = new soap.BasicAuthSecurity(this.login, this.password);
             this.client.setSecurity(basicAuth);
         }
         return this.client;
     }
 
-    private getDocData(filePath: string, fileName: string): any {
+    private getDocData(filePath: string, fileName: string, externalUserId: string): any {
         const fileBuffer = fs.readFileSync(filePath);
         const data = fileBuffer.toString('base64');
         const fileType = path.extname(fileName);
@@ -100,7 +111,7 @@ export class PlagiarismService {
             Data: data,
             FileName: path.basename(fileName, fileType),
             FileType: fileType,
-            ExternalUserID: "nyathi"
+            ExternalUserID: externalUserId 
         };
     }
 
@@ -110,8 +121,8 @@ export class PlagiarismService {
         };
 
         const author: Author = {
-            Surname: this.extractLastName(studentData.fullName) || "Иванов",
-            OtherNames: this.extractFirstName(studentData.fullName) || "Иван Иванович",
+            Surname: this.extractLastName(studentData.fullName) || "",
+            OtherNames: this.extractFirstName(studentData.fullName) || "",
             PersonIDs: personIds
         };
 
@@ -124,6 +135,104 @@ export class PlagiarismService {
         };
     }
 
+    /**
+     * Download PDF report from Antiplagiat
+     */
+    async downloadPdfReport(documentId: string, thesisId: string, studentName: string): Promise<DownloadResult> {
+        try {
+            const client = await this.getClient();
+
+            console.log(`Exporting PDF report for document: ${documentId}`);
+
+            // Request PDF export
+            const exportResult = await client.ExportReportToPdfAsync({
+                docId: {
+                    Id: documentId
+                }
+            });
+
+            let exportInfo = exportResult[0].ExportReportToPdfResult;
+
+            // Wait for PDF export to complete
+            console.log(`PDF export status: ${exportInfo.Status}, waiting for completion...`);
+
+            const maxAttempts = 60; // 10 minutes max with 10 second intervals
+            let attempts = 0;
+
+            while (exportInfo.Status === 'InProgress' && attempts < maxAttempts) {
+                attempts++;
+
+                // Wait before checking status again
+                const waitTime = exportInfo.EstimatedWaitTime ? exportInfo.EstimatedWaitTime * 1000 : 10000;
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+
+                // Check export status again
+                const statusResult = await client.ExportReportToPdfAsync({
+                    docId: {
+                        Id: documentId
+                    }
+                });
+
+                exportInfo = statusResult[0].ExportReportToPdfResult;
+                console.log(`PDF export status: ${exportInfo.Status}, attempt: ${attempts}/${maxAttempts}`);
+            }
+
+            if (exportInfo.Status !== 'Ready') {
+                throw new Error(`PDF export failed: ${exportInfo.FailDetails || 'Export timed out or failed'}`);
+            }
+
+            if (!exportInfo.DownloadLink) {
+                throw new Error('PDF export completed but no download link provided');
+            }
+
+            const pdfUrl = `${this.baseUrl}${exportInfo.DownloadLink}`;
+            console.log(`Downloading PDF report from: ${pdfUrl}`);
+
+            // Download the PDF file
+            const response = await axios.get(pdfUrl, {
+                responseType: 'arraybuffer',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                },
+                timeout: 30000
+            });
+
+            // Create PDF downloads directory
+            const pdfDir = path.join(__dirname, '../../server/uploads/plagiarism-reports');
+            if (!fs.existsSync(pdfDir)) {
+                fs.mkdirSync(pdfDir, { recursive: true });
+            }
+
+            // Generate filename
+            const fileName = `plagiarism_report_${thesisId}.pdf`;
+            const filePath = path.join(pdfDir, fileName);
+
+            // Save the PDF file
+            fs.writeFileSync(filePath, response.data);
+
+            const fileSize = fs.statSync(filePath).size;
+
+            console.log(`PDF report downloaded successfully: ${filePath} (${fileSize} bytes)`);
+
+            // Update thesis with PDF download path
+            await this.updateThesisWithPdfUrl(thesisId, `/uploads/plagiarism-reports/${fileName}`);
+
+            return {
+                success: true,
+                filePath,
+                fileName,
+                fileSize
+            };
+
+        } catch (error: any) {
+            console.error('Error downloading PDF report:', error.message);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
     async checkDocument(filePath: string, fileName: string, thesisId: string, studentData: any): Promise<PlagiarismCheckResult> {
         let documentId: string | null = null;
 
@@ -134,7 +243,7 @@ export class PlagiarismService {
             }
 
             const client = await this.getClient();
-            const docData = this.getDocData(filePath, fileName);
+            const docData = this.getDocData(filePath, fileName, studentData.id);
             const docAttributes = this.createDocAttributes(studentData);
 
             console.log(`Uploading document to Antiplagiat...`);
@@ -142,14 +251,14 @@ export class PlagiarismService {
             // Upload document
             const uploadResult = await client.UploadDocumentAsync({
                 data: docData,
-                docAttributes: docAttributes
+                attributes: docAttributes
             });
 
             console.log(`Upload response:`, JSON.stringify(uploadResult, null, 2));
 
             // Extract document ID from response (following Python pattern)
             documentId = uploadResult[0].UploadDocumentResult?.Uploaded?.[0]?.Id?.Id;
-      
+
             if (!documentId) {
                 // Alternative response format
                 documentId = uploadResult[0]?.UploadDocumentResult?.Id;
@@ -165,11 +274,10 @@ export class PlagiarismService {
             // Start plagiarism check - using all available services (as in Python)
             console.log(`Starting plagiarism check...`);
             await client.CheckDocumentAsync({
-                docId: documentId
-                // To use specific services like in Python commented example:
-                // checkServices: {
-                //     string: ["wikipedia", this.companyName]
-                // }
+                docId: {
+                    Id: documentId
+                }
+
             });
 
             // Wait for completion with better status checking
@@ -180,10 +288,12 @@ export class PlagiarismService {
                 throw new Error(`Check failed for document ${documentId}`);
             }
 
-            // Get detailed report view (like in Python)
+            // Get detailed report view 
             console.log(`Getting detailed report...`);
             const reportView = await client.GetReportViewAsync({
-                id: documentId
+                docId: {
+                    Id: documentId
+                }
             });
 
             const report = reportView[0].GetReportViewResult;
@@ -200,6 +310,21 @@ export class PlagiarismService {
             // Save checked file
             const checkedFilePath = await this.saveCheckedFile(filePath, fileName);
 
+            // Download PDF report automatically
+            let downloadedPdfUrl: string | undefined;
+
+            try {
+                const downloadResult = await this.downloadPdfReport(documentId, thesisId, studentData.fullName);
+
+                if (downloadResult.success) {
+                    downloadedPdfUrl = `/uploads/plagiarism-reports/plagiarism_report_${thesisId}.pdf`;
+                }
+
+                console.log(`PDF report downloaded: ${downloadResult.success}`);
+            } catch (downloadError) {
+                console.error('Automatic PDF download failed, but plagiarism check completed:', downloadError);
+            }
+
             // Update thesis
             await this.updateThesis(thesisId, {
                 documentId,
@@ -209,7 +334,8 @@ export class PlagiarismService {
                 shortReportUrl: webReportUrls.shortReport,
                 readonlyReportUrl: webReportUrls.readonlyReport,
                 checkedFileUrl: checkedFilePath,
-                isApproved: similarityScore <= 15
+                isApproved: similarityScore <= 15,
+                downloadedPdfUrl
             });
 
             return {
@@ -218,7 +344,8 @@ export class PlagiarismService {
                 reportUrl: webReportUrls.fullReport,
                 checkedFileUrl: checkedFilePath,
                 documentId,
-                detailedScores
+                detailedScores,
+                downloadedPdfUrl
             };
 
         } catch (error: any) {
@@ -259,7 +386,11 @@ export class PlagiarismService {
         while (attempts < maxAttempts) {
             attempts++;
 
-            const statusResult = await client.GetCheckStatusAsync({ id: documentId });
+            const statusResult = await client.GetCheckStatusAsync({
+                docId: {
+                    Id: documentId
+                }
+            });
             const status = statusResult[0].GetCheckStatusResult;
 
             console.log(`Check status: ${status.Status}, Attempt: ${attempts}/${maxAttempts}`);
@@ -311,7 +442,11 @@ export class PlagiarismService {
         readonlyReport: string;
     }> {
         try {
-            const statusResult = await client.GetCheckStatusAsync({ id: documentId });
+            const statusResult = await client.GetCheckStatusAsync({
+                docId: {
+                    Id: documentId
+                }
+            });
             const status = statusResult[0].GetCheckStatusResult;
 
             return {
@@ -326,18 +461,22 @@ export class PlagiarismService {
     }
 
     private extractFirstName(fullName: string): string {
-        return fullName?.split(' ')[0] || "Иван Иванович";
+        return fullName?.split(' ')[0] || "";
     }
 
     private extractLastName(fullName: string): string {
         const parts = fullName?.split(' ') || [];
-        return parts.length > 1 ? parts[parts.length - 1] : "Иванов";
+        return parts.length > 1 ? parts[parts.length - 1] : "";
     }
 
     private async cleanupDocument(documentId: string): Promise<void> {
         try {
             const client = await this.getClient();
-            await client.DeleteDocumentAsync({ id: documentId });
+            await client.DeleteDocumentAsync({
+                docId: {
+                    Id: documentId
+                }
+            });
             console.log(`Cleaned up document: ${documentId}`);
         } catch (error) {
             console.error(`Error cleaning up document ${documentId}:`, error);
@@ -355,6 +494,7 @@ export class PlagiarismService {
             readonlyReportUrl: string;
             checkedFileUrl: string;
             isApproved: boolean;
+            downloadedPdfUrl?: string;
         }
     ): Promise<void> {
         try {
@@ -375,7 +515,8 @@ export class PlagiarismService {
                     readonlyReportUrl: results.readonlyReportUrl,
                     isApproved: results.isApproved,
                     documentId: results.documentId,
-                    status: 'completed'
+                    status: 'completed',
+                    downloadedPdfUrl: results.downloadedPdfUrl
                 } as any
             });
         } catch (error) {
@@ -383,11 +524,30 @@ export class PlagiarismService {
         }
     }
 
+    private async updateThesisWithPdfUrl(
+        thesisId: string,
+        downloadedPdfUrl: string
+    ): Promise<void> {
+        try {
+            const thesis = await thesisModel.getThesisById(thesisId);
+            if (!thesis) return;
+
+            await thesisModel.updateThesis(thesisId, {
+                plagiarismCheck: {
+                    ...thesis.data.plagiarismCheck,
+                    downloadedPdfUrl
+                } as any
+            });
+        } catch (error) {
+            console.error('Error updating thesis PDF URL:', error);
+        }
+    }
+
     private async saveCheckedFile(originalFilePath: string, originalFileName: string): Promise<string> {
         const timestamp = Date.now();
         const fileExt = path.extname(originalFileName);
         const baseName = path.basename(originalFileName, fileExt);
-        const newFileName = `${baseName}_checked_${fileExt}`;
+        const newFileName = `${baseName}_checked${fileExt}`;
 
         const checkedDir = path.join(__dirname, '../../server/uploads/checked-theses');
         if (!fs.existsSync(checkedDir)) {
@@ -400,8 +560,7 @@ export class PlagiarismService {
         return newFilePath;
     }
 
-
-    async enumerateReports(externalUserId: string = "nyathi"): Promise<any[]> {
+    async enumerateReports(externalUserId: string): Promise<any[]> {
         try {
             const client = await this.getClient();
             const options = {
@@ -432,7 +591,11 @@ export class PlagiarismService {
     async exportReportToPdf(documentId: string): Promise<string> {
         try {
             const client = await this.getClient();
-            const result = await client.ExportReportToPdfAsync({ id: documentId });
+            const result = await client.ExportReportToPdfAsync({
+                docId: {
+                    Id: documentId
+                }
+            });
             const exportInfo = result[0].ExportReportToPdfResult;
 
             if (exportInfo.Status === 'Ready') {
@@ -445,290 +608,58 @@ export class PlagiarismService {
             throw error;
         }
     }
+
+    /**
+     * Get downloaded PDF report URL for a thesis
+     */
+    async getDownloadedPdfUrl(thesisId: string): Promise<string | null> {
+        try {
+            const thesis = await thesisModel.getThesisById(thesisId);
+            if (!thesis || !thesis.data.plagiarismCheck) {
+                return null;
+            }
+
+            return thesis.data.plagiarismCheck.downloadedPdfUrl || null;
+        } catch (error) {
+            console.error('Error getting downloaded PDF URL:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Delete downloaded PDF report for a thesis
+     */
+    async deleteDownloadedPdfReport(thesisId: string): Promise<boolean> {
+        try {
+            const pdfUrl = await this.getDownloadedPdfUrl(thesisId);
+            if (!pdfUrl) return false;
+
+            // Extract filename from URL
+            const fileName = path.basename(pdfUrl);
+            const filePath = path.join(__dirname, '../../server/uploads/plagiarism-reports', fileName);
+
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+
+            // Update thesis to remove download URL
+            const thesis = await thesisModel.getThesisById(thesisId);
+            if (thesis) {
+                await thesisModel.updateThesis(thesisId, {
+                    plagiarismCheck: {
+                        ...thesis.data.plagiarismCheck,
+                        downloadedPdfUrl: null
+                    } as any
+                });
+            }
+
+            console.log(`Deleted PDF report for thesis ${thesisId}`);
+            return true;
+        } catch (error) {
+            console.error('Error deleting downloaded PDF report:', error);
+            return false;
+        }
+    }
 }
 
 export const plagiarismService = new PlagiarismService();
-
-
-{/**
-    
-    
-  require("dotenv").config();
-import * as soap from 'soap';
-import path from "path";
-import fs from "fs";
-import { ThesisModel } from '../models/Thesis.model';
-import UserModel from '../models/User.model';
-import { Pool } from 'pg';
-
-const pool = new Pool({
-    connectionString: process.env.DB_URL
-});
-
-const thesisModel = new ThesisModel(pool);
-const userModel = new UserModel(pool);
-
-export interface PlagiarismCheckResult {
-    success: boolean;
-    similarityScore: number;
-    reportUrl: string;
-    checkedFileUrl: string;
-    documentId?: string;
-    status?: string;
-    error?: string;
-}
-
-export class PlagiarismService {
-    private wsdlUrl: string;
-    private login: string;
-    private password: string;
-    private baseUrl: string;
-
-    constructor() {
-        this.wsdlUrl = process.env.ANTIPLAGIAT_WSDL_URL || 'https://api.antiplagiat.ru:4959/apiCorp/testapi?wsdl';
-        this.login = process.env.ANTIPLAGIAT_LOGIN || 'testapi@antiplagiat.ru';
-        this.password = process.env.ANTIPLAGIAT_PASSWORD || 'testapi';
-        this.baseUrl = process.env.ANTIPLAGIAT_BASE_URL || 'https://testapi.antiplagiat.ru';
-    }
-
-    async checkDocument(filePath: string, fileName: string, thesisId: string, studentData: any): Promise<PlagiarismCheckResult> {
-        try {
-            // Basic file validation
-            if (!fs.existsSync(filePath)) {
-                throw new Error(`File not found: ${filePath}`);
-            }
-
-            const fileBuffer = fs.readFileSync(filePath);
-            console.log(`Buffer length: ${fileBuffer.length} bytes`);
-
-            if (fileBuffer.length < 10) {
-                throw new Error(`File is too small: ${fileBuffer.length} bytes (minimum 10 bytes required)`);
-            }
-
-            // Create SOAP client
-            const client = await soap.createClientAsync(this.wsdlUrl, {
-                disableCache: true,
-                forceSoap12Headers: false, // Use SOAP 1.2
-
-            });
-
-            // Set authentication
-            const basicAuth = new soap.BasicAuthSecurity(this.login, this.password);
-            client.setSecurity(basicAuth);
-
-            const fileBase64 = fileBuffer.toString('base64');
-            console.log(`Base64 length: ${fileBase64.length} characters`);
-            console.log(`Base64 first 100 chars: ${fileBase64.substring(0, 100)}`);
-
-            // Upload document
-            console.log(`Uploading document to Antiplagiat...`);
-            const uploadResult = await client.UploadDocumentAsync({
-                data: {
-                    '$value': fileBase64,
-                    '$attributes': {
-                        'xmlns:xs': 'http://www.w3.org/2001/XMLSchema',
-                        'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
-                        'xsi:type': 'xs:base64Binary'
-                    }
-                },
-                fileName: fileName,
-                docAttributes: {
-                    DocumentDescription: {
-                        Work: fileName,
-                        Authors: {
-                            Author: [
-                                {
-                                    FirstName: this.extractFirstName(studentData.fullName) || "Student",
-                                    LastName: this.extractLastName(studentData.fullName) || "Use",
-                                    CustomID: `uni_${studentData.id || 'unknown'}`
-                                }
-                            ]
-                        }
-                    },
-                    ExternalUserID: `uni_${studentData.id || 'unknown'}`,
-                    FileType: this.getFileType(fileName)
-                }
-            });
-
-            console.log(`Upload response:`, JSON.stringify(uploadResult, null, 2));
-
-            const documentId = uploadResult[0].UploadDocumentResult;
-
-            if (!documentId) {
-                throw new Error('Failed to upload document - no document ID returned');
-            }
-
-            console.log(`Document uploaded successfully. Document ID: ${documentId}`);
-
-            // Start plagiarism check
-            console.log(`Starting plagiarism check...`);
-
-            // Start plagiarism check
-            await client.CheckDocumentAsync({
-                id: documentId,
-                checkDocParams: {
-                    Sources: {
-                        Source: [
-                            { Id: 'testapi' },
-                            { Id: 'wikipedia' }
-                        ]
-                    }
-                }
-            });
-
-            // Wait for completion
-            console.log(`Waiting for completion...`);
-            await this.waitForCompletion(client, documentId);
-
-            // Get results
-            console.log(`Getting report summary...`);
-            const reportSummary = await client.GetReportSummaryAsync({ id: documentId });
-            const summary = reportSummary[0].GetReportSummaryResult;
-            const similarityScore = summary.DetailedScore?.Unknown || summary.Score || 0;
-
-            console.log(`Plagiarism check completed. Similarity: ${similarityScore}%`);
-
-            // Save checked file
-            const checkedFilePath = await this.saveCheckedFile(filePath, fileName);
-
-            // Update thesis
-            await this.updateThesis(thesisId, {
-                documentId,
-                similarityScore,
-                reportUrl: this.generateReportUrl(documentId),
-                checkedFileUrl: checkedFilePath,
-                isApproved: similarityScore <= 15
-            });
-
-            return {
-                success: true,
-                similarityScore,
-                reportUrl: this.generateReportUrl(documentId),
-                checkedFileUrl: checkedFilePath,
-                documentId,
-            };
-
-        } catch (error: any) {
-            console.error('=== Plagiarism check FAILED ===');
-            console.error('Error message:', error.message);
-            console.error('Error stack:', error.stack);
-
-            if (error.response) {
-                console.error('SOAP Response:', error.response);
-            }
-            if (error.body) {
-                console.error('SOAP Body:', error.body);
-            }
-            if (error.request) {
-                console.error('SOAP Request:', error.request);
-            }
-
-
-            return {
-                success: false,
-                similarityScore: 0,
-                reportUrl: '',
-                checkedFileUrl: '',
-                error: error.message,
-                status: 'failed'
-            };
-        }
-    }
-
-    private async waitForCompletion(client: any, documentId: string): Promise<void> {
-        for (let attempt = 0; attempt < 30; attempt++) {
-            const statusResult = await client.GetCheckStatusAsync({ id: documentId });
-            const status = statusResult[0].GetCheckStatusResult;
-
-            if (status.State === 'Done') return;
-            if (status.State === 'Failed') throw new Error(`Check failed: ${status.FailDetails}`);
-
-            await new Promise(resolve => setTimeout(resolve, 10000));
-        }
-
-        throw new Error('Check timeout');
-    }
-
-    private extractFirstName(fullName: string): string {
-        return fullName?.split(' ')[0] || "Student";
-    }
-
-    private extractLastName(fullName: string): string {
-        const parts = fullName?.split(' ') || [];
-        return parts.length > 1 ? parts[parts.length - 1] : "User";
-    }
-
-    private getFileType(fileName: string): string {
-        const ext = path.extname(fileName).toLowerCase();
-        const types: { [key: string]: string } = {
-            '.pdf': 'Pdf',
-            '.doc': 'Doc',
-            '.docx': 'Docx',
-            '.txt': 'Txt',
-            '.rtf': 'Rtf',
-            '.odt': 'Odt',
-            '.html': 'Html',
-            '.htm': 'Html'
-        };
-
-        const fileType = types[ext] || 'Pdf';
-        console.log(`Detected file type: ${fileType} for extension: ${ext}`);
-        return fileType;
-    }
-
-    private generateReportUrl(documentId: string): string {
-        return `${this.baseUrl}/Reports/Short/${documentId}`;
-    }
-
-    private async updateThesis(
-        thesisId: string,
-        results: {
-            documentId: string;
-            similarityScore: number;
-            reportUrl: string;
-            checkedFileUrl: string;
-            isApproved: boolean;
-        }
-    ): Promise<void> {
-        const thesis = await thesisModel.getThesisById(thesisId);
-        if (!thesis) return;
-
-        await thesisModel.updateThesis(thesisId, {
-            plagiarismCheck: {
-                ...thesis.data.plagiarismCheck,
-                isChecked: true,
-                checkedFileUrl: results.checkedFileUrl,
-                attempts: thesis.data.plagiarismCheck.attempts + 1,
-                lastCheckDate: new Date(),
-                similarityScore: results.similarityScore,
-                reportUrl: results.reportUrl,
-                isApproved: results.isApproved,
-                documentId: results.documentId
-            }
-        });
-    }
-
-    private async saveCheckedFile(originalFilePath: string, originalFileName: string): Promise<string> {
-        const timestamp = Date.now();
-        const fileExt = path.extname(originalFileName);
-        const baseName = path.basename(originalFileName, fileExt);
-        const newFileName = `${baseName}_checked_${fileExt}`;
-
-        const checkedDir = path.join(__dirname, '../../server/uploads/checked-theses');
-        if (!fs.existsSync(checkedDir)) {
-            fs.mkdirSync(checkedDir, { recursive: true });
-        }
-
-        const newFilePath = path.join(checkedDir, newFileName);
-        await fs.promises.copyFile(originalFilePath, newFilePath);
-
-        return newFilePath;
-    }
-}
-
-export const plagiarismService = new PlagiarismService();  
-    
-    
-    
-    
-    */}

@@ -169,7 +169,6 @@ export const checkPlagiarismStart = async (req: Request, res: Response) => {
       return
     }
 
-
     // File found, proceed with plagiarism check
     const fileName = path.basename(filePath);
     const result = await plagiarismService.checkDocument(filePath, fileName, thesisId, student);
@@ -196,4 +195,67 @@ export const checkPlagiarismStart = async (req: Request, res: Response) => {
     console.error('Plagiarism check error:', error);
     res.status(500).json({ error: "Failed to check plagiarism" });
   }
+};
+
+
+export const downloadPlagiarismReport = async (req: Request, res: Response) => {
+    try {
+        const user = req.user as AuthenticatedUser;
+        const { thesisId } = req.params;
+
+        // Find thesis
+        const thesis = await thesisModel.getThesisById(thesisId);
+        if (!thesis) {
+            res.status(404).json({ error: "Thesis not found" });
+            return;
+        }
+
+        // Check if plagiarism check was done and PDF exists
+        if (!thesis.data.plagiarismCheck?.downloadedPdfUrl) {
+            res.status(404).json({ 
+                error: "Plagiarism report not found",
+                details: "The plagiarism check has not been completed or no PDF report is available"
+            });
+            return;
+        }
+
+        // Extract filename from URL and build full path
+        const pdfUrl = thesis.data.plagiarismCheck.downloadedPdfUrl;
+        const fileName = path.basename(pdfUrl);
+        const filePath = path.join(__dirname, '../../server/uploads/plagiarism-reports', fileName);
+
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+            res.status(404).json({ 
+                error: "Plagiarism report file not found",
+                details: `File path: ${filePath}`
+            });
+            return;
+        }
+
+        // Get file stats
+        const fileStats = fs.statSync(filePath);
+        
+        // Set headers for PDF download
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="plagiarism_report_${thesisId}.pdf"`);
+        res.setHeader('Content-Length', fileStats.size);
+        res.setHeader('Cache-Control', 'no-cache');
+
+        // Stream the file to response
+        const fileStream = fs.createReadStream(filePath);
+        fileStream.pipe(res);
+
+        // Handle stream errors
+        fileStream.on('error', (error) => {
+            console.error("Error streaming plagiarism report:", error);
+            if (!res.headersSent) {
+                res.status(500).json({ error: "Failed to stream plagiarism report" });
+            }
+        });
+
+    } catch (error) {
+        console.error("Error downloading plagiarism report:", error);
+        res.status(500).json({ error: "Failed to download plagiarism report" });
+    }
 };

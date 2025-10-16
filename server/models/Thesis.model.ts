@@ -78,6 +78,7 @@ export interface IThesis {
     reportUrl?: string;
     isApproved: boolean;
     documentId?: string;
+      downloadedPdfUrl?: string;
   };
 
    // Separate assessments for each role
