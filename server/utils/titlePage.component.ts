@@ -31,20 +31,36 @@ export async function createTitlePage(
     if (!hod) {
         throw new Error(`HOD not found for faculty: ${student.faculty}`);
     }
-    const supervisorId = student?.supervisor || "";
 
-    const supervisor = await userModel.getUserById(supervisorId);
+    const supervisors = await userModel.getSupervisors();
+    const supervisor = supervisors.find(s => s.id === student.supervisor);
     if (!supervisor) {
         throw new Error(`Supervisor not found for student: ${student.fullName}`);
     }
 
+    const reviewers = await userModel.getReviewers();
+    const reviewer = reviewers.find(s => s.id === student.reviewer);
+    if (!reviewer) {
+        throw new Error(`Reviewer not found for student: ${student.fullName}`);
+    }
+
     const supervisorName = supervisor.fullName;
+    const reviewerName = reviewer.fullName;
 
     const consultants = await userModel.getConsultants();
     const consultant = consultants.find(h => h.faculty === student.faculty);
 
     const hodName = hod.fullName;
     const consultantName = consultant?.fullName || "";
+
+    const getDepartmentAcronym = (name: string) =>
+        name ? name.split(/\s+/)
+            .map(word => word.toLowerCase() === 'и' ? 'и' : word.charAt(0).toUpperCase())
+            .join('')
+            : "";
+
+    const departmentAcronym = getDepartmentAcronym(supervisor?.department);
+
 
     // Centered wrapped text function
     const drawCenteredWrappedText = (
@@ -139,7 +155,7 @@ export async function createTitlePage(
         "Министерство цифрового развития, связи и массовых коммуникаций",
         currentY,
         maxWidth,
-        12,
+        14,
         font,
         15
     );
@@ -149,7 +165,7 @@ export async function createTitlePage(
         "Российской Федерации",
         currentY - 10,
         maxWidth,
-        12,
+        14,
         font,
         15
     );
@@ -159,7 +175,7 @@ export async function createTitlePage(
         "Ордена Трудового Красного Знамени федеральное государственное",
         currentY - 10,
         maxWidth,
-        12,
+        14,
         font,
         15
     );
@@ -169,7 +185,7 @@ export async function createTitlePage(
         "бюджетное образовательное учреждение высшего образования",
         currentY - 10,
         maxWidth,
-        12,
+        14,
         font,
         15
     );
@@ -179,7 +195,7 @@ export async function createTitlePage(
         "«Московский технический университет связи и информатики»",
         currentY - 10,
         maxWidth,
-        12,
+        14,
         font,
         15
     );
@@ -193,7 +209,7 @@ export async function createTitlePage(
     page.drawText(permitText, {
         x: leftMargin - permitWidth / 2,
         y: currentY - 10,
-        size: 12,
+        size: 14,
         font: font,
     });
 
@@ -204,19 +220,19 @@ export async function createTitlePage(
     page.drawText(admitText, {
         x: leftMargin - admitWidth / 2,
         y: currentY - 10,
-        size: 12,
+        size: 14,
         font: font,
     });
 
     currentY -= 20;
 
     // Department head signature section - LEFT ALIGNED but text centered
-    const deptHeadText = "Зав. кафедрой";
+    const deptHeadText = `Зав. кафедрой ${departmentAcronym}`;
     const deptHeadWidth = font.widthOfTextAtSize(deptHeadText, 12);
     page.drawText(deptHeadText, {
         x: leftMargin - deptHeadWidth / 2,
         y: currentY - 10,
-        size: 12,
+        size: 14,
         font: font,
     });
 
@@ -228,14 +244,14 @@ export async function createTitlePage(
     page.drawText(deptHeadName, {
         x: leftMargin,
         y: currentY - 10,
-        size: 12,
+        size: 14,
         font: font,
     });
 
     // Draw underline for department head name
     page.drawLine({
         start: { x: leftMargin - 120 / 2, y: currentY - 12 },
-        end: { x: leftMargin + 200 / 2, y: currentY - 12 },
+        end: { x: leftMargin + 250 / 2, y: currentY - 12 },
         thickness: 1,
         color: rgb(0, 0, 0),
     });
@@ -249,14 +265,14 @@ export async function createTitlePage(
     page.drawText(dateText, {
         x: leftMargin,
         y: currentY - 10,
-        size: 12,
+        size: 14,
         font: font,
     });
 
     // Draw underline for date
     page.drawLine({
         start: { x: leftMargin - 120 / 2, y: currentY - 12 },
-        end: { x: leftMargin + 200 / 2, y: currentY - 12 },
+        end: { x: leftMargin + 250 / 2, y: currentY - 12 },
         thickness: 1,
         color: rgb(0, 0, 0),
     });
@@ -282,7 +298,7 @@ export async function createTitlePage(
     page.drawText(themeLabel, {
         x: centerX - themeLabelWidth / 2,
         y: currentY,
-        size: 12,
+        size: 14,
         font: font,
     });
 
@@ -307,17 +323,17 @@ export async function createTitlePage(
     const valueLeft = 280;
 
     // Student row
-    const permitWidth1 = font.widthOfTextAtSize(student.fullName, 12);
+    const permitWidth1 = font.widthOfTextAtSize(student.fullName, 14);
     page.drawText("Студент:", {
         x: tableLeft,
         y: currentY,
-        size: 12,
+        size: 14,
         font: font,
     });
     page.drawText(student.fullName, {
         x: valueLeft,
         y: currentY,
-        size: 12,
+        size: 14,
         font: font,
     });
 
@@ -330,18 +346,18 @@ export async function createTitlePage(
     currentY -= 25;
 
     // Supervisor row
-    const permitWidth2 = font.widthOfTextAtSize(supervisorName, 12);
+    const permitWidth2 = font.widthOfTextAtSize(supervisorName, 14);
 
     page.drawText("Руководитель:", {
         x: tableLeft,
         y: currentY,
-        size: 12,
+        size: 14,
         font: font,
     });
     page.drawText(supervisorName, {
         x: valueLeft,
         y: currentY,
-        size: 12,
+        size: 14,
         font: font,
     });
 
@@ -354,19 +370,19 @@ export async function createTitlePage(
 
     currentY -= 25;
 
-    const permitWidth3 = font.widthOfTextAtSize(consultantName, 12);
+    const permitWidth3 = font.widthOfTextAtSize(consultantName, 14);
     // Consultant row - ONLY if consultant exists
     if (student.consultant) {
         page.drawText("Консультант:", {
             x: tableLeft,
             y: currentY,
-            size: 12,
+            size: 14,
             font: font,
         });
         page.drawText(consultantName, {
             x: valueLeft,
             y: currentY,
-            size: 12,
+            size: 14,
             font: font,
         });
 
@@ -379,14 +395,37 @@ export async function createTitlePage(
         currentY -= 25;
     }
 
-    currentY -= 50;
+    // Supervisor row
+    const permitWidth4 = font.widthOfTextAtSize(reviewerName, 14);
+
+    page.drawText("Рецензент:", {
+        x: tableLeft,
+        y: currentY,
+        size: 14,
+        font: font,
+    });
+    page.drawText(reviewerName, {
+        x: valueLeft,
+        y: currentY,
+        size: 14,
+        font: font,
+    });
+
+    page.drawLine({
+        start: { x: valueLeft, y: currentY - 2 },
+        end: { x: valueLeft + permitWidth4, y: currentY - 2 },
+        thickness: 1,
+        color: rgb(0, 0, 0),
+    });
+
+    currentY -= 65;
 
     const locationText = `Москва, ${currentYear}г.`;
-    const locationWidth = font.widthOfTextAtSize(locationText, 12);
+    const locationWidth = font.widthOfTextAtSize(locationText, 14);
     page.drawText(locationText, {
         x: centerX - locationWidth / 2,
         y: currentY,
-        size: 12,
+        size: 14,
         font: font,
     });
 

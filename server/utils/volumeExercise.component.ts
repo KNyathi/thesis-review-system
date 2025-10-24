@@ -21,6 +21,9 @@ export async function createVolumeExercisePage(
     const leftMargin = 50;
     let currentY = 780;
 
+    // Track page count
+    let pageCount = 1;
+    const MAX_PAGES = 2;
 
     if (!student.thesisContent) {
         throw new Error("Student thesis content unavailable");
@@ -33,9 +36,13 @@ export async function createVolumeExercisePage(
         throw new Error(`Supervisor not found for student: ${student.fullName}`);
     }
 
-    // Function to check if we need a new page
+    // Modified checkNewPage function to enforce 2-page limit
     const checkNewPage = (requiredSpace: number): PDFPage => {
         if (currentY - requiredSpace < 50) {
+            pageCount++;
+            if (pageCount > MAX_PAGES) {
+                throw new Error(`Document exceeds maximum page limit of ${MAX_PAGES} pages. Please reduce the volume of content in your thesis structure.`);
+            }
             page = pdfDoc.addPage([595, 842]);
             currentY = 780;
         }
@@ -76,7 +83,6 @@ export async function createVolumeExercisePage(
             updatePageContentBounds();
         }
     }
-
 
     const drawCenteredWrappedText = (
         page: PDFPage,
@@ -170,18 +176,6 @@ export async function createVolumeExercisePage(
 
     currentY = drawCenteredWrappedText(
         page,
-        "ОБЪЕМНОЕ ЗАДАНИЕ",
-        currentY,
-        maxWidth,
-        15,
-        boldFont,
-        15
-    );
-
-    currentY -= 15;
-
-    currentY = drawCenteredWrappedText(
-        page,
         "Министерство цифрового развития, связи и массовых коммуникаций Российской",
         currentY,
         maxWidth,
@@ -261,7 +255,7 @@ export async function createVolumeExercisePage(
         "(название полностью)",
         currentY - 12,
         maxWidth,
-        9,
+        8,
         font,
         15
     );
@@ -332,7 +326,7 @@ export async function createVolumeExercisePage(
         "ЗАДАНИЕ",
         currentY,
         maxWidth,
-        13,
+        14,
         boldFont,
         15
     );
@@ -484,7 +478,7 @@ export async function createVolumeExercisePage(
         "(Дипломный проект, дипломная работа, магистерская дисссертация, бакалаврская работа)",
         currentY - 24,
         maxWidth,
-        9,
+        8,
         font,
         15
     );
@@ -652,7 +646,6 @@ export async function createVolumeExercisePage(
 
     const content = student?.thesisContent;
 
-
     // WORK ON THIS TABLE - ADDING THE CHAPTER STRUCTURE TABLE
     checkNewPage(200);
 
@@ -701,7 +694,6 @@ export async function createVolumeExercisePage(
         pageEndY = currentY;
     }
 
-
     // Helper function to draw multi-line text that spans multiple lines
     function drawMultiLineText(lines: string[], x: number, initialOffset: number = 0) {
         lines.forEach((line, index) => {
@@ -742,7 +734,6 @@ export async function createVolumeExercisePage(
         // Always use text wrapping for consistency
         drawWrappedText(text, col1X + 25, col1Width - 30, 15);
     });
-
 
     currentY -= 20;
     updatePageContentBounds();
@@ -929,7 +920,6 @@ export async function createVolumeExercisePage(
     checkNewPage(150);
     currentY -= 40;
 
-
     page.drawText("3. Консультанты по BKP (с указанием относящихся к ним разделов проекта):", {
         x: leftMargin,
         y: currentY,
@@ -960,7 +950,7 @@ export async function createVolumeExercisePage(
         page.drawText("(подпись)", {
             x: leftMargin + 220,
             y: currentY - 15,
-            size: 9,
+            size: 8,
             font: font,
         });
 
@@ -980,7 +970,7 @@ export async function createVolumeExercisePage(
         page.drawText("(ФИО)", {
             x: nameLeft,
             y: currentY - 15,
-            size: 9,
+            size: 8,
             font: font,
         });
 
@@ -997,7 +987,7 @@ export async function createVolumeExercisePage(
         page.drawText("(подпись)", {
             x: leftMargin + 220,
             y: currentY - 15,
-            size: 10,
+            size: 8,
             font: font,
         });
 
@@ -1011,7 +1001,7 @@ export async function createVolumeExercisePage(
         page.drawText("(ФИО)", {
             x: nameLeft,
             y: currentY - 15,
-            size: 10,
+            size: 8,
             font: font,
         });
     } else {
@@ -1027,7 +1017,7 @@ export async function createVolumeExercisePage(
             page.drawText("(подпись)", {
                 x: leftMargin,
                 y: currentY - 15,
-                size: 10,
+                size: 8,
                 font: font,
             });
 
@@ -1041,7 +1031,7 @@ export async function createVolumeExercisePage(
             page.drawText("(ФИО)", {
                 x: nameLeft,
                 y: currentY - 15,
-                size: 10,
+                size: 8,
                 font: font,
             });
 
@@ -1098,8 +1088,6 @@ export async function createVolumeExercisePage(
     // Supervisor signature - HORIZONTAL LAYOUT
     checkNewPage(120);
 
-
-
     const supervisorName = supervisor.fullName;
 
     // Supervisor signature line and name in same row - underline to right margin
@@ -1124,7 +1112,7 @@ export async function createVolumeExercisePage(
     page.drawText("(подпись)", {
         x: leftMargin + 180,
         y: currentY - 15,
-        size: 9,
+        size: 8,
         font: font,
     });
 
@@ -1139,7 +1127,7 @@ export async function createVolumeExercisePage(
     page.drawText("(ФИО)", {
         x: leftMargin + supervisorSignatureWidth + 240,
         y: currentY - 15,
-        size: 9,
+        size: 8,
         font: font,
     });
 
@@ -1179,7 +1167,7 @@ export async function createVolumeExercisePage(
     page.drawText(workloadLabel, {
         x: leftMargin + 200,
         y: currentY - 15,
-        size: 9,
+        size: 8,
         font: font,
     });
 
@@ -1208,10 +1196,9 @@ export async function createVolumeExercisePage(
     page.drawText("(подпись студента)", {
         x: leftMargin + 250,
         y: currentY - 15,
-        size: 9,
+        size: 8,
         font: font,
     });
-
 
     currentY -= 40;
 

@@ -12,6 +12,7 @@ import {
 } from "../controllers/reviewController"
 import { authenticate, isAdmin, isReviewer, isReviewerReview, isStudent } from "../middleware/auth"
 import upload from "../utils/multer"
+import { hodUpload } from "../utils/multerMultiple"
 
 const reviewRouter = express.Router()
 
@@ -35,11 +36,17 @@ reviewRouter.post(
   "/upload-signed-review/:thesisId",
   authenticate,
   isReviewer,
-  upload.single("signedReview"),
+  hodUpload.fields([
+    { name: "review1", maxCount: 1 },
+    { name: "review2", maxCount: 1 }
+  ]),
   uploadSignedReview,
 )
 
-reviewRouter.post("/signed-review/:thesisId", authenticate, isReviewer, signedReview)
+reviewRouter.post("/signed-review/:thesisId", authenticate, isReviewer, hodUpload.fields([
+  { name: "review1", maxCount: 1 },
+  { name: "review2", maxCount: 1 }
+]), signedReview)
 
 reviewRouter.get("/download-signed-review/:thesisId", authenticate, isReviewerReview, downloadSignedReview)
 

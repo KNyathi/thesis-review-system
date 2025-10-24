@@ -30,5 +30,6 @@ export const ROLE_GROUPS: Record<string, UserRole[]> = {
   ACCESS_REVIEW_2: ['reviewer', 'head_of_department', 'dean', 'admin'],
   ACCESS_REVIEW_3: ['dean', 'admin', 'student'],
   ACCESS_THESIS: ['supervisor', 'consultant', 'head_of_department', 'dean', 'admin', 'student', 'reviewer'],
-  ALL_STAFF: ['supervisor', 'consultant', 'reviewer', 'head_of_department', 'dean', 'admin']
+  ALL_STAFF: ['supervisor', 'consultant', 'reviewer', 'head_of_department', 'dean', 'admin'],
+  SELECT_SV: ['supervisor', 'student']
 };

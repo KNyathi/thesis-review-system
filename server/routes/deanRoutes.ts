@@ -2,13 +2,13 @@ import express from 'express';
 import upload from "../utils/multer"
 import { authenticate, isAdmin, isConsultantReview, isDean, isHeadOfDepartment, isManagement } from '../middleware/auth';
 import { hodUpload } from '../utils/multerMultiple';
-import { downloadSignedReview, getSignedReview, getUnsignedReview, signedReview, uploadSignedDeanReviews } from '../controllers/deanController';
+import { approveDefense, downloadSignedReview, getSignedReview, getUnsignedReview, signedReview, uploadSignedDeanReviews } from '../controllers/deanController';
 import { deanUpload } from '../utils/deanMulterMultiple';
 
 const deanRouter = express.Router();
 
 // Review signing routes
-deanRouter.get("/unsigned-review-dean/:thesisId", authenticate, isDean, getUnsignedReview) //work in progress
+deanRouter.get("/unsigned-review-dean/:thesisId", authenticate, isDean, getUnsignedReview) //CHANGE OF PLAN, WE USE THIS ONE ONLY SINCE DEAN  NO LONGER SIGNS
 deanRouter.get(
     "/signed-review-dean/:thesisId",
     authenticate,
@@ -31,5 +31,7 @@ deanRouter.post(
 deanRouter.post("/signed-review-dean/:thesisId", authenticate, isDean, signedReview) //work in progress
 
 deanRouter.get("/download-signed-review-dean/:thesisId", authenticate,  isConsultantReview, downloadSignedReview) //work in progress
+
+deanRouter.post("/approve-defense/:thesisId", authenticate, isDean, approveDefense); //no signing, just a button
 
 export default deanRouter;

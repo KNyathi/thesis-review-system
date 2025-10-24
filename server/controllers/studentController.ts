@@ -69,27 +69,46 @@ export const getSignedReview = async (req: Request, res: Response) => {
             return;
         }
 
-        // Get Dean signed paths
-        const deanSupervisorPath = thesis.data.deanSignedSupervisorPath;
-        const deanReviewerPath = thesis.data.deanSignedReviewerPath;
+        // Check if Dean has approved (has deanSignedDate)
+        if (!thesis.data.deanSignedDate) {
+            res.status(403).json({ 
+                error: "Final reviews not available yet",
+                message: "Reviews will be available after Dean approval"
+            });
+            return;
+        }
 
-        // Check if both Dean signed files exist
-        const hasDeanSupervisorFile = deanSupervisorPath && fs.existsSync(deanSupervisorPath);
-        const hasDeanReviewerFile = deanReviewerPath && fs.existsSync(deanReviewerPath);
+        let supervisorSignedPath: string;
+        let reviewerSignedPath: string;
 
-        if (!hasDeanSupervisorFile || !hasDeanReviewerFile) {
+        // Get HOD signed paths with fallbacks (since Dean copies from HOD)
+        if (thesis.data.hodSignedSupervisorPath && fs.existsSync(thesis.data.hodSignedSupervisorPath)) {
+            supervisorSignedPath = thesis.data.hodSignedSupervisorPath;
+        } else {
+            supervisorSignedPath = path.join(__dirname, "../../server/reviews/hod/signed", `hod_signed_supervisor_${thesis.data.student}.pdf`);
+        }
+
+        if (thesis.data.hodSignedReviewerPath && fs.existsSync(thesis.data.hodSignedReviewerPath)) {
+            reviewerSignedPath = thesis.data.hodSignedReviewerPath;
+        } else {
+            reviewerSignedPath = path.join(__dirname, "../../server/reviews/hod/signed", `hod_signed_reviewer_${thesis.data.student}.pdf`);
+        }
+
+        // Check if both files exist
+        if (!fs.existsSync(supervisorSignedPath) || !fs.existsSync(reviewerSignedPath)) {
             res.status(404).json({
-                error: "Dean signed reviews not found",
+                error: "Final signed reviews not found",
                 details: {
-                    deanSupervisorExists: hasDeanSupervisorFile,
-                    deanReviewerExists: hasDeanReviewerFile
+                    supervisorExists: fs.existsSync(supervisorSignedPath),
+                    reviewerExists: fs.existsSync(reviewerSignedPath),
+                    deanApproved: !!thesis.data.deanSignedDate
                 }
             });
             return;
         }
 
         // Set headers for multipart response
-        const boundary = '----StudentSignedReviewBoundary';
+        const boundary = '----FinalSignedReviewBoundary';
         res.setHeader('Content-Type', `multipart/mixed; boundary=${boundary}`);
         res.setHeader('Content-Disposition', `inline; filename="final_signed_reviews_${thesisId}.multipart"`);
 
@@ -114,17 +133,17 @@ export const getSignedReview = async (req: Request, res: Response) => {
             });
         };
 
-        // Send both Dean signed files
-        await sendFilePart(deanSupervisorPath, `final_supervisor_review_${student.id}.pdf`);
-        await sendFilePart(deanReviewerPath, `final_reviewer_review_${student.id}.pdf`);
+        // Send both files
+        await sendFilePart(supervisorSignedPath, `final_supervisor_review_${student.id}.pdf`);
+        await sendFilePart(reviewerSignedPath, `final_reviewer_review_${student.id}.pdf`);
 
         // End of multipart
         res.write(`--${boundary}--\r\n`);
         res.end();
 
     } catch (error) {
-        console.error("Error getting signed reviews for student:", error);
-        res.status(500).json({ error: "Failed to get signed reviews" });
+        console.error("Error getting final signed reviews for student:", error);
+        res.status(500).json({ error: "Failed to get final signed reviews" });
     }
 };
 
@@ -243,20 +262,29 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
             return;
         }
 
+        // Check if Dean has approved (has deanSignedDate)
+        if (!thesis.data.deanSignedDate) {
+            res.status(403).json({ 
+                error: "Final reviews not available yet",
+                message: "Reviews will be available after Dean approval"
+            });
+            return;
+        }
+
         let supervisorSignedPath: string;
         let reviewerSignedPath: string;
 
-        // Get Dean signed paths with fallbacks
-        if (thesis.data.deanSignedSupervisorPath && fs.existsSync(thesis.data.deanSignedSupervisorPath)) {
-            supervisorSignedPath = thesis.data.deanSignedSupervisorPath;
+        // Get HOD signed paths with fallbacks (since Dean copies from HOD)
+        if (thesis.data.hodSignedSupervisorPath && fs.existsSync(thesis.data.hodSignedSupervisorPath)) {
+            supervisorSignedPath = thesis.data.hodSignedSupervisorPath;
         } else {
-            supervisorSignedPath = path.join(__dirname, "../../server/reviews/dean/signed", `dean_signed_supervisor_${thesis.data.student}.pdf`);
+            supervisorSignedPath = path.join(__dirname, "../../server/reviews/hod/signed", `hod_signed_supervisor_${thesis.data.student}.pdf`);
         }
 
-        if (thesis.data.deanSignedReviewerPath && fs.existsSync(thesis.data.deanSignedReviewerPath)) {
-            reviewerSignedPath = thesis.data.deanSignedReviewerPath;
+        if (thesis.data.hodSignedReviewerPath && fs.existsSync(thesis.data.hodSignedReviewerPath)) {
+            reviewerSignedPath = thesis.data.hodSignedReviewerPath;
         } else {
-            reviewerSignedPath = path.join(__dirname, "../../server/reviews/dean/signed", `dean_signed_reviewer_${thesis.data.student}.pdf`);
+            reviewerSignedPath = path.join(__dirname, "../../server/reviews/hod/signed", `hod_signed_reviewer_${thesis.data.student}.pdf`);
         }
 
         // Check if both files exist
@@ -265,14 +293,15 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
                 error: "Final signed reviews not found",
                 details: {
                     supervisorExists: fs.existsSync(supervisorSignedPath),
-                    reviewerExists: fs.existsSync(reviewerSignedPath)
+                    reviewerExists: fs.existsSync(reviewerSignedPath),
+                    deanApproved: !!thesis.data.deanSignedDate
                 }
             });
             return;
         }
 
         // Set headers for multipart response
-        const boundary = '----StudentSignedReviewBoundary';
+        const boundary = '----FinalSignedReviewBoundary';
         res.setHeader('Content-Type', `multipart/mixed; boundary=${boundary}`);
         res.setHeader('Content-Disposition', `attachment; filename="final_signed_reviews_${student.id}.multipart"`);
 
@@ -708,3 +737,5 @@ export const uploadStudentSignedReviewReviewer = async (req: Request, res: Respo
         res.status(500).json({ error: "Failed to upload signed review" })
     }
 }
+
+

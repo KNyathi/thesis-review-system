@@ -45,7 +45,7 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
         const isThesisNotEvaluated = thesis.data.status !== 'evaluated';
 
         // Get paths and check existence
-        const supervisorReviewPath = thesis.data.supervisorSignedReviewPath;
+        const supervisorReviewPath = thesis.data.reviewerSignedReview1Path;
         const reviewerReviewPath = thesis.data.reviewerSignedReviewPath;
 
         const hasSupervisorFile = supervisorReviewPath && fs.existsSync(supervisorReviewPath);
@@ -240,7 +240,7 @@ export const uploadSignedHodReviews = async (req: Request, res: Response) => {
         
         const isSupervisorSigned = currentIterationData?.supervisorReview?.status === 'signed';
         const isThesisNotEvaluated = thesis.data.status !== 'evaluated';
-        const hasSupervisorFile = thesis.data.supervisorSignedReviewPath && fs.existsSync(thesis.data.supervisorSignedReviewPath);
+        const hasSupervisorFile = thesis.data.reviewerSignedReview1Path && fs.existsSync(thesis.data.reviewerSignedReview1Path);
         const hasReviewerFile = thesis.data.reviewerSignedReviewPath && fs.existsSync(thesis.data.reviewerSignedReviewPath);
 
         if (!isSupervisorSigned || !isThesisNotEvaluated || !hasSupervisorFile || !hasReviewerFile) {

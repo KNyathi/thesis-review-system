@@ -57,17 +57,38 @@ export async function generateConsultantReviewPDF(
   const font = await pdfDoc.embedFont(regularFontBytes);
   const boldFont = await pdfDoc.embedFont(boldFontBytes);
 
+  // Page counter - start from 0, we'll track ALL pages
+  let pageCount = 0;
+  const MAX_PAGES = 5;
+
+  // Function to check page count and throw error if exceeded
+  const checkPageLimit = () => {
+    if (pageCount > MAX_PAGES) {
+      throw new Error(`PDF generation exceeded maximum page limit of ${MAX_PAGES} pages. Please reduce the content volume.`);
+    }
+  };
+
+  // Function to add page with limit check
+  const addPageWithLimitCheck = (): PDFPage => {
+    checkPageLimit();
+    const newPage = pdfDoc.addPage([595, 842]);
+    pageCount = pdfDoc.getPageCount();
+    checkPageLimit(); // Check again after adding
+    return newPage;
+  };
+
   // Create Component 1: Title Page
   await createTitlePage(pdfDoc, font, boldFont, thesis, student);
+  pageCount = pdfDoc.getPageCount();
+  checkPageLimit();
 
   // Create Component 2: Volume Exercise Page
   await createVolumeExercisePage(pdfDoc, font, boldFont, thesis, student);
+  pageCount = pdfDoc.getPageCount();
+  checkPageLimit();
 
-
-  // Add a new page
-  const page = pdfDoc.addPage([595, 842]); // A4 size
-
-
+  // Add a new page for the main content
+  const page = addPageWithLimitCheck();
 
   // Improved text wrapping function with basic bold support
   const drawWrappedText = (
@@ -334,7 +355,7 @@ export async function generateConsultantReviewPDF(
   page.drawText("ОТЗЫВ", {
     x: centerX - titleWidth / 2,
     y: currentY,
-    size: 12,
+    size: 16,
     font: boldFont,
   });
 
@@ -398,7 +419,6 @@ export async function generateConsultantReviewPDF(
     boldFont,
     18
   );
-
 
   // Reviewer information with wrapping - only show for supervisors
   if (isSupervisor) {
@@ -587,9 +607,9 @@ export async function generateConsultantReviewPDF(
         rowsToDraw++;
       }
 
-      // If no rows can fit, create new page
+      // If no rows can fit, create new page with limit check
       if (rowsToDraw === 0) {
-        currentPage = pdfDoc.addPage([595, 842]);
+        currentPage = addPageWithLimitCheck();
         currentTableYStart = 780;
         currentY = currentTableYStart;
 
@@ -749,7 +769,7 @@ export async function generateConsultantReviewPDF(
   // Section 2: Results - Now we use the correct currentPage and currentY
   // Check if we need a new page for Section 2
   if (currentY < 150) {
-    currentPage = pdfDoc.addPage([595, 842]);
+    currentPage = addPageWithLimitCheck();
     currentY = 780;
   }
 
@@ -779,7 +799,7 @@ export async function generateConsultantReviewPDF(
 
     // Check if we need a new page before drawing
     if (currentY < 50) {
-      currentPage = pdfDoc.addPage([595, 842]);
+      currentPage = addPageWithLimitCheck();
       currentY = 780;
     }
 
@@ -800,7 +820,7 @@ export async function generateConsultantReviewPDF(
   currentY -= 20;
 
   if (currentY < 100) {
-    currentPage = pdfDoc.addPage([595, 842]);
+    currentPage = addPageWithLimitCheck();
     currentY = 780;
   }
 
@@ -833,7 +853,7 @@ export async function generateConsultantReviewPDF(
 
     // Check page space before drawing
     if (currentY < 50) {
-      currentPage = pdfDoc.addPage([595, 842]);
+      currentPage = addPageWithLimitCheck();
       currentY = 780;
     }
 
@@ -854,7 +874,7 @@ export async function generateConsultantReviewPDF(
   currentY -= 20;
 
   if (currentY < 100) {
-    currentPage = pdfDoc.addPage([595, 842]);
+    currentPage = addPageWithLimitCheck();
     currentY = 780;
   }
 
@@ -875,7 +895,7 @@ export async function generateConsultantReviewPDF(
 
     // Check if we need a new page before drawing
     if (currentY < 50) {
-      currentPage = pdfDoc.addPage([595, 842]);
+      currentPage = addPageWithLimitCheck();
       currentY = 780;
     }
 
@@ -895,7 +915,7 @@ export async function generateConsultantReviewPDF(
   // Conclusion section
   currentY -= 30;
   if (currentY < 150) {
-    currentPage = pdfDoc.addPage([595, 842]);
+    currentPage = addPageWithLimitCheck();
     currentY = 780;
   }
 
@@ -908,11 +928,15 @@ export async function generateConsultantReviewPDF(
 
   currentY -= 20;
 
-  const isCompleteTextRu = thesis.consultantAssessment!.section2.conclusion.isComplete ? "Да" : "Нет";
-  const isDeservingTextRu = thesis.consultantAssessment!.section2.conclusion.isDeserving ? "Да" : "Нет";
+  const degreeLevel = 
+  student.degreeLevel === 'bachelors' ? 'Бакалавра' :
+  student.degreeLevel === 'masters' ? 'Магистра' :
+  student.degreeLevel === 'specialist' ? 'Специалиста' :
+  '_____'; 
 
-  // Use **text** for bold formatting
-  const russianConclusion = `Заключение: Считаю, что данная выпускная квалификационная работа является законченной работой - **${isCompleteTextRu}**, а её автор заслуживает присуждения квалификации ${student.degreeLevel} - **${isDeservingTextRu}**`;
+  // Russian conclusion with bold formatting
+  const russianConclusion = `**Заключение:** Считаю, что данная выпускная квалификационная работа является законченной работой а её автор заслуживает присуждения квалификации ${degreeLevel} по направлению ${student.subjectArea}`;
+
   currentY = drawWrappedText(
     currentPage,
     russianConclusion,
@@ -923,7 +947,6 @@ export async function generateConsultantReviewPDF(
     font,
     15
   );
-
 
   currentY -= 40;
 
@@ -946,14 +969,13 @@ export async function generateConsultantReviewPDF(
 
     // Check if we need a new page for signatures
     if (currentY - signatureConfig.blockHeight < 50) {
-      currentPage = pdfDoc.addPage([595, 842]);
+      currentPage = addPageWithLimitCheck();
       currentY = 780;
     }
 
     // Determine which signatures to show
     const signatures = [];
     if (isSupervisor) {
-
       signatures.push({
         role: "(Ф.И.О научного руководителя)",
         name: currentReviewer.fullName,
@@ -961,7 +983,6 @@ export async function generateConsultantReviewPDF(
         roleType: 'supervisor'
       });
     }
-
 
     // Draw each signature block with proper spacing
     signatures.forEach((signature, index) => {
@@ -978,7 +999,7 @@ export async function generateConsultantReviewPDF(
       currentPage.drawText(signature.label, {
         x: signatureConfig.leftX,
         y: yPos - signatureConfig.labelYOffset,
-        size: 9,
+        size: 8,
         font: font,
       });
 
@@ -993,7 +1014,7 @@ export async function generateConsultantReviewPDF(
       currentPage.drawText(signature.role, {
         x: signatureConfig.rightX,
         y: yPos - 15,
-        size: 9,
+        size: 8,
         font: font,
       });
     });
@@ -1009,6 +1030,12 @@ export async function generateConsultantReviewPDF(
     student,
     isSupervisor
   );
+
+  // Final page count check before saving
+  pageCount = pdfDoc.getPageCount();
+  if (pageCount > MAX_PAGES) {
+    throw new Error(`PDF generation exceeded maximum page limit of ${MAX_PAGES} pages. Please reduce the content volume.`);
+  }
 
   // Save PDF to file
   const pdfBytes = await pdfDoc.save();

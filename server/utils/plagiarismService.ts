@@ -334,7 +334,7 @@ export class PlagiarismService {
                 shortReportUrl: webReportUrls.shortReport,
                 readonlyReportUrl: webReportUrls.readonlyReport,
                 checkedFileUrl: checkedFilePath,
-                isApproved: similarityScore <= 15,
+                isApproved: similarityScore <= 35,
                 downloadedPdfUrl
             });
 

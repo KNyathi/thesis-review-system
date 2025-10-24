@@ -509,3 +509,62 @@ export const downloadSignedReview = async (req: Request, res: Response) => {
         res.status(500).json({ error: "Failed to download Dean signed reviews" });
     }
 };
+
+
+export const approveDefense = async (req: Request, res: Response) => {
+    try {
+        const dean = req.user as AuthenticatedUser & IDean;
+        const { thesisId } = req.params;
+
+        // Find thesis
+        const thesis = await thesisModel.getThesisById(thesisId);
+        if (!thesis) {
+            res.status(404).json({ error: "Thesis not found" });
+            return;
+        }
+
+        // Verify Dean has access to this faculty
+        const student = await userModel.getUserById(thesis.data.student);
+        if (!student || (student as IStudent).faculty !== dean.faculty) {
+            res.status(403).json({ error: "Access denied: Not your faculty student" });
+            return;
+        }
+
+
+        // Check if HOD has signed the reviews (prerequisite)
+        if (!thesis.data.hodSignedSupervisorPath || !thesis.data.hodSignedReviewerPath) {
+            res.status(400).json({ 
+                error: "HOD must sign reviews first",
+                details: {
+                    hodSupervisorSigned: !!thesis.data.hodSignedSupervisorPath,
+                    hodReviewerSigned: !!thesis.data.hodSignedReviewerPath
+                }
+            });
+            return;
+        }
+
+        // Update thesis with Dean signed PDF paths and clear other paths
+        await thesisModel.updateThesis(thesisId, {
+            deanSignedDate: new Date(),
+            // Clear all other review file paths
+            supervisorSignedReviewPath: undefined,
+            reviewerSignedReviewPath: undefined,
+            hodSignedSupervisorPath: undefined,
+            hodSignedReviewerPath: undefined,
+            reviewPdfConsultant: undefined,
+            reviewPdfSupervisor: undefined,
+            reviewPdfReviewer: undefined,
+            consultantSignedReviewPath: undefined
+        });
+
+        res.json({
+            success: true,
+            message: "Thesis approved successfully by Dean",
+         
+        });
+
+    } catch (error) {
+        console.error("Error approving thesis by Dean:", error);
+        res.status(500).json({ error: "Failed to approve thesis" });
+    }
+};

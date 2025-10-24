@@ -27,8 +27,11 @@ hodRouter.post(
     uploadSignedHodReviews,
 ) //work in progress
 
-hodRouter.post("/signed-review-hod/:thesisId", authenticate, isHeadOfDepartment, signedReview) //work in progress
+hodRouter.post("/signed-review-hod/:thesisId", authenticate, isHeadOfDepartment, hodUpload.fields([
+    { name: "supervisorReview", maxCount: 1 },
+    { name: "reviewerReview", maxCount: 1 }
+]), signedReview) //work in progress
 
-hodRouter.get("/download-signed-review-hod/:thesisId", authenticate,  isConsultantReview, downloadSignedReview) //work in progress
+hodRouter.get("/download-signed-review-hod/:thesisId", authenticate, isConsultantReview, downloadSignedReview) //work in progress
 
 export default hodRouter;

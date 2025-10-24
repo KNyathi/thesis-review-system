@@ -21,7 +21,7 @@ export interface IStudent extends IUserBase {
   subjectArea: string;
   workload?: 'штатная' | 'почасовая';
   educationalProgram: string;
-  degreeLevel: 'bachelors' | 'masters' | 'specialist';
+  degreeLevel: 'bachelors' | 'masters' | 'specialist' | 'Бакалавриат';
   workType?: 'бакалаврская работа' | 'Дипломный проект' | 'дипломная работа' | 'магистерская дисссертация';
   thesisTopic?: string;
   thesisStatus?: 'not_submitted' | 'submitted' | 'with_consultant' | 'with_supervisor' | 'under_review' | 'evaluated' | 'revisions_requested';

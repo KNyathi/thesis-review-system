@@ -22,13 +22,11 @@ export async function generateReviewPDF(
   reviewer: IReviewer
 ): Promise<string> {
 
-
   // Get student data
   const student = await Student.findById(userModel, thesis.student);
   if (!student) {
     throw new Error("Student not found");
   }
-
 
   const deans = await userModel.getDeans();
   const dean = deans.find(h => h.faculty === student.faculty);
@@ -64,6 +62,13 @@ export async function generateReviewPDF(
   // Embed both fonts
   const font = await pdfDoc.embedFont(regularFontBytes);
   const boldFont = await pdfDoc.embedFont(boldFontBytes);
+
+  // Function to check if we've exceeded 2 pages and throw error if needed
+  const checkPageLimit = (currentPageCount: number, operation: string) => {
+    if (currentPageCount > 2) {
+      throw new Error(`Content exceeds maximum allowed pages (2). Cannot ${operation}. Please shorten your content.`);
+    }
+  };
 
   // Improved text wrapping function with basic bold support
   const drawWrappedText = (
@@ -326,11 +331,11 @@ export async function generateReviewPDF(
   currentY -= 30;
 
   // Title - ОТЗЫВ
-  const titleWidth = boldFont.widthOfTextAtSize("ОТЗЫВ", 12);
-  page.drawText("ОТЗЫВ", {
+  const titleWidth = boldFont.widthOfTextAtSize("РЕЦЕНЗИЯ", 16);
+  page.drawText("РЕЦЕНЗИЯ", {
     x: centerX - titleWidth / 2,
     y: currentY,
-    size: 12,
+    size: 16,
     font: boldFont,
   });
 
@@ -348,8 +353,6 @@ export async function generateReviewPDF(
   );
 
   currentY -= 30;
-
-
 
   // Student information section with proper wrapping
   const leftMargin = 50;
@@ -397,7 +400,6 @@ export async function generateReviewPDF(
     18
   );
 
-
   const reviewerRole = "Рецензент";
   const reviewerPosition = 'position' in reviewer ? reviewer.position : '';
   const reviewerInfo = `${reviewer.fullName}, ${reviewer.institution}${reviewerPosition ? ', ' + reviewerPosition : ''}`;
@@ -418,7 +420,7 @@ export async function generateReviewPDF(
   currentY -= 50;
 
   // Section 1 - Assessment criteria
-  const assessment = thesis.consultantAssessment!.section1;
+  const assessment = thesis.reviewerAssessment!.section1;
 
   // Table rows
   const criteria = [
@@ -456,7 +458,7 @@ export async function generateReviewPDF(
     },
   ];
 
-    // Table configuration
+  // Table configuration
   let currentPage = page;
   const column1X = 50;
   const column2X = 400;
@@ -582,8 +584,9 @@ export async function generateReviewPDF(
         rowsToDraw++;
       }
 
-      // If no rows can fit, create new page
+      // If no rows can fit, check if we can create a new page
       if (rowsToDraw === 0) {
+        checkPageLimit(pdfDoc.getPageCount() + 1, "add table content");
         currentPage = pdfDoc.addPage([595, 842]);
         currentTableYStart = 780;
         currentY = currentTableYStart;
@@ -744,6 +747,7 @@ export async function generateReviewPDF(
   // Section 2: Results - Now we use the correct currentPage and currentY
   // Check if we need a new page for Section 2
   if (currentY < 150) {
+    checkPageLimit(pdfDoc.getPageCount() + 1, "add Section 2");
     currentPage = pdfDoc.addPage([595, 842]);
     currentY = 780;
   }
@@ -769,14 +773,15 @@ export async function generateReviewPDF(
   });
   currentY -= 20;
 
-  thesis.consultantAssessment!.section2.questions.forEach((question: any, i: number) => {
-    const questionText = `${i + 1}. ${question}`;
-
+  thesis.reviewerAssessment!.section2.questions.forEach((question: any, i: number) => {
     // Check if we need a new page before drawing
     if (currentY < 50) {
+      checkPageLimit(pdfDoc.getPageCount() + 1, "add questions");
       currentPage = pdfDoc.addPage([595, 842]);
       currentY = 780;
     }
+
+    const questionText = `${i + 1}. ${question}`;
 
     // Draw the question with wrapping
     currentY = drawWrappedText(
@@ -795,6 +800,7 @@ export async function generateReviewPDF(
   currentY -= 20;
 
   if (currentY < 100) {
+    checkPageLimit(pdfDoc.getPageCount() + 1, "add advantages/disadvantages section");
     currentPage = pdfDoc.addPage([595, 842]);
     currentY = 780;
   }
@@ -819,18 +825,19 @@ export async function generateReviewPDF(
   });
   currentY -= 20;
 
-  const advantages = Array.isArray(thesis.consultantAssessment!.section2.advantages)
-    ? thesis.consultantAssessment!.section2.advantages
-    : [thesis.consultantAssessment!.section2.advantages].filter(Boolean);
+  const advantages = Array.isArray(thesis.reviewerAssessment!.section2.advantages)
+    ? thesis.reviewerAssessment!.section2.advantages
+    : [thesis.reviewerAssessment!.section2.advantages].filter(Boolean);
 
   advantages.forEach((advantage: any, index: number) => {
-    const itemText = `${index + 1}. ${advantage}`;
-
     // Check page space before drawing
     if (currentY < 50) {
+      checkPageLimit(pdfDoc.getPageCount() + 1, "add advantages");
       currentPage = pdfDoc.addPage([595, 842]);
       currentY = 780;
     }
+
+    const itemText = `${index + 1}. ${advantage}`;
 
     // Draw the advantage with text wrapping
     currentY = drawWrappedText(
@@ -849,6 +856,7 @@ export async function generateReviewPDF(
   currentY -= 20;
 
   if (currentY < 100) {
+    checkPageLimit(pdfDoc.getPageCount() + 1, "add disadvantages section");
     currentPage = pdfDoc.addPage([595, 842]);
     currentY = 780;
   }
@@ -861,18 +869,19 @@ export async function generateReviewPDF(
   });
   currentY -= 20;
 
-  const disadvantages = Array.isArray(thesis.consultantAssessment!.section2.disadvantages)
-    ? thesis.consultantAssessment!.section2.disadvantages
-    : [thesis.consultantAssessment!.section2.disadvantages].filter(Boolean);
+  const disadvantages = Array.isArray(thesis.reviewerAssessment!.section2.disadvantages)
+    ? thesis.reviewerAssessment!.section2.disadvantages
+    : [thesis.reviewerAssessment!.section2.disadvantages].filter(Boolean);
 
   disadvantages.forEach((disadvantage: any, index: number) => {
-    const itemText = `${index + 1}. ${disadvantage}`;
-
     // Check if we need a new page before drawing
     if (currentY < 50) {
+      checkPageLimit(pdfDoc.getPageCount() + 1, "add disadvantages");
       currentPage = pdfDoc.addPage([595, 842]);
       currentY = 780;
     }
+
+    const itemText = `${index + 1}. ${disadvantage}`;
 
     // Draw the disadvantage with wrapping
     currentY = drawWrappedText(
@@ -890,6 +899,7 @@ export async function generateReviewPDF(
   // Conclusion section
   currentY -= 30;
   if (currentY < 150) {
+    checkPageLimit(pdfDoc.getPageCount() + 1, "add conclusion section");
     currentPage = pdfDoc.addPage([595, 842]);
     currentY = 780;
   }
@@ -900,7 +910,6 @@ export async function generateReviewPDF(
     size: 12,
     font: boldFont,
   });
-
 
   currentY -= 20;
 
@@ -924,11 +933,15 @@ export async function generateReviewPDF(
 
   currentY -= 10;
 
-  const isCompleteTextRu = thesis.reviewerAssessment!.section2.conclusion.isComplete ? "**Да**" : "**Нет**";
-  const isDeservingTextRu = thesis.reviewerAssessment!.section2.conclusion.isDeserving ? "**Да**" : "**Нет**";
+  const degreeLevel =
+    student.degreeLevel === 'bachelors' ? 'Бакалавра' :
+      student.degreeLevel === 'masters' ? 'Магистра' :
+        student.degreeLevel === 'specialist' ? 'Специалиста' :
+          '_____';
 
   // Russian conclusion with bold formatting
-  const russianConclusion = `**Заключение:** Считаю, что данная выпускная квалификационная работа является законченной работой - ${isCompleteTextRu}, а её автор заслуживает присуждения квалификации ${student.degreeLevel} - ${isDeservingTextRu}`;
+  const russianConclusion = `**Заключение:** Считаю, что данная выпускная квалификационная работа является законченной работой а её автор заслуживает присуждения квалификации ${degreeLevel} по направлению ${student.subjectArea}`;
+
   currentY = drawWrappedText(
     currentPage,
     russianConclusion,
@@ -959,28 +972,18 @@ export async function generateReviewPDF(
     };
 
     // Check if we need a new page for signatures
-    if (currentY - 3 * signatureConfig.blockHeight < 50) {
+    if (currentY - signatureConfig.blockHeight < 50) {
+      checkPageLimit(pdfDoc.getPageCount() + 1, "add signature section");
       currentPage = pdfDoc.addPage([595, 842]);
       currentY = 800;
     }
-
 
     const signatures = [
       {
         role: "(Ф.И.О рецензента)",
         name: reviewer.fullName,
         label: "(эл. подпись рецензента)",
-      },
-      {
-        role: "(Ф.И.О обучающегося)",
-        name: student.fullName,
-        label: "(эл. подпись обучающегося)",
-      },
-      {
-        role: "(Ф.И.О декана)",
-        name: deanName,
-        label: "(эл. подпись декана)",
-      },
+      }
     ];
 
     // Draw each signature block with proper spacing
@@ -998,7 +1001,7 @@ export async function generateReviewPDF(
       currentPage.drawText(signature.label, {
         x: signatureConfig.leftX,
         y: yPos - signatureConfig.labelYOffset,
-        size: 9,
+        size: 8,
         font: font,
       });
 
@@ -1013,7 +1016,7 @@ export async function generateReviewPDF(
       currentPage.drawText(signature.role, {
         x: signatureConfig.rightX,
         y: yPos - 15,
-        size: 9,
+        size: 8,
         font: font,
       });
     });
