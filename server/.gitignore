@@ -131,8 +131,3 @@ dist
 .yarn/install-state.gz
 .pnp.*
 .env
-
-# VS Code
-.vscode/
-
-
