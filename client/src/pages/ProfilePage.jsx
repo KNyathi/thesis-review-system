@@ -14,7 +14,7 @@ import {
   FiTrash2,
   FiAlertTriangle,
   FiInfo,
-  FiPlus, // Add this import
+  FiPlus,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
@@ -36,8 +36,12 @@ const ProfilePage = () => {
     thesisTopic: "",
     positions: [],
     position: "",
+    department: "",
+    // Новые поля для новых ролей
+    newRoleField1: "",
+    newRoleField2: "",
   })
-  const [originalData, setOriginalData] = useState({}) // Store original data for comparison
+  const [originalData, setOriginalData] = useState({})
   const [isEditing, setIsEditing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [passwordData, setPasswordData] = useState({
@@ -68,11 +72,15 @@ const ProfilePage = () => {
         educationalProgram: user.educationalProgram || "",
         degreeLevel: user.degreeLevel || "bachelors",
         thesisTopic: user.thesisTopic || "",
-        positions: user.positions && user.positions.length > 0 ? user.positions : [""], // Ensure at least one empty position
+        positions: user.positions && user.positions.length > 0 ? user.positions : [""],
         position: user.position || "",
+        department: user.department || "",
+        // Новые поля для новых ролей
+        newRoleField1: user.newRoleField1 || "",
+        newRoleField2: user.newRoleField2 || "",
       }
       setProfileData(userData)
-      setOriginalData(userData) // Store original data
+      setOriginalData(userData)
     }
   }, [user])
 
@@ -81,35 +89,20 @@ const ProfilePage = () => {
     setProfileData((prev) => ({ ...prev, [name]: value }))
   }
 
-  // Remove this function:
-  // const handlePositionsChange = (e) => {
-  //   const positions = e.target.value
-  //     .split(",")
-  //     .map((pos) => pos.trim())
-  //     .filter(Boolean)
-  //   setProfileData((prev) => ({ ...prev, positions }))
-  // }
-
-  // Check if any changes were made
   const hasChanges = () => {
     const currentData = { ...profileData }
     const original = { ...originalData }
-
-    // Compare all fields
     return JSON.stringify(currentData) !== JSON.stringify(original)
   }
 
   const handleSaveProfile = async () => {
-    // Check if any changes were made
     if (!hasChanges()) {
-      showToast("No changes were made to save", "info")
+      showToast("Нет изменений для сохранения", "info")
       return
     }
 
     try {
       setIsLoading(true)
-
-      // Only send changed fields to reduce payload
       const changedFields = {}
       Object.keys(profileData).forEach((key) => {
         if (JSON.stringify(profileData[key]) !== JSON.stringify(originalData[key])) {
@@ -118,25 +111,19 @@ const ProfilePage = () => {
       })
 
       await api.patch("/profile", changedFields)
-
-      // Refresh user data to get the latest information
       await refreshUser()
-
-      // Update original data to current data
       setOriginalData({ ...profileData })
-
-      showToast("Profile updated successfully!", "success")
+      showToast("Профиль успешно обновлен!", "success")
       setIsEditing(false)
     } catch (error) {
       console.error("Profile update error:", error)
-      showToast(error.response?.data?.error || "Failed to update profile", "error")
+      showToast(error.response?.data?.error || "Не удалось обновить профиль", "error")
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleCancelEdit = () => {
-    // Reset to original data
     setProfileData({ ...originalData })
     setIsEditing(false)
   }
@@ -148,12 +135,12 @@ const ProfilePage = () => {
 
   const handleChangePassword = async () => {
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      showToast("New passwords do not match", "error")
+      showToast("Новые пароли не совпадают", "error")
       return
     }
 
     if (passwordData.newPassword.length < 6) {
-      showToast("Password must be at least 6 characters long", "error")
+      showToast("Пароль должен содержать минимум 6 символов", "error")
       return
     }
 
@@ -164,14 +151,14 @@ const ProfilePage = () => {
         newPassword: passwordData.newPassword,
       })
 
-      showToast("Password changed successfully!", "success")
+      showToast("Пароль успешно изменен!", "success")
       setPasswordData({
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
       })
     } catch (error) {
-      showToast(error.response?.data?.error || "Failed to change password", "error")
+      showToast(error.response?.data?.error || "Не удалось изменить пароль", "error")
     } finally {
       setIsChangingPassword(false)
     }
@@ -179,7 +166,7 @@ const ProfilePage = () => {
 
   const handleDeleteAccount = async () => {
     if (!deletePassword) {
-      showToast("Please enter your password to confirm deletion", "error")
+      showToast("Введите пароль для подтверждения удаления", "error")
       return
     }
 
@@ -189,11 +176,11 @@ const ProfilePage = () => {
         data: { password: deletePassword },
       })
 
-      showToast("Account deleted successfully", "success")
+      showToast("Аккаунт успешно удален", "success")
       logout()
       navigate("/register", { replace: true })
     } catch (error) {
-      showToast(error.response?.data?.error || "Failed to delete account", "error")
+      showToast(error.response?.data?.error || "Не удалось удалить аккаунт", "error")
     } finally {
       setIsDeletingAccount(false)
       setShowDeleteModal(false)
@@ -212,98 +199,95 @@ const ProfilePage = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#372579] border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-white font-['Montserrat']">
       <Toast {...toast} onClose={hideToast} />
 
-      {/* Top Navigation Bar */}
-      <div className="bg-gray-900 border-b border-gray-800 p-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+      <div className="bg-white border-b border-gray-200 p-4 shadow-sm">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
           <button
             onClick={() => navigate(`/${user.role}`)}
-            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+            className="flex items-center gap-2 text-gray-600 hover:text-[#372579] transition-colors font-medium"
           >
-            <FiX className="w-4 h-4" />
-            Back to Dashboard
+            <FiX className="w-5 h-5" />
+            Назад к панели
           </button>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium"
           >
             <FiLogOut className="w-4 h-4" />
-            Logout
+            Выйти
           </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-white font-semibold text-lg">
+      <div className="p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-10">
+            <div className="w-20 h-20 bg-gradient-to-br from-[#372579] to-[#5a3d9f] rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <span className="text-white font-bold text-2xl font-['Comfortaa']">
                 {user.fullName
                   ?.split(" ")
                   .map((name) => name[0])
                   .join("")
                   .toUpperCase()
-                  .slice(0, 2) || "U"}
+                  .slice(0, 2) || "П"}
               </span>
             </div>
-            <h1 className="text-2xl font-semibold text-white mb-2">User Profile</h1>
-            <p className="text-gray-400">Manage your account information</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2 font-['Comfortaa']">Личный кабинет</h1>
+            <p className="text-gray-600">Управление информацией аккаунта</p>
           </div>
 
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Profile Information */}
-            <div className="bg-gray-900 rounded-lg border border-gray-800">
-              <div className="p-6 border-b border-gray-800">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="p-6 border-b border-gray-200">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-white">Profile Information</h2>
+                  <h2 className="text-xl font-bold text-gray-900 font-['Comfortaa']">Информация профиля</h2>
                   {!isEditing ? (
                     <button
                       onClick={() => setIsEditing(true)}
-                      className="flex items-center gap-2 px-3 py-2 bg-white text-black rounded-lg hover:bg-gray-100 transition-colors text-sm"
+                      className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium"
                     >
                       <FiEdit className="w-4 h-4" />
-                      Edit Profile
+                      Редактировать
                     </button>
                   ) : (
                     <div className="flex gap-2">
                       <button
                         onClick={handleCancelEdit}
-                        className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
                       >
                         <FiX className="w-4 h-4" />
-                        Cancel
+                        Отмена
                       </button>
                       <button
                         onClick={handleSaveProfile}
                         disabled={isLoading}
-                        className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50"
+                        className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium disabled:opacity-50"
                       >
                         {isLoading ? (
                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         ) : (
                           <FiSave className="w-4 h-4" />
                         )}
-                        Save Changes
+                        Сохранить
                       </button>
                     </div>
                   )}
                 </div>
                 {isEditing && (
-                  <div className="mt-3 p-3 bg-blue-900/20 border border-blue-800 rounded-lg">
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex items-center gap-2">
-                      <FiInfo className="w-4 h-4 text-blue-400" />
-                      <p className="text-blue-400 text-sm">
-                        {hasChanges() ? "You have unsaved changes" : "No changes detected"}
+                      <FiInfo className="w-4 h-4 text-blue-600" />
+                      <p className="text-blue-700 text-sm font-medium">
+                        {hasChanges() ? "Есть несохраненные изменения" : "Изменений не обнаружено"}
                       </p>
                     </div>
                   </div>
@@ -311,25 +295,25 @@ const ProfilePage = () => {
               </div>
 
               <div className="p-6 space-y-4">
-                {/* Email Address */}
+                {/* Email */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
                   <div className="relative">
                     <FiMail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <input
                       type="email"
                       name="email"
                       value={profileData.email}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent"
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent"
                       disabled
                     />
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
+                  <p className="text-xs text-gray-500 mt-1">Email нельзя изменить</p>
                 </div>
 
                 {/* Full Name */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Full Name</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">ФИО</label>
                   <div className="relative">
                     <FiUser className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <input
@@ -338,14 +322,14 @@ const ProfilePage = () => {
                       value={profileData.fullName}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
                     />
                   </div>
                 </div>
 
                 {/* Institution */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Institution</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Учебное заведение</label>
                   <div className="relative">
                     <FiBook className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <input
@@ -354,7 +338,7 @@ const ProfilePage = () => {
                       value={profileData.institution}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
                     />
                   </div>
                 </div>
@@ -364,82 +348,206 @@ const ProfilePage = () => {
                   <>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Faculty</label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Факультет</label>
                         <input
                           type="text"
                           name="faculty"
                           value={profileData.faculty}
                           onChange={handleChange}
                           disabled={!isEditing}
-                          placeholder="e.g. инcтитут прикладных компьютерных наук"
-                          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
+                          placeholder="Например: ИПКН"
+                          className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Group</label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Группа</label>
                         <input
                           type="text"
                           name="group"
                           value={profileData.group}
                           onChange={handleChange}
                           disabled={!isEditing}
-                          placeholder="e.g. M4255"
-                          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
+                          placeholder="Например: M4255"
+                          className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Subject Area</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Направление</label>
                       <input
                         type="text"
                         name="subjectArea"
                         value={profileData.subjectArea}
                         onChange={handleChange}
                         disabled={!isEditing}
-                        placeholder="e.g. 27.04.05 Инноватика"
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
+                        placeholder="Например: 27.04.05 Инноватика"
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Educational Program</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Образовательная программа
+                      </label>
                       <input
                         type="text"
                         name="educationalProgram"
                         value={profileData.educationalProgram}
                         onChange={handleChange}
                         disabled={!isEditing}
-                        placeholder="e.g. Искусственный интеллект"
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
+                        placeholder="Например: Искусственный интеллект"
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Degree Level</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Уровень образования</label>
                       <select
                         name="degreeLevel"
                         value={profileData.degreeLevel}
                         onChange={handleChange}
                         disabled={!isEditing}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
                       >
-                        <option value="bachelors">Bachelors</option>
-                        <option value="masters">Masters</option>
-                        <option value="specialist">Specialist</option>
+                        <option value="bachelors">Бакалавриат</option>
+                        <option value="masters">Магистратура</option>
+                        <option value="specialist">Специалитет</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Thesis Topic</label>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Тема ВКР</label>
                       <input
                         type="text"
                         name="thesisTopic"
                         value={profileData.thesisTopic}
                         onChange={handleChange}
                         disabled={!isEditing}
-                        placeholder="Enter thesis topic"
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
+                        placeholder="Введите тему ВКР"
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Consultant-specific fields */}
+                {user.role === "consultant" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Должность</label>
+                        <input
+                          type="text"
+                          name="position"
+                          value={profileData.position}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          placeholder="Например: Ведущий консультант"
+                          className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Кафедра</label>
+                        <input
+                          type="text"
+                          name="department"
+                          value={profileData.department}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          placeholder="Например: Кафедра ИТ"
+                          className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Факультет</label>
+                      <input
+                        type="text"
+                        name="faculty"
+                        value={profileData.faculty}
+                        onChange={handleChange}
+                        disabled={!isEditing}
+                        placeholder="Например: ИПКН"
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Dean-specific fields */}
+                {user.role === "dean" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Должность</label>
+                        <input
+                          type="text"
+                          name="position"
+                          value={profileData.position}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          placeholder="Например: Декан факультета"
+                          className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Факультет</label>
+                        <input
+                          type="text"
+                          name="faculty"
+                          value={profileData.faculty}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          placeholder="Например: ИПКН"
+                          className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Head of Department-specific fields */}
+                {user.role === "head_of_department" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Должность</label>
+                        <input
+                          type="text"
+                          name="position"
+                          value={profileData.position}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          placeholder="Например: Зав. кафедрой"
+                          className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Факультет</label>
+                        <input
+                          type="text"
+                          name="faculty"
+                          value={profileData.faculty}
+                          onChange={handleChange}
+                          disabled={!isEditing}
+                          placeholder="Например: ИПКН"
+                          className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Кафедра</label>
+                      <input
+                        type="text"
+                        name="department"
+                        value={profileData.department}
+                        onChange={handleChange}
+                        disabled={!isEditing}
+                        placeholder="Например: Кафедра ИТ"
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
                       />
                     </div>
                   </>
@@ -448,7 +556,7 @@ const ProfilePage = () => {
                 {/* Reviewer-specific fields */}
                 {user.role === "reviewer" && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Positions</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Должности</label>
                     <div className="space-y-2">
                       {profileData.positions.map((position, index) => (
                         <div key={index} className="flex gap-2">
@@ -461,8 +569,8 @@ const ProfilePage = () => {
                               setProfileData((prev) => ({ ...prev, positions: newPositions }))
                             }}
                             disabled={!isEditing}
-                            placeholder="Enter position"
-                            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
+                            placeholder="Введите должность"
+                            className="flex-1 bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
                           />
                           {isEditing && profileData.positions.length > 1 && (
                             <button
@@ -471,7 +579,7 @@ const ProfilePage = () => {
                                 const newPositions = profileData.positions.filter((_, i) => i !== index)
                                 setProfileData((prev) => ({ ...prev, positions: newPositions }))
                               }}
-                              className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                              className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
                             >
                               <FiX className="w-4 h-4" />
                             </button>
@@ -488,15 +596,15 @@ const ProfilePage = () => {
                               positions: [...prev.positions, ""],
                             }))
                           }}
-                          className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                          className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium"
                         >
                           <FiPlus className="w-4 h-4" />
-                          Add Position
+                          Добавить должность
                         </button>
                       )}
 
                       {profileData.positions.length === 0 && (
-                        <p className="text-gray-500 text-sm">No positions added</p>
+                        <p className="text-gray-500 text-sm">Должности не добавлены</p>
                       )}
                     </div>
                   </div>
@@ -505,51 +613,79 @@ const ProfilePage = () => {
                 {/* Admin-specific fields */}
                 {user.role === "admin" && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Position</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Должность</label>
                     <input
                       type="text"
                       name="position"
                       value={profileData.position}
                       onChange={handleChange}
                       disabled={!isEditing}
-                      placeholder="Enter position"
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent disabled:opacity-50"
+                      placeholder="Введите должность"
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
                     />
                   </div>
+                )}
+
+                {/* New Role-specific fields */}
+                {user.role === "newRole" && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Новое поле 1</label>
+                      <input
+                        type="text"
+                        name="newRoleField1"
+                        value={profileData.newRoleField1}
+                        onChange={handleChange}
+                        disabled={!isEditing}
+                        placeholder="Введите новое поле 1"
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">Новое поле 2</label>
+                      <input
+                        type="text"
+                        name="newRoleField2"
+                        value={profileData.newRoleField2}
+                        onChange={handleChange}
+                        disabled={!isEditing}
+                        placeholder="Введите новое поле 2"
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent disabled:opacity-60"
+                      />
+                    </div>
+                  </>
                 )}
               </div>
             </div>
 
-            {/* Account Management */}
-            <div className="bg-gray-900 rounded-lg border border-gray-800">
-              <div className="p-6 border-b border-gray-800">
-                <h2 className="text-lg font-semibold text-white">Account Management</h2>
-                <p className="text-gray-400 text-sm">Manage your account security and settings</p>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="p-6 border-b border-gray-200">
+                <h2 className="text-xl font-bold text-gray-900 font-['Comfortaa']">Управление аккаунтом</h2>
+                <p className="text-gray-600 text-sm mt-1">Безопасность и настройки</p>
               </div>
 
               <div className="p-6">
                 <div className="flex items-center justify-center mb-6">
-                  <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center">
-                    <FiLock className="w-8 h-8 text-gray-400" />
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+                    <FiLock className="w-8 h-8 text-[#372579]" />
                   </div>
                 </div>
 
-                <p className="text-center text-gray-300 mb-6">Manage your account security and settings</p>
+                <p className="text-center text-gray-700 mb-6 font-medium">Управление безопасностью аккаунта</p>
 
-                <div className="space-y-4">
-                  <div className="text-sm text-gray-400">
-                    <p>• Change your password to keep your account secure</p>
-                    <p>• Delete your account permanently (this action cannot be undone)</p>
-                  </div>
+                <div className="space-y-3 text-sm text-gray-600 mb-6">
+                  <p>• Измените пароль для защиты аккаунта</p>
+                  <p>• Удалите аккаунт навсегда (действие необратимо)</p>
                 </div>
               </div>
 
               {/* Change Password Section */}
-              <div className="border-t border-gray-800 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Change Password</h3>
+              <div className="border-t border-gray-200 p-6">
+                <h3 className="text-lg font-bold text-gray-900 mb-4 font-['Comfortaa']">Изменить пароль</h3>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Current Password</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Текущий пароль</label>
                     <div className="relative">
                       <FiLock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       <input
@@ -557,12 +693,12 @@ const ProfilePage = () => {
                         name="currentPassword"
                         value={passwordData.currentPassword}
                         onChange={handlePasswordChange}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-10 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent"
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-10 pr-10 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent"
                       />
                       <button
                         type="button"
                         onClick={() => togglePasswordVisibility("current")}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-[#372579]"
                       >
                         {showPasswords.current ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
                       </button>
@@ -570,7 +706,7 @@ const ProfilePage = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Новый пароль</label>
                     <div className="relative">
                       <FiLock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       <input
@@ -578,12 +714,12 @@ const ProfilePage = () => {
                         name="newPassword"
                         value={passwordData.newPassword}
                         onChange={handlePasswordChange}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-10 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent"
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-10 pr-10 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent"
                       />
                       <button
                         type="button"
                         onClick={() => togglePasswordVisibility("new")}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-[#372579]"
                       >
                         {showPasswords.new ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
                       </button>
@@ -591,7 +727,7 @@ const ProfilePage = () => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Подтвердите новый пароль</label>
                     <div className="relative">
                       <FiLock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       <input
@@ -599,12 +735,12 @@ const ProfilePage = () => {
                         name="confirmPassword"
                         value={passwordData.confirmPassword}
                         onChange={handlePasswordChange}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-10 py-2 text-white focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent"
+                        className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-10 pr-10 py-2.5 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent"
                       />
                       <button
                         type="button"
                         onClick={() => togglePasswordVisibility("confirm")}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-[#372579]"
                       >
                         {showPasswords.confirm ? <FiEyeOff className="w-4 h-4" /> : <FiEye className="w-4 h-4" />}
                       </button>
@@ -619,26 +755,26 @@ const ProfilePage = () => {
                       !passwordData.newPassword ||
                       !passwordData.confirmPassword
                     }
-                    className="w-full bg-blue-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1d5f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {isChangingPassword ? (
                       <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                     ) : (
                       <>
                         <FiLock className="w-5 h-5" />
-                        Change Password
+                        Изменить пароль
                       </>
                     )}
                   </button>
 
                   {/* Delete Account Button */}
-                  <div className="pt-4 border-t border-gray-800">
+                  <div className="pt-4 border-t border-gray-200">
                     <button
                       onClick={() => setShowDeleteModal(true)}
-                      className="w-full bg-red-600 text-white font-medium py-2 px-4 rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+                      className="w-full bg-red-500 text-white font-medium py-3 px-4 rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
                     >
                       <FiTrash2 className="w-5 h-5" />
-                      Delete Account
+                      Удалить аккаунт
                     </button>
                   </div>
                 </div>
@@ -648,35 +784,34 @@ const ProfilePage = () => {
         </div>
       </div>
 
-      {/* Delete Account Modal */}
       <Modal
         isOpen={showDeleteModal}
         onClose={() => {
           setShowDeleteModal(false)
           setDeletePassword("")
         }}
-        title="Delete Account"
+        title="Удаление аккаунта"
         size="medium"
       >
         <div className="p-6">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center">
-              <FiAlertTriangle className="w-6 h-6 text-white" />
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+              <FiAlertTriangle className="w-6 h-6 text-red-600" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-white">Delete Account</h3>
-              <p className="text-gray-400">This action cannot be undone</p>
+              <h3 className="text-lg font-bold text-gray-900 font-['Comfortaa']">Удалить аккаунт</h3>
+              <p className="text-gray-600">Это действие необратимо</p>
             </div>
           </div>
 
-          <p className="text-gray-300 mb-6">
-            Are you sure you want to delete your account? This will permanently remove your account and all associated
-            data.
+          <p className="text-gray-700 mb-6">
+            Вы уверены, что хотите удалить свой аккаунт? Это приведет к безвозвратному удалению вашего аккаунта и всех
+            связанных данных.
           </p>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Enter your password to confirm deletion
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Введите пароль для подтверждения удаления
             </label>
             <div className="relative">
               <FiLock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -684,8 +819,8 @@ const ProfilePage = () => {
                 type="password"
                 value={deletePassword}
                 onChange={(e) => setDeletePassword(e.target.value)}
-                placeholder="Enter your password"
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                placeholder="Введите пароль"
+                className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
               />
             </div>
           </div>
@@ -696,21 +831,21 @@ const ProfilePage = () => {
                 setShowDeleteModal(false)
                 setDeletePassword("")
               }}
-              className="flex-1 bg-gray-700 text-white font-medium py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors"
+              className="flex-1 bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-lg hover:bg-gray-300 transition-colors"
             >
-              Cancel
+              Отмена
             </button>
             <button
               onClick={handleDeleteAccount}
               disabled={isDeletingAccount || !deletePassword}
-              className="flex-1 bg-red-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 bg-red-500 text-white font-medium py-3 px-4 rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isDeletingAccount ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
                   <FiTrash2 className="w-5 h-5" />
-                  Delete Account
+                  Удалить аккаунт
                 </>
               )}
             </button>

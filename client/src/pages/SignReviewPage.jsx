@@ -11,7 +11,7 @@ const SignReviewPage = () => {
   const [pdfUrl, setPdfUrl] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
-  const [currentStep, setCurrentStep] = useState(1) // 1: View, 2: Download & Sign, 3: Upload
+  const [currentStep, setCurrentStep] = useState(1)
   const [downloadedFileName, setDownloadedFileName] = useState("")
   const { toast, showToast, hideToast } = useToast()
 
@@ -22,13 +22,13 @@ const SignReviewPage = () => {
   const loadUnsignedReview = async () => {
     try {
       setIsLoading(true)
-      const blob = await thesisAPI.getUnsignedReview(thesisId)
+      const blob = await thesisAPI.getUnsignedConsultantReview(thesisId)
       const url = URL.createObjectURL(blob)
       setPdfUrl(url)
     } catch (error) {
       console.error("Error loading unsigned review:", error)
-      showToast("Failed to load unsigned review", "error")
-      navigate("/reviewer")
+      showToast("Не удалось загрузить unsigned рецензию", "error")
+      navigate("/consultant")
     } finally {
       setIsLoading(false)
     }
@@ -39,7 +39,6 @@ const SignReviewPage = () => {
       const fileName = `review_to_sign_${thesisId}.pdf`
       setDownloadedFileName(fileName)
 
-      // Create download link
       const link = document.createElement("a")
       link.href = pdfUrl
       link.download = fileName
@@ -47,9 +46,8 @@ const SignReviewPage = () => {
       link.click()
       document.body.removeChild(link)
 
-      // Move to next step
       setCurrentStep(2)
-      showToast("PDF downloaded! Please open it in Chrome and add your signature using the drawing tools.", "success")
+      showToast("PDF загружен! Откройте его в Chrome и подпишите, используя инструменты рисования.", "success")
     }
   }
 
@@ -58,33 +56,29 @@ const SignReviewPage = () => {
     if (file && file.type === "application/pdf") {
       uploadSignedReview(file)
     } else {
-      showToast("Please select a valid PDF file", "error")
+      showToast("Пожалуйста, выберите PDF файл", "error")
     }
   }
 
   const uploadSignedReview = async (file) => {
     try {
       setIsSaving(true)
-
-      const formData = new FormData()
-      formData.append("signedReview", file)
-
-      await thesisAPI.uploadSignedReview(thesisId, formData)
-      showToast("Signed review uploaded successfully!", "success")
+      await thesisAPI.uploadSignedConsultantReview(thesisId, file)
+      showToast("Подписанная рецензия загружена успешно!", "success")
 
       setTimeout(() => {
-        navigate("/reviewer")
+        navigate("/consultant")
       }, 1500)
     } catch (error) {
       console.error("Error uploading signed review:", error)
-      showToast("Failed to upload signed review", "error")
+      showToast("Не удалось загрузить подписанную рецензию", "error")
     } finally {
       setIsSaving(false)
     }
   }
 
   const handleCancel = () => {
-    navigate("/reviewer")
+    navigate("/consultant")
   }
 
   const handleBackToStep1 = () => {
@@ -97,7 +91,7 @@ const SignReviewPage = () => {
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Loading unsigned review...</p>
+          <p className="text-gray-400">Загрузка unsigned рецензии...</p>
         </div>
       </div>
     )
@@ -116,9 +110,9 @@ const SignReviewPage = () => {
               className="flex items-center gap-2 px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
             >
               <FiArrowLeft className="w-4 h-4" />
-              Back to Dashboard
+              На панель консультанта
             </button>
-            <h1 className="text-xl font-semibold text-white">Sign Review Document</h1>
+            <h1 className="text-xl font-semibold text-white">Подписание документа рецензии</h1>
           </div>
 
           {/* Step Indicator */}
@@ -126,17 +120,17 @@ const SignReviewPage = () => {
             <div
               className={`px-3 py-1 rounded-full ${currentStep >= 1 ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-400"}`}
             >
-              1. Review
+              1. Рецензия
             </div>
             <div
               className={`px-3 py-1 rounded-full ${currentStep >= 2 ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-400"}`}
             >
-              2. Sign
+              2. Подпись
             </div>
             <div
               className={`px-3 py-1 rounded-full ${currentStep >= 3 ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-400"}`}
             >
-              3. Upload
+              3. Загрузка
             </div>
           </div>
 
@@ -148,7 +142,7 @@ const SignReviewPage = () => {
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
               >
                 <FiDownload className="w-4 h-4" />
-                Download & Sign
+                Загрузить & Подписать
               </button>
             )}
 
@@ -158,14 +152,14 @@ const SignReviewPage = () => {
                   onClick={handleBackToStep1}
                   className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
                 >
-                  Back to Review
+                  Вернуться к рецензии
                 </button>
                 <button
                   onClick={() => setCurrentStep(3)}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
                 >
                   <FiUpload className="w-4 h-4" />
-                  Ready to Upload
+                  Готово к загрузке
                 </button>
               </>
             )}
@@ -176,7 +170,7 @@ const SignReviewPage = () => {
                   onClick={() => setCurrentStep(2)}
                   className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
                 >
-                  Back
+                  Назад
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -188,7 +182,7 @@ const SignReviewPage = () => {
                   ) : (
                     <FiSave className="w-4 h-4" />
                   )}
-                  Upload Signed PDF
+                  Загрузить подписанный PDF
                 </button>
                 <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleFileUpload} className="hidden" />
               </>
@@ -199,7 +193,7 @@ const SignReviewPage = () => {
               className="flex items-center gap-2 px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
             >
               <FiX className="w-4 h-4" />
-              Cancel
+              Отмена
             </button>
           </div>
         </div>
@@ -213,9 +207,9 @@ const SignReviewPage = () => {
             {currentStep === 1 && (
               <>
                 <div className="p-4 border-b border-gray-800">
-                  <h2 className="text-lg font-semibold text-white mb-2">Step 1: Review Document</h2>
+                  <h2 className="text-lg font-semibold text-white mb-2">Шаг 1: Проверьте документ</h2>
                   <p className="text-sm text-gray-400">
-                    Review the document below, then click "Download & Sign" to proceed with signing.
+                    Проверьте документ ниже, а затем нажмите "Загрузить & Подписать" для подписания.
                   </p>
                 </div>
                 <div className="relative bg-white" style={{ height: "80vh" }}>
@@ -234,16 +228,15 @@ const SignReviewPage = () => {
                     <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
                       <FiEdit3 className="w-8 h-8 text-white" />
                     </div>
-                    <h2 className="text-2xl font-semibold text-white mb-2">Sign Your Document</h2>
+                    <h2 className="text-2xl font-semibold text-white mb-2">Подпишите документ</h2>
                     <p className="text-gray-400">
-                      The PDF has been downloaded as{" "}
-                      <span className="text-blue-400 font-mono">{downloadedFileName}</span>
+                      PDF был загружен как <span className="text-blue-400 font-mono">{downloadedFileName}</span>
                     </p>
                   </div>
 
                   <div className="bg-gray-800 rounded-lg p-6 mb-8">
                     <h3 className="text-lg font-semibold text-white mb-4">
-                      📝 How to Sign Using Chrome's Built-in Tools:
+                      📝 Как подписать, используя инструменты Chrome:
                     </h3>
                     <div className="grid md:grid-cols-2 gap-6 text-left">
                       <div className="space-y-4">
@@ -252,8 +245,8 @@ const SignReviewPage = () => {
                             1
                           </div>
                           <div>
-                            <p className="text-white font-medium">Open the downloaded PDF</p>
-                            <p className="text-gray-400 text-sm">The file should open automatically in Chrome</p>
+                            <p className="text-white font-medium">Откройте загруженный PDF</p>
+                            <p className="text-gray-400 text-sm">Файл должен открыться автоматически в Chrome</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-3">
@@ -261,8 +254,10 @@ const SignReviewPage = () => {
                             2
                           </div>
                           <div>
-                            <p className="text-white font-medium">Click the pen/edit icon</p>
-                            <p className="text-gray-400 text-sm">Look for the drawing tools in the PDF toolbar</p>
+                            <p className="text-white font-medium">Нажмите значок пера/редактирования</p>
+                            <p className="text-gray-400 text-sm">
+                              Найдите инструменты рисования в панели инструментов PDF
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-start gap-3">
@@ -270,8 +265,8 @@ const SignReviewPage = () => {
                             3
                           </div>
                           <div>
-                            <p className="text-white font-medium">Draw your signature</p>
-                            <p className="text-gray-400 text-sm">Sign in the designated signature areas</p>
+                            <p className="text-white font-medium">Нарисуйте вашу подпись</p>
+                            <p className="text-gray-400 text-sm">Подпишитесь в отведённых местах</p>
                           </div>
                         </div>
                       </div>
@@ -281,8 +276,8 @@ const SignReviewPage = () => {
                             4
                           </div>
                           <div>
-                            <p className="text-white font-medium">Save the document</p>
-                            <p className="text-gray-400 text-sm">Use Ctrl+S or the save button</p>
+                            <p className="text-white font-medium">Сохраните документ</p>
+                            <p className="text-gray-400 text-sm">Используйте Ctrl+S или кнопку сохранения</p>
                           </div>
                         </div>
                         <div className="flex items-start gap-3">
@@ -290,8 +285,8 @@ const SignReviewPage = () => {
                             5
                           </div>
                           <div>
-                            <p className="text-white font-medium">Return here to upload</p>
-                            <p className="text-gray-400 text-sm">Click "Ready to Upload" when done</p>
+                            <p className="text-white font-medium">Вернитесь сюда для загрузки</p>
+                            <p className="text-gray-400 text-sm">Нажмите "Готово к загрузке" когда закончите</p>
                           </div>
                         </div>
                       </div>
@@ -301,16 +296,18 @@ const SignReviewPage = () => {
                   <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4 mb-6">
                     <div className="flex items-center gap-2 text-blue-300 mb-2">
                       <FiInfo className="w-5 h-5" />
-                      <span className="font-medium">Pro Tip</span>
+                      <span className="font-medium">Совет</span>
                     </div>
                     <p className="text-blue-200 text-sm">
-                      Chrome's PDF tools offer different pen sizes and colors. Use a dark color (black or blue) for your
-                      signature to ensure it's clearly visible.
+                      Инструменты PDF в Chrome предлагают разные размеры и цвета пера. Используйте тёмный цвет (чёрный
+                      или синий) для подписи, чтобы она была чётко видна.
                     </p>
                   </div>
 
                   <div className="text-gray-400 text-sm">
-                    <p>Need help? The drawing tools appear as a pen icon in Chrome's PDF viewer toolbar.</p>
+                    <p>
+                      Нужна помощь? Инструменты рисования появляются как значок пера в панели инструментов PDF Chrome.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -324,31 +321,33 @@ const SignReviewPage = () => {
                     <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                       <FiUpload className="w-8 h-8 text-white" />
                     </div>
-                    <h2 className="text-2xl font-semibold text-white mb-2">Upload Signed Document</h2>
-                    <p className="text-gray-400">Select the signed PDF file to complete the review process</p>
+                    <h2 className="text-2xl font-semibold text-white mb-2">Загрузить подписанный документ</h2>
+                    <p className="text-gray-400">
+                      Выберите подписанный PDF файл для завершения процесса рецензирования
+                    </p>
                   </div>
 
                   <div className="bg-gray-800 rounded-lg p-8 mb-6">
                     <div className="border-2 border-dashed border-gray-600 rounded-lg p-8">
                       <FiUpload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-white font-medium mb-2">Click to select your signed PDF</p>
+                      <p className="text-white font-medium mb-2">Нажмите для выбора подписанного PDF</p>
                       <p className="text-gray-400 text-sm mb-4">
-                        Make sure you've saved the PDF after adding your signature
+                        Убедитесь, что вы сохранили PDF после добавления подписи
                       </p>
                       <button
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isSaving}
                         className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {isSaving ? "Uploading..." : "Choose Signed PDF"}
+                        {isSaving ? "Загрузка..." : "Выбрать подписанный PDF"}
                       </button>
                     </div>
                   </div>
 
                   <div className="text-gray-400 text-sm">
                     <p>
-                      Only PDF files are accepted. The file should contain your signature drawn using Chrome's PDF
-                      tools.
+                      Принимаются только PDF файлы. Файл должен содержать вашу подпись, нарисованную с помощью
+                      инструментов PDF Chrome.
                     </p>
                   </div>
                 </div>

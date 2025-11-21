@@ -24,27 +24,24 @@ const Modal = ({ isOpen, onClose, children, title, size = "large" }) => {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 font-montserrat">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
       <div
-        className={`relative bg-gray-900 rounded-lg border border-gray-800 w-full ${sizeClasses[size]} max-h-[90vh] overflow-hidden`}
+        className={`relative bg-white rounded-lg border border-gray-200 shadow-2xl w-full ${sizeClasses[size]} max-h-[90vh] overflow-hidden`}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-800">
-          <h2 className="text-xl font-semibold text-white">{title}</h2>
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50">
+          <h2 className="text-xl font-comfortaa font-bold text-gray-900">{title}</h2>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+            className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors"
           >
             <FiX className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto max-h-[calc(90vh-80px)]">{children}</div>
+        <div className="overflow-y-auto max-h-[calc(90vh-80px)] bg-white">{children}</div>
       </div>
     </div>
   )

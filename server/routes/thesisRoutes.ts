@@ -4,9 +4,10 @@ import {
   getStudentThesis,
   downloadThesis,
   viewThesis,
-  submitTopic
+  submitTopic,
+  studentResubmitThesis,
 } from "../controllers/thesisController"
-import { authenticate, isAdmin, isReviewer, isStudent, isThesisAccess } from "../middleware/auth"
+import { authenticate, isStudent, isThesisAccess } from "../middleware/auth"
 import upload from "../utils/multer"
 
 const thesisRouter = express.Router()
@@ -15,18 +16,11 @@ const thesisRouter = express.Router()
 thesisRouter.post("/submit-topic", authenticate, isStudent, submitTopic) //complete
 thesisRouter.post("/submit-thesis", authenticate, isStudent, upload.single("thesisFile"), submitThesis) //complete
 thesisRouter.get("/my-thesis", authenticate, isStudent, getStudentThesis) //complete
+thesisRouter.post("/student/resubmit-thesis/:id", authenticate, isStudent, studentResubmitThesis)
 
 // Download route (reviewer/admin)
-thesisRouter.get(
-  "/thesis/:id/download",
-  authenticate,
-  isThesisAccess,
-  downloadThesis,
-) //complete
+thesisRouter.get("/thesis/:id/download", authenticate, isThesisAccess, downloadThesis) //complete
 
 thesisRouter.get("/view-pdf/:id", authenticate, isThesisAccess, viewThesis) //complete
-
-
-
 
 export default thesisRouter

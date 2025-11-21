@@ -9,179 +9,197 @@ import {
   HeadOfDepartment,
   Dean,
   Admin,
-  IUser,
-  IStudent,
-  IConsultant,
-  ISupervisor,
-  IReviewer,
-  IHeadOfDepartment,
-  IDean,
-  IAdmin
+  type IUser,
+  type IStudent,
+  type IConsultant,
+  type ISupervisor,
+  type IReviewer,
+  type IHeadOfDepartment,
+  type IDean,
+  type IAdmin,
 } from "../models/User.model"
 import { generateToken } from "../middleware/auth"
-import { Pool } from 'pg';
+import { Pool } from "pg"
 
 const pool = new Pool({
-  connectionString: process.env.DB_URL
-});
+  connectionString: process.env.DB_URL,
+})
 
-const userModel = new UserModel(pool);
+const userModel = new UserModel(pool)
 
 // Define the authenticated user type that includes the database ID
 interface AuthenticatedUser {
-  id: string;
-  role: string;
-  email: string;
+  id: string
+  role: string
+  email: string
   // Add other fields that your auth middleware sets
 }
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { email, password, fullName, institution, role, ...roleSpecificData } = req.body
+    console.log("Registration request received:", { email: req.body.email, role: req.body.role })
+
+    const { email, password, fullName, institution = "", role, ...roleSpecificData } = req.body
 
     // Check if user already exists
     const existingUser = await userModel.getUserByEmail(email)
     if (existingUser) {
+      console.log("User already exists:", email)
       res.status(400).json({ error: "User already exists" })
       return
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
+    console.log("Password hashed successfully")
 
     let user: IUser
     switch (role) {
       case "student":
-        const studentData: Omit<IStudent, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+        console.log("Creating student user")
+        const studentData: Omit<IStudent, "id" | "createdAt" | "updatedAt" | "role"> = {
           email,
           password: hashedPassword,
           fullName,
-          institution,
-          faculty: roleSpecificData.faculty || "",
-          group: roleSpecificData.group || "",
-          subjectArea: roleSpecificData.subjectArea || "",
-          educationalProgram: roleSpecificData.educationalProgram || "",
+          institution: institution || "Не указано",
+          faculty: roleSpecificData.faculty || "Не указано",
+          group: roleSpecificData.group || "Не указано",
+          subjectArea: roleSpecificData.subjectArea || "Не указано",
+          educationalProgram: roleSpecificData.educationalProgram || "Не указано",
           degreeLevel: roleSpecificData.degreeLevel || "bachelors",
           thesisStatus: "not_submitted",
           isTopicApproved: false,
           totalReviewAttempts: 0,
           currentReviewIteration: 0,
-          roles: []
+          roles: [],
         }
         user = await Student.create(userModel, studentData)
         break
       case "consultant":
-        const consultantData: Omit<IConsultant, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+        console.log("Creating consultant user")
+        const consultantData: Omit<IConsultant, "id" | "createdAt" | "updatedAt" | "role"> = {
           email,
           password: hashedPassword,
           fullName,
-          institution,
-          position: roleSpecificData.position || "",
+          institution: institution || "Не указано",
+          position: roleSpecificData.position || "Не указано",
           assignedStudents: [],
           assignedTheses: [],
           reviewedTheses: [],
           reviewStats: {
             totalReviews: 0,
             approvedTheses: 0,
-            averageReviewCount: 0
+            averageReviewCount: 0,
           },
-          faculty: roleSpecificData.faculty || '',
-          department: roleSpecificData.department || '',
-          roles: []
+          faculty: roleSpecificData.faculty || "Не указано",
+          department: roleSpecificData.department || "Не указано",
+          roles: [],
         }
         user = await Consultant.create(userModel, consultantData)
         break
       case "supervisor":
-        const supervisorData: Omit<ISupervisor, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+        console.log("Creating supervisor user")
+        const supervisorData: Omit<ISupervisor, "id" | "createdAt" | "updatedAt" | "role"> = {
           email,
           password: hashedPassword,
           fullName,
-          institution,
-          position: roleSpecificData.position || "",
-          department: roleSpecificData.department || "",
+          institution: institution || "Не указано",
+          position: roleSpecificData.position || "Не указано",
+          department: roleSpecificData.department || "Не указано",
           assignedStudents: [],
           assignedTheses: [],
           reviewedTheses: [],
           reviewStats: {
             totalReviews: 0,
             approvedTheses: 0,
-            averageReviewCount: 0
+            averageReviewCount: 0,
           },
           maxStudents: roleSpecificData.maxStudents || 10,
-          faculty: roleSpecificData.faculty || '',
-          roles: []
+          faculty: roleSpecificData.faculty || "Не указано",
+          roles: [],
         }
         user = await Supervisor.create(userModel, supervisorData)
         break
       case "reviewer":
-        const reviewerData: Omit<IReviewer, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+        console.log("Creating reviewer user")
+        const reviewerData: Omit<IReviewer, "id" | "createdAt" | "updatedAt" | "role"> = {
           email,
           password: hashedPassword,
           fullName,
-          institution,
-          position: roleSpecificData.position || "",
+          institution: institution || "Не указано",
+          position: roleSpecificData.position || "Не указано",
           assignedTheses: [],
           reviewedTheses: [],
-          faculty: roleSpecificData.faculty || '',
-          department: roleSpecificData.department || '',
-          roles: []
+          faculty: roleSpecificData.faculty || "Не указано",
+          department: roleSpecificData.department || "Не указано",
+          roles: [],
         }
         user = await Reviewer.create(userModel, reviewerData)
         break
       case "head_of_department":
-        const hodData: Omit<IHeadOfDepartment, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+        console.log("Creating head of department user")
+        const hodData: Omit<IHeadOfDepartment, "id" | "createdAt" | "updatedAt" | "role"> = {
           email,
           password: hashedPassword,
           fullName,
-          institution,
-          position: roleSpecificData.position || "",
-          department: roleSpecificData.department || "",
-          faculty: roleSpecificData.faculty || "",
-          roles: []
+          institution: institution || "Не указано",
+          position: roleSpecificData.position || "Не указано",
+          department: roleSpecificData.department || "Не указано",
+          faculty: roleSpecificData.faculty || "Не указано",
+          roles: [],
         }
         user = await HeadOfDepartment.create(userModel, hodData)
         break
       case "dean":
-        const deanData: Omit<IDean, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+        console.log("Creating dean user")
+        const deanData: Omit<IDean, "id" | "createdAt" | "updatedAt" | "role"> = {
           email,
           password: hashedPassword,
           fullName,
-          institution,
-          position: roleSpecificData.position || "",
-          faculty: roleSpecificData.faculty || "",
-          roles: []
+          institution: institution || "Не указано",
+          position: roleSpecificData.position || "Не указано",
+          faculty: roleSpecificData.faculty || "Не указано",
+          roles: [],
         }
         user = await Dean.create(userModel, deanData)
         break
       case "admin":
-        const adminData: Omit<IAdmin, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+        console.log("Creating admin user")
+        const adminData: Omit<IAdmin, "id" | "createdAt" | "updatedAt" | "role"> = {
           email,
           password: hashedPassword,
           fullName,
-          institution,
-          position: roleSpecificData.position || "",
-          roles: []
+          institution: institution || "Не указано",
+          position: roleSpecificData.position || "Не указано",
+          roles: [],
         }
         user = await Admin.create(userModel, adminData)
         break
       default:
+        console.log("Invalid role:", role)
         res.status(400).json({ error: "Invalid role" })
         return
     }
 
+    console.log("User created successfully:", user.id)
+
     // Generate JWT token
     const token = generateToken(user.id, user.role)
+    console.log("JWT token generated")
 
     res.status(201).json({
       token,
       user: {
         id: user.id,
         role: user.role,
-      }
+      },
     })
   } catch (error) {
-    console.error(error)
-    res.status(500).json({ error: "Registration failed" })
+    console.error("Registration error:", error)
+    res.status(500).json({
+      error: "Registration failed",
+      details: error instanceof Error ? error.message : String(error),
+    })
   }
 }
 
@@ -266,7 +284,7 @@ export const updateProfile = async (req: Request, res: Response) => {
       return
     }
 
-    const userRole = currentUser.role;
+    const userRole = currentUser.role
 
     // Define allowed updates based on user role
     let allowedUpdates: string[] = []
@@ -319,9 +337,9 @@ export const updateProfile = async (req: Request, res: Response) => {
     }
 
     // Apply updates
-    const updateData: Partial<Omit<IUser, 'id' | 'createdAt' | 'updatedAt'>> = {}
+    const updateData: Partial<Omit<IUser, "id" | "createdAt" | "updatedAt">> = {}
     updates.forEach((update) => {
-      (updateData as any)[update] = req.body[update]
+      ;(updateData as any)[update] = req.body[update]
     })
 
     const updatedUser = await userModel.updateUser(user.id, updateData)
@@ -438,17 +456,8 @@ export const deleteAccount = async (req: Request, res: Response) => {
 // Additional utility function for student registration
 export const registerStudent = async (req: Request, res: Response) => {
   try {
-    const {
-      email,
-      password,
-      fullName,
-      institution,
-      faculty,
-      group,
-      subjectArea,
-      educationalProgram,
-      degreeLevel
-    } = req.body
+    const { email, password, fullName, institution, faculty, group, subjectArea, educationalProgram, degreeLevel } =
+      req.body
 
     // Check if user already exists
     const existingUser = await userModel.getUserByEmail(email)
@@ -460,7 +469,7 @@ export const registerStudent = async (req: Request, res: Response) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    const studentData: Omit<IStudent, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+    const studentData: Omit<IStudent, "id" | "createdAt" | "updatedAt" | "role"> = {
       email,
       password: hashedPassword,
       fullName,
@@ -474,9 +483,8 @@ export const registerStudent = async (req: Request, res: Response) => {
       isTopicApproved: false,
       totalReviewAttempts: 0,
       currentReviewIteration: 0,
-      roles: []
+      roles: [],
     }
-
 
     const user = await Student.create(userModel, studentData)
 
@@ -488,7 +496,7 @@ export const registerStudent = async (req: Request, res: Response) => {
       user: {
         id: user.id,
         role: user.role,
-      }
+      },
     })
   } catch (error) {
     console.error(error)
@@ -499,15 +507,7 @@ export const registerStudent = async (req: Request, res: Response) => {
 // Additional utility function for reviewer registration
 export const registerReviewer = async (req: Request, res: Response) => {
   try {
-    const {
-      email,
-      password,
-      fullName,
-      institution,
-      position,
-      faculty,
-      department
-    } = req.body
+    const { email, password, fullName, institution, position, faculty, department } = req.body
 
     // Check if user already exists
     const existingUser = await userModel.getUserByEmail(email)
@@ -519,7 +519,7 @@ export const registerReviewer = async (req: Request, res: Response) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    const reviewerData: Omit<IReviewer, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+    const reviewerData: Omit<IReviewer, "id" | "createdAt" | "updatedAt" | "role"> = {
       email,
       password: hashedPassword,
       fullName,
@@ -530,7 +530,6 @@ export const registerReviewer = async (req: Request, res: Response) => {
       roles: [],
       faculty: faculty || "",
       department: department || "",
-
     }
 
     const user = await Reviewer.create(userModel, reviewerData)
@@ -543,7 +542,7 @@ export const registerReviewer = async (req: Request, res: Response) => {
       user: {
         id: user.id,
         role: user.role,
-      }
+      },
     })
   } catch (error) {
     console.error(error)
@@ -554,15 +553,7 @@ export const registerReviewer = async (req: Request, res: Response) => {
 // Additional registration functions for new roles
 export const registerConsultant = async (req: Request, res: Response) => {
   try {
-    const {
-      email,
-      password,
-      fullName,
-      institution,
-      position,
-      faculty,
-      department
-    } = req.body
+    const { email, password, fullName, institution, position, faculty, department } = req.body
 
     const existingUser = await userModel.getUserByEmail(email)
     if (existingUser) {
@@ -572,7 +563,7 @@ export const registerConsultant = async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    const consultantData: Omit<IConsultant, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+    const consultantData: Omit<IConsultant, "id" | "createdAt" | "updatedAt" | "role"> = {
       email,
       password: hashedPassword,
       fullName,
@@ -584,13 +575,12 @@ export const registerConsultant = async (req: Request, res: Response) => {
       reviewStats: {
         totalReviews: 0,
         approvedTheses: 0,
-        averageReviewCount: 0
+        averageReviewCount: 0,
       },
       roles: [],
       faculty: faculty || "",
       department: department || "",
     }
-
 
     const user = await Consultant.create(userModel, consultantData)
     const token = generateToken(user.id, user.role)
@@ -600,7 +590,7 @@ export const registerConsultant = async (req: Request, res: Response) => {
       user: {
         id: user.id,
         role: user.role,
-      }
+      },
     })
   } catch (error) {
     console.error(error)
@@ -610,16 +600,7 @@ export const registerConsultant = async (req: Request, res: Response) => {
 
 export const registerSupervisor = async (req: Request, res: Response) => {
   try {
-    const {
-      email,
-      password,
-      fullName,
-      institution,
-      position,
-      department,
-      maxStudents,
-      faculty
-    } = req.body
+    const { email, password, fullName, institution, position, department, maxStudents, faculty } = req.body
 
     const existingUser = await userModel.getUserByEmail(email)
     if (existingUser) {
@@ -629,7 +610,7 @@ export const registerSupervisor = async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    const supervisorData: Omit<ISupervisor, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+    const supervisorData: Omit<ISupervisor, "id" | "createdAt" | "updatedAt" | "role"> = {
       email,
       password: hashedPassword,
       fullName,
@@ -643,12 +624,11 @@ export const registerSupervisor = async (req: Request, res: Response) => {
       reviewStats: {
         totalReviews: 0,
         approvedTheses: 0,
-        averageReviewCount: 0
+        averageReviewCount: 0,
       },
       roles: [],
-      faculty: faculty || ""
+      faculty: faculty || "",
     }
-
 
     const user = await Supervisor.create(userModel, supervisorData)
     const token = generateToken(user.id, user.role)
@@ -658,7 +638,7 @@ export const registerSupervisor = async (req: Request, res: Response) => {
       user: {
         id: user.id,
         role: user.role,
-      }
+      },
     })
   } catch (error) {
     console.error(error)
@@ -668,15 +648,7 @@ export const registerSupervisor = async (req: Request, res: Response) => {
 
 export const registerHeadOfDepartment = async (req: Request, res: Response) => {
   try {
-    const {
-      email,
-      password,
-      fullName,
-      institution,
-      position,
-      department,
-      faculty
-    } = req.body
+    const { email, password, fullName, institution, position, department, faculty } = req.body
 
     const existingUser = await userModel.getUserByEmail(email)
     if (existingUser) {
@@ -686,7 +658,7 @@ export const registerHeadOfDepartment = async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    const hodData: Omit<IHeadOfDepartment, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+    const hodData: Omit<IHeadOfDepartment, "id" | "createdAt" | "updatedAt" | "role"> = {
       email,
       password: hashedPassword,
       fullName,
@@ -694,7 +666,7 @@ export const registerHeadOfDepartment = async (req: Request, res: Response) => {
       position: position || "",
       department: department || "",
       faculty: faculty || "",
-      roles: []
+      roles: [],
     }
 
     const user = await HeadOfDepartment.create(userModel, hodData)
@@ -705,7 +677,7 @@ export const registerHeadOfDepartment = async (req: Request, res: Response) => {
       user: {
         id: user.id,
         role: user.role,
-      }
+      },
     })
   } catch (error) {
     console.error(error)
@@ -715,14 +687,7 @@ export const registerHeadOfDepartment = async (req: Request, res: Response) => {
 
 export const registerDean = async (req: Request, res: Response) => {
   try {
-    const {
-      email,
-      password,
-      fullName,
-      institution,
-      position,
-      faculty
-    } = req.body
+    const { email, password, fullName, institution, position, faculty } = req.body
 
     const existingUser = await userModel.getUserByEmail(email)
     if (existingUser) {
@@ -732,14 +697,14 @@ export const registerDean = async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, 10)
 
-    const deanData: Omit<IDean, 'id' | 'createdAt' | 'updatedAt' | 'role'> = {
+    const deanData: Omit<IDean, "id" | "createdAt" | "updatedAt" | "role"> = {
       email,
       password: hashedPassword,
       fullName,
       institution,
       position: position || "",
       faculty: faculty || "",
-      roles: []
+      roles: [],
     }
 
     const user = await Dean.create(userModel, deanData)
@@ -750,7 +715,7 @@ export const registerDean = async (req: Request, res: Response) => {
       user: {
         id: user.id,
         role: user.role,
-      }
+      },
     })
   } catch (error) {
     console.error(error)

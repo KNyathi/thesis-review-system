@@ -2,15 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   FiUsers,
-  FiUserCheck,
   FiFilter,
-  FiCheck,
-  FiX,
   FiLogOut,
   FiUser,
   FiClock,
-  FiMail,
-  FiShield,
   FiTrash2,
   FiAlertTriangle,
   FiMoreHorizontal,
@@ -30,7 +25,6 @@ const AdminDashboard = () => {
   const [students, setStudents] = useState([])
   const [allUsers, setAllUsers] = useState([])
   const [theses, setTheses] = useState([])
-  const [pendingReviewers, setPendingReviewers] = useState([])
   const [approvedReviewers, setApprovedReviewers] = useState([])
   const [supervisors, setSupervisors] = useState([])
   const [consultants, setConsultants] = useState([])
@@ -41,13 +35,10 @@ const AdminDashboard = () => {
   const [filterOption, setFilterOption] = useState("all")
   const [userFilterOption, setUserFilterOption] = useState("all")
   const [assigningStudent, setAssigningStudent] = useState(null)
-  const [processingReviewer, setProcessingReviewer] = useState(null)
   const [deletingUser, setDeletingUser] = useState(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [showReassignModal, setShowReassignModal] = useState(false)
   const [showAssignmentModal, setShowAssignmentModal] = useState(false)
   const [userToDelete, setUserToDelete] = useState(null)
-  const [reassignData, setReassignData] = useState(null)
   const [assignmentData, setAssignmentData] = useState(null)
   const [selectedSupervisor, setSelectedSupervisor] = useState("")
   const [selectedConsultant, setSelectedConsultant] = useState("")
@@ -55,13 +46,11 @@ const AdminDashboard = () => {
   const [openDropdown, setOpenDropdown] = useState(null)
   const { toast, showToast, hideToast } = useToast()
 
-  // Use ref to prevent infinite loops
   const fetchedRef = useRef(false)
   const retryCountRef = useRef(0)
   const maxRetries = 3
 
   const fetchData = useCallback(async () => {
-    // Prevent multiple simultaneous calls
     if (fetchedRef.current && retryCountRef.current === 0) {
       return
     }
@@ -70,7 +59,6 @@ const AdminDashboard = () => {
       setIsLoading(true)
       retryCountRef.current += 1
 
-      // Fetch data with proper error handling and timeout
       const fetchWithTimeout = (promise, timeout = 10000) => {
         return Promise.race([
           promise,
@@ -83,40 +71,36 @@ const AdminDashboard = () => {
         fetchWithTimeout(thesisAPI.getAllTheses()),
       ])
 
-      // Extract values from settled promises with fallbacks
       const users = allUsersResult.status === "fulfilled" && allUsersResult.value ? allUsersResult.value : []
       const thesesData = allThesesResult.status === "fulfilled" && allThesesResult.value ? allThesesResult.value : []
 
-      // Filter users by role using existing data
       const studentUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "student") : []
       const reviewerUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "reviewer") : []
       const supervisorUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "supervisor") : []
       const consultantUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "consultant") : []
-      
+
       setStudents(studentUsers)
       setAllUsers(users)
       setTheses(thesesData)
-      setPendingReviewers(reviewerUsers.filter(reviewer => !reviewer.isApproved))
-      setApprovedReviewers(reviewerUsers.filter(reviewer => reviewer.isApproved))
+      setApprovedReviewers(reviewerUsers)
       setSupervisors(supervisorUsers)
       setConsultants(consultantUsers)
 
-      // Check if any requests failed
-      const failedRequests = [allUsersResult, allThesesResult].filter(
-        (result) => result.status === "rejected",
-      )
+      const failedRequests = [allUsersResult, allThesesResult].filter((result) => result.status === "rejected")
 
       if (failedRequests.length > 0) {
         console.warn("Some data requests failed:", failedRequests)
         if (retryCountRef.current < maxRetries) {
-          showToast(`Some data could not be loaded. Retrying... (${retryCountRef.current}/${maxRetries})`, "warning")
-          // Retry after a delay
+          showToast(
+            `Не удалось загрузить некоторые данные. Повтор... (${retryCountRef.current}/${maxRetries})`,
+            "warning",
+          )
           setTimeout(() => {
             fetchData()
           }, 2000)
           return
         } else {
-          showToast("Some data could not be loaded after multiple attempts", "error")
+          showToast("Не удалось загрузить некоторые данные после нескольких попыток", "error")
         }
       }
 
@@ -125,12 +109,12 @@ const AdminDashboard = () => {
     } catch (error) {
       console.error("Error fetching data:", error)
       if (retryCountRef.current < maxRetries) {
-        showToast(`Failed to fetch data. Retrying... (${retryCountRef.current}/${maxRetries})`, "warning")
+        showToast(`Ошибка загрузки данных. Повтор... (${retryCountRef.current}/${maxRetries})`, "warning")
         setTimeout(() => {
           fetchData()
         }, 2000)
       } else {
-        showToast("Failed to fetch data after multiple attempts", "error")
+        showToast("Не удалось загрузить данные после нескольких попыток", "error")
         retryCountRef.current = 0
       }
     } finally {
@@ -144,20 +128,18 @@ const AdminDashboard = () => {
     }
   }, [user, fetchData])
 
-  // Filter students
   useEffect(() => {
     let filtered = [...students]
 
     if (filterOption === "assigned") {
-      filtered = filtered.filter((student) => student.reviewer)
+      filtered = filtered.filter((student) => student.reviewer || student.supervisor || student.consultant)
     } else if (filterOption === "not_assigned") {
-      filtered = filtered.filter((student) => !student.reviewer)
+      filtered = filtered.filter((student) => !student.reviewer && !student.supervisor && !student.consultant)
     }
 
     setFilteredStudents(filtered)
   }, [students, filterOption])
 
-  // Filter all users
   useEffect(() => {
     let filtered = [...allUsers]
 
@@ -171,6 +153,10 @@ const AdminDashboard = () => {
       filtered = filtered.filter((user) => user.role === "supervisor")
     } else if (userFilterOption === "consultants") {
       filtered = filtered.filter((user) => user.role === "consultant")
+    } else if (userFilterOption === "heads") {
+      filtered = filtered.filter((user) => user.role === "head")
+    } else if (userFilterOption === "deans") {
+      filtered = filtered.filter((user) => user.role === "dean")
     }
 
     setFilteredUsers(filtered)
@@ -183,7 +169,7 @@ const AdminDashboard = () => {
 
   const handleAssignTeam = async (studentId) => {
     if (!selectedSupervisor && !selectedConsultant && !selectedReviewer) {
-      showToast("Please select at least one team member to assign", "error")
+      showToast("Пожалуйста, выберите хотя бы одного члена команды", "error")
       return
     }
 
@@ -193,11 +179,10 @@ const AdminDashboard = () => {
         studentId,
         supervisorId: selectedSupervisor || undefined,
         consultantId: selectedConsultant || undefined,
-        reviewerId: selectedReviewer || undefined
+        reviewerId: selectedReviewer || undefined,
       })
-      
-      showToast("Team assigned successfully!", "success")
-      // Refresh data after successful assignment
+
+      showToast("Команда успешно назначена!", "success")
       fetchedRef.current = false
       await fetchData()
       setShowAssignmentModal(false)
@@ -206,110 +191,9 @@ const AdminDashboard = () => {
       setSelectedReviewer("")
       setAssignmentData(null)
     } catch (error) {
-      showToast("Failed to assign team", "error")
+      showToast("Не удалось назначить команду", "error")
     } finally {
       setAssigningStudent(null)
-    }
-  }
-
-  const handleAssignReviewer = async (studentId, reviewerId) => {
-    const student = students.find((s) => s.id === studentId)
-    const reviewer = approvedReviewers.find((r) => r.id === reviewerId)
-
-    const thesis = theses.find((t) => t.student === studentId)
-
-    if (!thesis) {
-      showToast("No thesis found for this student", "error")
-      return
-    }
-    const oldReviewerId = student?.reviewer
-    const currentReviewer = student?.reviewer ? approvedReviewers.find((r) => r.id === student.reviewer) : null
-
-    if (currentReviewer) {
-      // Show reassignment confirmation
-      setReassignData({
-        studentId,
-        thesisId: thesis?.id,
-        oldReviewerId: oldReviewerId,
-        newReviewerId: reviewerId,
-        studentName: student.fullName,
-        currentReviewerName: currentReviewer.fullName,
-        newReviewerName: reviewer.fullName,
-      })
-      setShowReassignModal(true)
-    } else {
-      // Direct assignment
-      try {
-        setAssigningStudent(studentId)
-        await thesisAPI.assignThesisTeam({
-          studentId,
-          reviewerId
-        })
-        showToast("Reviewer assigned successfully!", "success")
-        // Refresh data after successful assignment
-        fetchedRef.current = false
-        await fetchData()
-      } catch (error) {
-        showToast("Failed to assign reviewer", "error")
-      } finally {
-        setAssigningStudent(null)
-      }
-    }
-  }
-
-  const handleConfirmReassign = async () => {
-    if (!reassignData) return
-
-    try {
-      setAssigningStudent(reassignData.studentId)
-      await thesisAPI.assignThesisTeam({
-        studentId: reassignData.studentId,
-        reviewerId: reassignData.newReviewerId
-      })
-
-      showToast(
-        `Reviewer successfully changed from ${reassignData.currentReviewerName} to ${reassignData.newReviewerName}!`,
-        "success",
-      )
-      // Refresh data after successful reassignment
-      fetchedRef.current = false
-      await fetchData()
-      setShowReassignModal(false)
-      setReassignData(null)
-    } catch (error) {
-      showToast("Failed to reassign reviewer", "error")
-    } finally {
-      setAssigningStudent(null)
-    }
-  }
-
-  const handleApproveReviewer = async (reviewerId) => {
-    try {
-      setProcessingReviewer(reviewerId)
-      await thesisAPI.approveReviewer(reviewerId)
-      showToast("Reviewer approved successfully!", "success")
-      // Refresh data after successful approval
-      fetchedRef.current = false
-      await fetchData()
-    } catch (error) {
-      showToast("Failed to approve reviewer", "error")
-    } finally {
-      setProcessingReviewer(null)
-    }
-  }
-
-  const handleDeclineReviewer = async (reviewerId) => {
-    try {
-      setProcessingReviewer(reviewerId)
-      await thesisAPI.declineReviewer(reviewerId)
-      showToast("Reviewer declined", "success")
-      // Refresh data after successful decline
-      fetchedRef.current = false
-      await fetchData()
-    } catch (error) {
-      showToast("Failed to decline reviewer", "error")
-    } finally {
-      setProcessingReviewer(null)
     }
   }
 
@@ -319,14 +203,13 @@ const AdminDashboard = () => {
     try {
       setDeletingUser(userToDelete.id)
       await thesisAPI.deleteUser(userToDelete.id)
-      showToast(`User ${userToDelete.fullName} deleted successfully!`, "success")
-      // Refresh data after successful deletion
+      showToast(`Пользователь ${userToDelete.fullName} успешно удален!`, "success")
       fetchedRef.current = false
       await fetchData()
       setShowDeleteModal(false)
       setUserToDelete(null)
     } catch (error) {
-      showToast("Failed to delete user", "error")
+      showToast("Не удалось удалить пользователя", "error")
     } finally {
       setDeletingUser(null)
     }
@@ -351,71 +234,95 @@ const AdminDashboard = () => {
     setOpenDropdown(openDropdown === userId ? null : userId)
   }
 
-  const getStatusColor = (status, hasUploaded, assignedReviewer) => {
+  const getStatusColor = (status, hasUploaded, hasTeam) => {
     if (!hasUploaded) {
-      return "text-red-400"
+      return "text-red-500"
     }
-    if (!assignedReviewer) {
-      return "text-blue-400"
+    if (!hasTeam) {
+      return "text-amber-500"
     }
     switch (status) {
       case "submitted":
-        return "text-blue-400"
+        return "text-blue-500"
       case "under_review":
-        return "text-orange-400"
+        return "text-amber-500"
       case "evaluated":
-        return "text-green-400"
+        return "text-green-500"
       default:
-        return "text-gray-400"
+        return "text-gray-500"
     }
   }
 
-  const getStatusText = (status, hasUploaded, assignedReviewer) => {
+  const getStatusText = (status, hasUploaded, hasTeam) => {
     if (!hasUploaded) {
-      return "Not submitted"
+      return "Не загружено"
     }
-    if (!assignedReviewer) {
-      return "Waiting for reviewer assignment"
+    if (!hasTeam) {
+      return "Ожидает назначения команды"
     }
     switch (status) {
       case "under_review":
-        return "Assigned to reviewer"
+        return "На проверке"
       case "evaluated":
-        return "Evaluated"
+        return "Оценено"
       default:
-        return "Awaiting Submission"
+        return "Ожидает отправки"
     }
   }
 
   const getRoleColor = (role) => {
     switch (role) {
       case "student":
-        return "from-blue-500 to-purple-600"
+        return "bg-blue-100 text-blue-700"
       case "reviewer":
-        return "from-green-500 to-teal-600"
+        return "bg-green-100 text-green-700"
       case "admin":
-        return "from-purple-500 to-pink-600"
+        return "bg-purple-100 text-purple-700"
       case "supervisor":
-        return "from-orange-500 to-red-600"
+        return "bg-orange-100 text-orange-700"
       case "consultant":
-        return "from-indigo-500 to-purple-600"
+        return "bg-indigo-100 text-indigo-700"
+      case "head":
+        return "bg-pink-100 text-pink-700"
+      case "dean":
+        return "bg-teal-100 text-teal-700"
       default:
-        return "from-gray-500 to-gray-600"
+        return "bg-gray-100 text-gray-700"
     }
   }
 
-  // Check if user is admin
+  const getRoleText = (role) => {
+    switch (role) {
+      case "student":
+        return "Студент"
+      case "reviewer":
+        return "Рецензент"
+      case "admin":
+        return "Администратор"
+      case "supervisor":
+        return "Научный руководитель"
+      case "consultant":
+        return "Консультант"
+      case "head":
+        return "Заведующий кафедрой"
+      case "dean":
+        return "Декан"
+      default:
+        return role
+    }
+  }
+
   if (!user || user.role !== "admin") {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center font-montserrat">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold text-white mb-4">Access Denied</h1>
-          <p className="text-gray-400 mb-6">You don't have permission to access this page.</p>
+          <h1 className="text-2xl font-comfortaa font-bold text-gray-900 mb-4">Доступ запрещен</h1>
+          <p className="text-gray-600 mb-6">У вас нет прав для доступа к этой странице.</p>
           <button
             onClick={() => navigate(`/${user?.role || "login"}`)}
-            className="px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-100 transition-colors"
+            className="px-6 py-3 bg-[#372579] text-white rounded-lg hover:bg-[#2a1a5e] transition-colors font-medium"
           >
-            Go Back
+            Вернуться назад
           </button>
         </div>
       </div>
@@ -424,13 +331,13 @@ const AdminDashboard = () => {
 
   if (isLoading && !fetchedRef.current) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center font-montserrat">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Loading admin dashboard...</p>
+          <div className="w-12 h-12 border-4 border-[#372579] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Загрузка панели администратора...</p>
           {retryCountRef.current > 0 && (
-            <p className="text-yellow-400 text-sm mt-2">
-              Retry attempt {retryCountRef.current}/{maxRetries}
+            <p className="text-amber-600 text-sm mt-2">
+              Попытка {retryCountRef.current}/{maxRetries}
             </p>
           )}
         </div>
@@ -439,392 +346,122 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-white font-montserrat">
       <Toast {...toast} onClose={hideToast} />
 
-      {/* Top Navigation Bar */}
-      <div className="bg-gray-900 border-b border-gray-800 p-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center">
-              <FiShield className="w-4 h-4 text-white" />
+      <div className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate("/profile")}
+                className="flex items-center gap-3 hover:bg-gray-50 rounded-lg p-2 transition-colors"
+              >
+                <div className="w-10 h-10 bg-[#372579] rounded-full flex items-center justify-center">
+                  <span className="text-white font-semibold text-sm font-comfortaa">
+                    {user?.fullName
+                      ?.split(" ")
+                      .map((name) => name[0])
+                      .join("")
+                      .toUpperCase()
+                      .slice(0, 2) || "A"}
+                  </span>
+                </div>
+                <div className="text-left">
+                  <p className="text-gray-900 font-medium">{user?.fullName}</p>
+                  <p className="text-gray-500 text-sm">{getRoleText(user?.role)}</p>
+                </div>
+              </button>
             </div>
-            <button
-              onClick={() => navigate("/profile")}
-              className="flex items-center gap-3 hover:bg-gray-800 rounded-lg p-2 transition-colors"
-            >
-              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-600 rounded-full flex items-center justify-center">
-                <span className="text-white font-semibold text-xs">
-                  {user?.fullName
-                    ?.split(" ")
-                    .map((name) => name[0])
-                    .join("")
-                    .toUpperCase()
-                    .slice(0, 2) || "A"}
-                </span>
-              </div>
-              <div className="text-left">
-                <p className="text-white font-medium text-sm">{user?.fullName}</p>
-                <p className="text-gray-400 text-xs capitalize">{user?.role}</p>
-              </div>
-            </button>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                fetchedRef.current = false
-                retryCountRef.current = 0
-                fetchData()
-              }}
-              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-            >
-              <FiRefreshCw className="w-4 h-4" />
-              Refresh
-            </button>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-3 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
-            >
-              <FiLogOut className="w-4 h-4" />
-              Logout
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  fetchedRef.current = false
+                  retryCountRef.current = 0
+                  fetchData()
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                <FiRefreshCw className="w-4 h-4" />
+                Обновить
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1a5e] transition-colors"
+              >
+                <FiLogOut className="w-4 h-4" />
+                Выйти
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-8">
-            <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mx-auto mb-6">
-              <span className="text-black font-bold text-xl">T</span>
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-comfortaa font-bold text-gray-900 mb-2">Панель администратора</h1>
+          <p className="text-gray-600">Управление студентами и пользователями системы</p>
+        </div>
+
+        <div className="flex gap-3 mb-6 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab("students")}
+            className={`px-6 py-3 font-medium transition-colors relative ${
+              activeTab === "students"
+                ? "text-[#372579] border-b-2 border-[#372579]"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            Студенты ({students.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("users")}
+            className={`px-6 py-3 font-medium transition-colors relative ${
+              activeTab === "users" ? "text-[#372579] border-b-2 border-[#372579]" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            Все пользователи ({allUsers.length})
+          </button>
+        </div>
+
+        {activeTab === "students" ? (
+          <>
+            <div className="flex gap-4 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center gap-3">
+                <FiFilter className="w-5 h-5 text-gray-500" />
+                <span className="text-gray-700 font-medium">Фильтр:</span>
+                <select
+                  value={filterOption}
+                  onChange={(e) => setFilterOption(e.target.value)}
+                  className="bg-white border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent"
+                >
+                  <option value="all">Все студенты</option>
+                  <option value="assigned">С назначенной командой</option>
+                  <option value="not_assigned">Без назначенной команды</option>
+                </select>
+              </div>
             </div>
-            <h1 className="text-2xl font-semibold text-white mb-2">Admin Dashboard</h1>
-            <p className="text-gray-400">Manage students, reviewers, and users</p>
-          </div>
 
-          {/* Tabs */}
-          <div className="flex gap-4 mb-6">
-            <button
-              onClick={() => setActiveTab("students")}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === "students" ? "bg-white text-black" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-              }`}
-            >
-              Students ({students.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("reviewers")}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === "reviewers" ? "bg-white text-black" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-              }`}
-            >
-              Pending Reviewers ({pendingReviewers.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("users")}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === "users" ? "bg-white text-black" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
-              }`}
-            >
-              All Users ({allUsers.length})
-            </button>
-          </div>
-
-          {activeTab === "students" ? (
-            <>
-              {/* Student Filters */}
-              <div className="flex gap-4 mb-6 p-4 bg-gray-900 rounded-lg border border-gray-800">
-                <div className="flex items-center gap-2">
-                  <FiFilter className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-300 text-sm">Filter:</span>
-                  <select
-                    value={filterOption}
-                    onChange={(e) => setFilterOption(e.target.value)}
-                    className="bg-gray-800 border border-gray-700 rounded px-3 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-white"
-                  >
-                    <option value="all">All Students</option>
-                    <option value="assigned">With Assigned Reviewer</option>
-                    <option value="not_assigned">Without Assigned Reviewer</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Students List */}
-              <div className="space-y-4">
-                {filteredStudents.length > 0 ? (
-                  filteredStudents.map((student) => {
-                    const reviewer = approvedReviewers.find((reviewer) => reviewer.id === student.reviewer)
-                    const supervisor = supervisors.find((sup) => sup.id === student.supervisor)
-                    const consultant = consultants.find((cons) => cons.id === student.consultant)
-                    const thesis = theses?.find((thes) => thes.student === student.id)
-
-                    return (
-                      <div
-                        key={student.id}
-                        className="bg-gray-900 rounded-lg p-6 border border-gray-800 hover:border-gray-700 transition-colors"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                                <span className="text-white font-semibold text-sm">
-                                  {student.fullName
-                                    .split(" ")
-                                    .map((name) => name[0])
-                                    .join("")
-                                    .toUpperCase()
-                                    .slice(0, 2)}
-                                </span>
-                              </div>
-                              <div>
-                                <h3 className="text-lg font-semibold text-white">{student.fullName}</h3>
-                                <p className="text-gray-400 text-sm">{student.email}</p>
-                              </div>
-                            </div>
-                            <div className="ml-13">
-                              <p className="text-white font-medium mb-1">
-                                {student.thesisTopic || "No thesis title yet"}
-                              </p>
-                              <p className="text-gray-400 text-sm mb-2">{student.institution}</p>
-                              <div className="flex items-center gap-4 text-sm">
-                                {student.thesisFile && (
-                                  <div className="flex items-center gap-2 text-gray-400">
-                                    <FiClock className="w-4 h-4" />
-                                    <span>Submitted {new Date(thesis?.submissionDate).toLocaleDateString()}</span>
-                                  </div>
-                                )}
-                                <div
-                                  className={`flex items-center gap-2 ${getStatusColor(
-                                    student.thesisStatus,
-                                    !!student.thesisFile,
-                                    student.reviewer,
-                                  )}`}
-                                >
-                                  <FiUser className="w-4 h-4" />
-                                  <span className="font-medium">
-                                    {getStatusText(student.thesisStatus, !!student.thesisFile, student.reviewer)}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Team Members Display */}
-                              <div className="mt-3 space-y-2">
-                                {student.supervisor && (
-                                  <div className="p-2 bg-orange-900/20 border border-orange-800 rounded-lg">
-                                    <p className="text-orange-400 text-xs">Supervisor</p>
-                                    <p className="text-white font-medium">{supervisor?.fullName}</p>
-                                  </div>
-                                )}
-                                {student.consultant && (
-                                  <div className="p-2 bg-indigo-900/20 border border-indigo-800 rounded-lg">
-                                    <p className="text-indigo-400 text-xs">Consultant</p>
-                                    <p className="text-white font-medium">{consultant?.fullName}</p>
-                                  </div>
-                                )}
-                                {student.reviewer && (
-                                  <div className="p-2 bg-green-900/20 border border-green-800 rounded-lg">
-                                    <p className="text-green-400 text-xs">Reviewer</p>
-                                    <p className="text-white font-medium">{reviewer?.fullName}</p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => openAssignmentModal(student)}
-                              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                            >
-                              <FiUser className="w-4 h-4" />
-                              Assign Team
-                            </button>
-                            {student.thesisFile && (
-                              <div className="relative">
-                                <select
-                                  onChange={(e) => {
-                                    if (e.target.value) {
-                                      handleAssignReviewer(student.id, e.target.value)
-                                      e.target.value = ""
-                                    }
-                                  }}
-                                  disabled={assigningStudent === student.id}
-                                  className="bg-white text-black font-medium py-2 px-4 rounded-lg hover:bg-gray-100 transition-colors text-sm disabled:opacity-50"
-                                >
-                                  <option value="">
-                                    {assigningStudent === student.id
-                                      ? "Processing..."
-                                      : student.reviewer
-                                        ? "Reassign Reviewer"
-                                        : "Assign Reviewer"}
-                                  </option>
-                                  {approvedReviewers.map((reviewer) => (
-                                    <option key={reviewer.id} value={reviewer.id}>
-                                      {reviewer.fullName} - {reviewer.institution}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            )}
-                            <div className="relative">
-                              <button
-                                onClick={() => toggleDropdown(student.id)}
-                                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-                              >
-                                <FiMoreHorizontal className="w-4 h-4" />
-                              </button>
-                              {openDropdown === student.id && (
-                                <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[120px]">
-                                  <button
-                                    onClick={() => openDeleteModal(student)}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-red-400 hover:bg-gray-700 transition-colors text-sm"
-                                  >
-                                    <FiTrash2 className="w-4 h-4" />
-                                    Delete User
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })
-                ) : (
-                  <div className="text-center py-12">
-                    <FiUsers className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-400 mb-2">No Students Found</h3>
-                    <p className="text-gray-500">No students match the current filter criteria.</p>
-                  </div>
-                )}
-              </div>
-            </>
-          ) : activeTab === "reviewers" ? (
-            /* Pending Reviewers */
             <div className="space-y-4">
-              {pendingReviewers.length > 0 ? (
-                pendingReviewers.map((reviewer) => (
-                  <div
-                    key={reviewer.id}
-                    className="bg-gray-900 rounded-lg p-6 border border-gray-800 hover:border-gray-700 transition-colors"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <div className="w-10 h-10 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-full flex items-center justify-center">
-                            <span className="text-white font-semibold text-sm">
-                              {reviewer.fullName
-                                .split(" ")
-                                .map((name) => name[0])
-                                .join("")
-                                .toUpperCase()
-                                .slice(0, 2)}
-                            </span>
-                          </div>
-                          <div>
-                            <h3 className="text-lg font-semibold text-white">{reviewer.fullName}</h3>
-                            <p className="text-gray-400 text-sm">{reviewer.email}</p>
-                          </div>
-                        </div>
-                        <div className="ml-13">
-                          <p className="text-white font-medium mb-1">{reviewer.institution}</p>
-                          <div className="flex items-center gap-2 text-gray-400 text-sm">
-                            <FiMail className="w-4 h-4" />
-                            <span>Registered {new Date(reviewer.createdAt).toLocaleDateString()}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleApproveReviewer(reviewer.id)}
-                          disabled={processingReviewer === reviewer.id}
-                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-50"
-                        >
-                          {processingReviewer === reviewer.id ? (
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <FiCheck className="w-4 h-4" />
-                          )}
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleDeclineReviewer(reviewer.id)}
-                          disabled={processingReviewer === reviewer.id}
-                          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50"
-                        >
-                          <FiX className="w-4 h-4" />
-                          Decline
-                        </button>
-                        <div className="relative">
-                          <button
-                            onClick={() => toggleDropdown(reviewer.id)}
-                            className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-                          >
-                            <FiMoreHorizontal className="w-4 h-4" />
-                          </button>
-                          {openDropdown === reviewer.id && (
-                            <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[120px]">
-                              <button
-                                onClick={() => openDeleteModal(reviewer)}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-red-400 hover:bg-gray-700 transition-colors text-sm"
-                              >
-                                <FiTrash2 className="w-4 h-4" />
-                                Delete User
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-12">
-                  <FiUserCheck className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-400 mb-2">No Pending Reviewers</h3>
-                  <p className="text-gray-500">All reviewer applications have been processed.</p>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* All Users */
-            <>
-              {/* User Filters */}
-              <div className="flex gap-4 mb-6 p-4 bg-gray-900 rounded-lg border border-gray-800">
-                <div className="flex items-center gap-2">
-                  <FiFilter className="w-4 h-4 text-gray-400" />
-                  <span className="text-gray-300 text-sm">Filter:</span>
-                  <select
-                    value={userFilterOption}
-                    onChange={(e) => setUserFilterOption(e.target.value)}
-                    className="bg-gray-800 border border-gray-700 rounded px-3 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-white"
-                  >
-                    <option value="all">All Users</option>
-                    <option value="students">Students</option>
-                    <option value="reviewers">Reviewers</option>
-                    <option value="admins">Admins</option>
-                    <option value="supervisors">Supervisors</option>
-                    <option value="consultants">Consultants</option>
-                  </select>
-                </div>
-              </div>
+              {filteredStudents.length > 0 ? (
+                filteredStudents.map((student) => {
+                  const reviewer = approvedReviewers.find((r) => r.id === student.reviewer)
+                  const supervisor = supervisors.find((s) => s.id === student.supervisor)
+                  const consultant = consultants.find((c) => c.id === student.consultant)
+                  const thesis = theses?.find((t) => t.student === student.id)
+                  const hasTeam = !!(student.reviewer || student.supervisor || student.consultant)
 
-              {/* Users List */}
-              <div className="space-y-4">
-                {filteredUsers.length > 0 ? (
-                  filteredUsers.map((userItem) => (
+                  return (
                     <div
-                      key={userItem.id}
-                      className="bg-gray-900 rounded-lg p-6 border border-gray-800 hover:border-gray-700 transition-colors"
+                      key={student.id}
+                      className="bg-white rounded-lg p-6 border border-gray-200 hover:border-[#372579] hover:shadow-md transition-all"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <div
-                              className={`w-10 h-10 bg-gradient-to-br ${getRoleColor(userItem.role)} rounded-full flex items-center justify-center`}
-                            >
-                              <span className="text-white font-semibold text-sm">
-                                {userItem.fullName
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="w-12 h-12 bg-[#372579] rounded-full flex items-center justify-center">
+                              <span className="text-white font-semibold font-comfortaa">
+                                {student.fullName
                                   .split(" ")
                                   .map((name) => name[0])
                                   .join("")
@@ -833,99 +470,226 @@ const AdminDashboard = () => {
                               </span>
                             </div>
                             <div>
-                              <h3 className="text-lg font-semibold text-white">{userItem.fullName}</h3>
-                              <p className="text-gray-400 text-sm">{userItem.email}</p>
+                              <h3 className="text-lg font-semibold text-gray-900">{student.fullName}</h3>
+                              <p className="text-gray-600 text-sm">{student.email}</p>
                             </div>
                           </div>
-                          <div className="ml-13">
-                            <p className="text-white font-medium mb-1">{userItem.institution}</p>
-                            <div className="flex items-center gap-4 text-sm">
-                              <div className="flex items-center gap-2 text-gray-400">
-                                <FiUser className="w-4 h-4" />
-                                <span className="capitalize font-medium">{userItem.role}</span>
-                              </div>
-                              <div className="flex items-center gap-2 text-gray-400">
-                                <FiClock className="w-4 h-4" />
-                                <span>Joined {new Date(userItem.createdAt).toLocaleDateString()}</span>
-                              </div>
-                              {userItem.role === "reviewer" && (
-                                <div
-                                  className={`flex items-center gap-2 ${userItem.isApproved ? "text-green-400" : "text-yellow-400"}`}
-                                >
-                                  <FiCheck className="w-4 h-4" />
-                                  <span>{userItem.isApproved ? "Approved" : "Pending"}</span>
+                          <div className="ml-15">
+                            <p className="text-gray-900 font-medium mb-1">
+                              {student.thesisTopic || "Тема работы не указана"}
+                            </p>
+                            <p className="text-gray-600 text-sm mb-3">{student.institution}</p>
+                            <div className="flex items-center gap-4 text-sm mb-4">
+                              {student.thesisFile && thesis?.submissionDate && (
+                                <div className="flex items-center gap-2 text-gray-600">
+                                  <FiClock className="w-4 h-4" />
+                                  <span>Загружено {new Date(thesis.submissionDate).toLocaleDateString("ru-RU")}</span>
                                 </div>
                               )}
+                              <div
+                                className={`flex items-center gap-2 font-medium ${getStatusColor(
+                                  student.thesisStatus,
+                                  !!student.thesisFile,
+                                  hasTeam,
+                                )}`}
+                              >
+                                <FiUser className="w-4 h-4" />
+                                <span>{getStatusText(student.thesisStatus, !!student.thesisFile, hasTeam)}</span>
+                              </div>
                             </div>
+
+                            {hasTeam && (
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                {student.supervisor && (
+                                  <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                    <p className="text-orange-700 text-xs font-medium mb-1">Научный руководитель</p>
+                                    <p className="text-gray-900 font-medium text-sm">{supervisor?.fullName}</p>
+                                  </div>
+                                )}
+                                {student.consultant && (
+                                  <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                                    <p className="text-indigo-700 text-xs font-medium mb-1">Консультант</p>
+                                    <p className="text-gray-900 font-medium text-sm">{consultant?.fullName}</p>
+                                  </div>
+                                )}
+                                {student.reviewer && (
+                                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                                    <p className="text-green-700 text-xs font-medium mb-1">Рецензент</p>
+                                    <p className="text-gray-900 font-medium text-sm">{reviewer?.fullName}</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
-                        <div className="flex gap-2">
-                          {userItem.id !== user.id && (
-                            <div className="relative">
-                              <button
-                                onClick={() => toggleDropdown(userItem.id)}
-                                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-                              >
-                                <FiMoreHorizontal className="w-4 h-4" />
-                              </button>
-                              {openDropdown === userItem.id && (
-                                <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-[120px]">
-                                  <button
-                                    onClick={() => openDeleteModal(userItem)}
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-red-400 hover:bg-gray-700 transition-colors text-sm"
-                                  >
-                                    <FiTrash2 className="w-4 h-4" />
-                                    Delete User
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openAssignmentModal(student)}
+                            className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1a5e] transition-colors font-medium"
+                          >
+                            <FiUsers className="w-4 h-4" />
+                            Назначить команду
+                          </button>
+                          <div className="relative">
+                            <button
+                              onClick={() => toggleDropdown(student.id)}
+                              className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                              <FiMoreHorizontal className="w-5 h-5" />
+                            </button>
+                            {openDropdown === student.id && (
+                              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[160px]">
+                                <button
+                                  onClick={() => openDeleteModal(student)}
+                                  className="w-full flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 transition-colors text-sm font-medium rounded-lg"
+                                >
+                                  <FiTrash2 className="w-4 h-4" />
+                                  Удалить
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="text-center py-12">
-                    <FiUsers className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-400 mb-2">No Users Found</h3>
-                    <p className="text-gray-500">No users match the current filter criteria.</p>
-                  </div>
-                )}
+                  )
+                })
+              ) : (
+                <div className="text-center py-16 bg-gray-50 rounded-lg border border-gray-200">
+                  <FiUsers className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-comfortaa font-semibold text-gray-700 mb-2">Студенты не найдены</h3>
+                  <p className="text-gray-500">Нет студентов, соответствующих выбранному фильтру.</p>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          /* Updated All Users tab */
+          <>
+            <div className="flex gap-4 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center gap-3">
+                <FiFilter className="w-5 h-5 text-gray-500" />
+                <span className="text-gray-700 font-medium">Фильтр:</span>
+                <select
+                  value={userFilterOption}
+                  onChange={(e) => setUserFilterOption(e.target.value)}
+                  className="bg-white border border-gray-300 rounded-lg px-4 py-2 text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent"
+                >
+                  <option value="all">Все пользователи</option>
+                  <option value="students">Студенты</option>
+                  <option value="reviewers">Рецензенты</option>
+                  <option value="supervisors">Научные руководители</option>
+                  <option value="consultants">Консультанты</option>
+                  <option value="heads">Заведующие кафедрой</option>
+                  <option value="deans">Деканы</option>
+                  <option value="admins">Администраторы</option>
+                </select>
               </div>
-            </>
-          )}
-        </div>
+            </div>
+
+            <div className="space-y-4">
+              {filteredUsers.length > 0 ? (
+                filteredUsers.map((userItem) => (
+                  <div
+                    key={userItem.id}
+                    className="bg-white rounded-lg p-6 border border-gray-200 hover:border-[#372579] hover:shadow-md transition-all"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-12 h-12 bg-[#372579] rounded-full flex items-center justify-center">
+                            <span className="text-white font-semibold font-comfortaa">
+                              {userItem.fullName
+                                .split(" ")
+                                .map((name) => name[0])
+                                .join("")
+                                .toUpperCase()
+                                .slice(0, 2)}
+                            </span>
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900">{userItem.fullName}</h3>
+                            <p className="text-gray-600 text-sm">{userItem.email}</p>
+                          </div>
+                        </div>
+                        <div className="ml-15">
+                          <p className="text-gray-900 font-medium mb-2">{userItem.institution}</p>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-medium ${getRoleColor(userItem.role)}`}
+                            >
+                              {getRoleText(userItem.role)}
+                            </span>
+                            <div className="flex items-center gap-2 text-gray-600 text-sm">
+                              <FiClock className="w-4 h-4" />
+                              <span>Регистрация: {new Date(userItem.createdAt).toLocaleDateString("ru-RU")}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        {userItem.id !== user.id && (
+                          <div className="relative">
+                            <button
+                              onClick={() => toggleDropdown(userItem.id)}
+                              className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
+                              <FiMoreHorizontal className="w-5 h-5" />
+                            </button>
+                            {openDropdown === userItem.id && (
+                              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[160px]">
+                                <button
+                                  onClick={() => openDeleteModal(userItem)}
+                                  className="w-full flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 transition-colors text-sm font-medium rounded-lg"
+                                >
+                                  <FiTrash2 className="w-4 h-4" />
+                                  Удалить
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-16 bg-gray-50 rounded-lg border border-gray-200">
+                  <FiUsers className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-comfortaa font-semibold text-gray-700 mb-2">Пользователи не найдены</h3>
+                  <p className="text-gray-500">Нет пользователей, соответствующих выбранному фильтру.</p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {/* Delete Confirmation Modal */}
       <Modal
         isOpen={showDeleteModal}
         onClose={() => {
           setShowDeleteModal(false)
           setUserToDelete(null)
         }}
-        title="Confirm User Deletion"
+        title="Подтверждение удаления"
         size="medium"
       >
         <div className="p-6">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center">
-              <FiAlertTriangle className="w-6 h-6 text-white" />
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+              <FiAlertTriangle className="w-6 h-6 text-red-600" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-white">Delete User</h3>
-              <p className="text-gray-400">This action cannot be undone</p>
+              <h3 className="text-lg font-comfortaa font-bold text-gray-900">Удалить пользователя</h3>
+              <p className="text-gray-600 text-sm">Это действие нельзя отменить</p>
             </div>
           </div>
 
           {userToDelete && (
-            <div className="bg-gray-800 rounded-lg p-4 mb-6">
+            <div className="bg-gray-50 rounded-lg p-4 mb-6 border border-gray-200">
               <div className="flex items-center gap-3">
-                <div
-                  className={`w-10 h-10 bg-gradient-to-br ${getRoleColor(userToDelete.role)} rounded-full flex items-center justify-center`}
-                >
-                  <span className="text-white font-semibold text-sm">
+                <div className="w-10 h-10 bg-[#372579] rounded-full flex items-center justify-center">
+                  <span className="text-white font-semibold text-sm font-comfortaa">
                     {userToDelete.fullName
                       .split(" ")
                       .map((name) => name[0])
@@ -935,18 +699,22 @@ const AdminDashboard = () => {
                   </span>
                 </div>
                 <div>
-                  <p className="text-white font-medium">{userToDelete.fullName}</p>
-                  <p className="text-gray-400 text-sm">{userToDelete.email}</p>
-                  <p className="text-gray-400 text-sm capitalize">{userToDelete.role}</p>
+                  <p className="text-gray-900 font-medium">{userToDelete.fullName}</p>
+                  <p className="text-gray-600 text-sm">{userToDelete.email}</p>
+                  <span
+                    className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${getRoleColor(userToDelete.role)}`}
+                  >
+                    {getRoleText(userToDelete.role)}
+                  </span>
                 </div>
               </div>
             </div>
           )}
 
-          <p className="text-gray-300 mb-6">
-            Are you sure you want to delete user{" "}
-            <span className="font-medium text-white">{userToDelete?.fullName}</span>? This will permanently remove their
-            account and all associated data.
+          <p className="text-gray-700 mb-6">
+            Вы уверены, что хотите удалить пользователя{" "}
+            <span className="font-semibold text-gray-900">{userToDelete?.fullName}</span>? Это приведет к безвозвратному
+            удалению учетной записи и всех связанных данных.
           </p>
 
           <div className="flex gap-3">
@@ -955,9 +723,9 @@ const AdminDashboard = () => {
                 setShowDeleteModal(false)
                 setUserToDelete(null)
               }}
-              className="flex-1 bg-gray-700 text-white font-medium py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors"
+              className="flex-1 bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-lg hover:bg-gray-300 transition-colors"
             >
-              Cancel
+              Отмена
             </button>
             <button
               onClick={handleDeleteUser}
@@ -969,7 +737,7 @@ const AdminDashboard = () => {
               ) : (
                 <>
                   <FiTrash2 className="w-5 h-5" />
-                  Delete User
+                  Удалить
                 </>
               )}
             </button>
@@ -977,77 +745,6 @@ const AdminDashboard = () => {
         </div>
       </Modal>
 
-      {/* Reassign Reviewer Confirmation Modal */}
-      <Modal
-        isOpen={showReassignModal}
-        onClose={() => {
-          setShowReassignModal(false)
-          setReassignData(null)
-        }}
-        title="Confirm Reviewer Reassignment"
-        size="medium"
-      >
-        <div className="p-6">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 bg-yellow-600 rounded-full flex items-center justify-center">
-              <FiRefreshCw className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-white">Reassign Reviewer</h3>
-              <p className="text-gray-400">This will change the assigned reviewer</p>
-            </div>
-          </div>
-
-          {reassignData && (
-            <div className="bg-gray-800 rounded-lg p-4 mb-6">
-              <p className="text-white mb-2">
-                <span className="font-medium">Student:</span> {reassignData.studentName}
-              </p>
-              <p className="text-gray-300 mb-2">
-                <span className="font-medium">Current Reviewer:</span> {reassignData.currentReviewerName}
-              </p>
-              <p className="text-gray-300">
-                <span className="font-medium">New Reviewer:</span> {reassignData.newReviewerName}
-              </p>
-            </div>
-          )}
-
-          <p className="text-gray-300 mb-6">
-            Are you sure you want to change the reviewer from{" "}
-            <span className="font-medium text-white">{reassignData?.currentReviewerName}</span> to{" "}
-            <span className="font-medium text-white">{reassignData?.newReviewerName}</span> for student{" "}
-            <span className="font-medium text-white">{reassignData?.studentName}</span>?
-          </p>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => {
-                setShowReassignModal(false)
-                setReassignData(null)
-              }}
-              className="flex-1 bg-gray-700 text-white font-medium py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleConfirmReassign}
-              disabled={assigningStudent}
-              className="flex-1 bg-yellow-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {assigningStudent ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <FiRefreshCw className="w-5 h-5" />
-                  Reassign Reviewer
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Assign Team Modal */}
       <Modal
         isOpen={showAssignmentModal}
         onClose={() => {
@@ -1057,25 +754,25 @@ const AdminDashboard = () => {
           setSelectedConsultant("")
           setSelectedReviewer("")
         }}
-        title="Assign Thesis Team"
+        title="Назначение команды"
         size="medium"
       >
         <div className="p-6">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
+            <div className="w-12 h-12 bg-[#372579] rounded-full flex items-center justify-center">
               <FiUsers className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-white">Assign Team Members</h3>
-              <p className="text-gray-400">Select supervisor, consultant, and reviewer for this student</p>
+              <h3 className="text-lg font-comfortaa font-bold text-gray-900">Назначить команду</h3>
+              <p className="text-gray-600 text-sm">Выберите научного руководителя, консультанта и рецензента</p>
             </div>
           </div>
 
           {assignmentData && (
-            <div className="bg-gray-800 rounded-lg p-4 mb-6">
+            <div className="bg-gray-50 rounded-lg p-4 mb-6 border border-gray-200">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                  <span className="text-white font-semibold text-sm">
+                <div className="w-10 h-10 bg-[#372579] rounded-full flex items-center justify-center">
+                  <span className="text-white font-semibold text-sm font-comfortaa">
                     {assignmentData.fullName
                       .split(" ")
                       .map((name) => name[0])
@@ -1085,29 +782,28 @@ const AdminDashboard = () => {
                   </span>
                 </div>
                 <div>
-                  <p className="text-white font-medium">{assignmentData.fullName}</p>
-                  <p className="text-gray-400 text-sm">{assignmentData.email}</p>
-                  <p className="text-gray-400 text-sm">{assignmentData.thesisTopic || "No thesis topic"}</p>
+                  <p className="text-gray-900 font-medium">{assignmentData.fullName}</p>
+                  <p className="text-gray-600 text-sm">{assignmentData.email}</p>
+                  <p className="text-gray-600 text-sm">{assignmentData.thesisTopic || "Тема не указана"}</p>
                 </div>
               </div>
             </div>
           )}
 
           <div className="space-y-4">
-            {/* Supervisor Selection */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 <div className="flex items-center gap-2">
-                  <FiBook className="w-4 h-4 text-orange-400" />
-                  <span>Supervisor</span>
+                  <FiBook className="w-4 h-4 text-orange-600" />
+                  <span>Научный руководитель</span>
                 </div>
               </label>
               <select
                 value={selectedSupervisor}
                 onChange={(e) => setSelectedSupervisor(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent transition-all"
+                className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all"
               >
-                <option value="">Select Supervisor</option>
+                <option value="">Выберите научного руководителя</option>
                 {supervisors.map((supervisor) => (
                   <option key={supervisor.id} value={supervisor.id}>
                     {supervisor.fullName} - {supervisor.institution}
@@ -1116,20 +812,19 @@ const AdminDashboard = () => {
               </select>
             </div>
 
-            {/* Consultant Selection */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 <div className="flex items-center gap-2">
-                  <FiHelpCircle className="w-4 h-4 text-indigo-400" />
-                  <span>Consultant</span>
+                  <FiHelpCircle className="w-4 h-4 text-indigo-600" />
+                  <span>Консультант</span>
                 </div>
               </label>
               <select
                 value={selectedConsultant}
                 onChange={(e) => setSelectedConsultant(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent transition-all"
+                className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all"
               >
-                <option value="">Select Consultant</option>
+                <option value="">Выберите консультанта</option>
                 {consultants.map((consultant) => (
                   <option key={consultant.id} value={consultant.id}>
                     {consultant.fullName} - {consultant.institution}
@@ -1138,20 +833,19 @@ const AdminDashboard = () => {
               </select>
             </div>
 
-            {/* Reviewer Selection */}
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 <div className="flex items-center gap-2">
-                  <FiAward className="w-4 h-4 text-green-400" />
-                  <span>Reviewer</span>
+                  <FiAward className="w-4 h-4 text-green-600" />
+                  <span>Рецензент</span>
                 </div>
               </label>
               <select
                 value={selectedReviewer}
                 onChange={(e) => setSelectedReviewer(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent transition-all"
+                className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all"
               >
-                <option value="">Select Reviewer</option>
+                <option value="">Выберите рецензента</option>
                 {approvedReviewers.map((reviewer) => (
                   <option key={reviewer.id} value={reviewer.id}>
                     {reviewer.fullName} - {reviewer.institution}
@@ -1170,21 +864,21 @@ const AdminDashboard = () => {
                 setSelectedConsultant("")
                 setSelectedReviewer("")
               }}
-              className="flex-1 bg-gray-700 text-white font-medium py-3 px-4 rounded-lg hover:bg-gray-600 transition-colors"
+              className="flex-1 bg-gray-200 text-gray-700 font-medium py-3 px-4 rounded-lg hover:bg-gray-300 transition-colors"
             >
-              Cancel
+              Отмена
             </button>
             <button
               onClick={() => handleAssignTeam(assignmentData?.id)}
               disabled={assigningStudent || (!selectedSupervisor && !selectedConsultant && !selectedReviewer)}
-              className="flex-1 bg-blue-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              className="flex-1 bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1a5e] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {assigningStudent ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
-                  <FiUser className="w-5 h-5" />
-                  Assign Team
+                  <FiUsers className="w-5 h-5" />
+                  Назначить команду
                 </>
               )}
             </button>
@@ -1192,7 +886,6 @@ const AdminDashboard = () => {
         </div>
       </Modal>
 
-      {/* Click outside to close dropdowns */}
       {openDropdown && <div className="fixed inset-0 z-5" onClick={() => setOpenDropdown(null)} />}
     </div>
   )

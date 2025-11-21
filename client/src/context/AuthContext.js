@@ -1,168 +1,81 @@
-import { createContext, useContext, useState, useEffect, useCallback } from "react"
-import axios from "axios"
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { thesisAPI } from "../services/api";
 
-const AuthContext = createContext()
+const AuthContext = createContext();
 
 export const useAuth = () => {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
   if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider")
+    throw new Error("useAuth must be used within an AuthProvider");
   }
-  return context
-}
-
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:8000/api/v1"
-
-// Create axios instance
-const authAPI = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
-})
-
-// Auth functions
-const realLogin = async (email, password, rememberMe) => {
-  try {
-    const response = await authAPI.post("/login", { email, password, rememberMe })
-    const { token, user } = response.data
-
-    // Store token in localStorage
-    localStorage.setItem("token", token)
-
-    return {
-      success: true,
-      user: user,
-      token: token,
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error.response?.data?.error || "Login failed",
-    }
-  }
-}
-
-const realRegister = async (userData) => {
-  try {
-    const response = await authAPI.post("/register", userData)
-    const { token } = response.data
-
-    // Store token in localStorage
-    localStorage.setItem("token", token)
-
-    // Get user info after registration
-    const userResponse = await authAPI.get("/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-
-    return {
-      success: true,
-      user: userResponse.data,
-      token: token,
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error.response?.data?.error || "Registration failed",
-    }
-  }
-}
-
-const getCurrentUser = async (token) => {
-  try {
-    const response = await authAPI.get("/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    return response.data
-  } catch (error) {
-    localStorage.removeItem("token")
-    throw error
-  }
-}
+  return context;
+};
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Check for existing token on app load
-  useEffect(() => {
-    const initAuth = async () => {
-      const token = localStorage.getItem("token")
-      if (token) {
-        try {
-          const userData = await getCurrentUser(token)
-          setUser(userData)
-        } catch (error) {
-          console.error("Failed to get current user:", error)
-          localStorage.removeItem("token")
-        }
-      }
-      setLoading(false)
-    }
+  const saveToken = (token) => {
+    if (token) localStorage.setItem("token", token);
+    else localStorage.removeItem("token");
+  };
 
-    initAuth()
-  }, [])
+  const login = async (credentials) => {
+    const res = await thesisAPI.login(credentials);
+    if (res?.token) saveToken(res.token);
+    if (res?.user) setUser(res.user);
+    return res;
+  };
 
-  const login = async (email, password, rememberMe) => {
-    setLoading(true)
+  const register = async (payload) => {
+    const res = await thesisAPI.register(payload);
+    return res;
+  };
+
+  const logout = useCallback(async () => {
     try {
-      const result = await realLogin(email, password, rememberMe)
-      if (result.success) {
-        // Get fresh user data after login
-        const token = localStorage.getItem("token")
-        const userData = await getCurrentUser(token)
-        setUser(userData)
-      }
-      return result
+      await thesisAPI.logout();
+    } catch (err) {
+      // ignore
     } finally {
-      setLoading(false)
+      saveToken(null);
+      setUser(null);
     }
-  }
+  }, []);
 
-  const register = async (userData) => {
-    setLoading(true)
-    try {
-      const result = await realRegister(userData)
-      if (result.success) {
-        setUser(result.user)
-      }
-      return result
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const logout = useCallback(() => {
-    localStorage.removeItem("token")
-    setUser(null)
-  }, [])
-
-  // Refreshing user data - use useCallback to prevent infinite loops
   const refreshUser = useCallback(async () => {
-    const token = localStorage.getItem("token")
-    if (token) {
-      try {
-        const userData = await getCurrentUser(token)
-        setUser(userData)
-        return userData
-      } catch (error) {
-        console.error("Failed to refresh user:", error)
-        logout()
-        return null
-      }
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setLoading(false);
+      return null;
     }
-    return null
-  }, [logout])
+    try {
+      const me = await thesisAPI.me();
+      setUser(me);
+      return me;
+    } catch (err) {
+      saveToken(null);
+      setUser(null);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const value = {
     user,
+    setUser,
     login,
     register,
     logout,
     loading,
     refreshUser,
-  }
+  };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
