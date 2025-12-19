@@ -2,7 +2,6 @@ import axios from "axios"
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:8000/api/v1"
 
-// Axios instance with default config
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -43,6 +42,11 @@ const realThesisAPI = {
 
   submitTopic: async (thesisTopic) => {
     const response = await api.post(`/submit-topic`, { thesisTopic })
+    return response.data
+  },
+
+  respondToProposedTopic: async (accepted, comments) => {
+    const response = await api.put(`/approve-topic-student`, { accepted, comments })
     return response.data
   },
 
@@ -109,7 +113,7 @@ const realThesisAPI = {
     return response.data
   },
 
-  // Review signing endpoints - Chrome native tools workflow
+  // Review signing routes with Chrome native tools workflow
   getUnsignedReview: async (thesisId) => {
     const response = await api.get(`/unsigned-review/${thesisId}`, {
       responseType: "blob",
@@ -152,29 +156,34 @@ const realThesisAPI = {
 
   // Supervisor endpoints
   getSupervisorAssignedTheses: async () => {
-    const response = await api.get("/supervisor/assigned-theses")
+    const response = await api.get("/assigned-theses-supervisor")
+    return response.data
+  },
+
+  getMyStudents: async () => {
+    const response = await api.get("/my-students")
     return response.data
   },
 
   getSupervisorCompletedReviews: async () => {
-    const response = await api.get("/supervisor/completed-reviews")
+    const response = await api.get("/completed-theses-supervisor")
     return response.data
   },
 
   submitSupervisorReview: async (thesisId, reviewData) => {
-    const response = await api.post(`/supervisor/submit-review/${thesisId}`, reviewData)
+    const response = await api.post(`/submit-review-supervisor/${thesisId}`, reviewData)
     return response.data
   },
 
   getSupervisorUnsignedReview: async (thesisId) => {
-    const response = await api.get(`/supervisor/unsigned-review/${thesisId}`, {
+    const response = await api.get(`/unsigned-review-supervisor/${thesisId}`, {
       responseType: "blob",
     })
     return response.data
   },
 
   uploadSupervisorSignedReview: async (thesisId, formData) => {
-    const response = await api.post(`/supervisor/upload-signed-review/${thesisId}`, formData, {
+    const response = await api.post(`/upload-signed-review-supervisor/${thesisId}`, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
@@ -282,13 +291,11 @@ const realThesisAPI = {
     return response.data
   },
 
-  // Team assignment endpoints
   assignThesisTeam: async (assignmentData) => {
     const response = await api.post("/assign-thesis-team", assignmentData)
     return response.data
   },
 
-  // Consultant endpoints
   getConsultantAssignedTheses: async () => {
     const response = await api.get("/assigned-theses-consultant")
     return response.data
@@ -322,9 +329,61 @@ const realThesisAPI = {
     })
     return response.data
   },
+
+  getAvailableSupervisors: async () => {
+    const response = await api.get("/supervisor-requests/available-supervisors")
+    return response.data
+  },
+
+  requestSupervisor: async (supervisorId, message) => {
+    const response = await api.post("/supervisor-requests/request", {
+      supervisorId,
+      message,
+    })
+    return response.data
+  },
+
+  getMySupervisorRequests: async () => {
+    const response = await api.get("/supervisor-requests/my-requests")
+    return response.data
+  },
+
+  cancelSupervisorRequest: async (requestId) => {
+    const response = await api.delete(`/supervisor-requests/${requestId}`)
+    return response.data
+  },
+
+  respondToSupervisorRequest: async (requestId, action, declineReason = "") => {
+    const payload = { action }
+    if (action === "decline") {
+      payload.declineReason = declineReason
+    }
+    const response = await api.patch(`/supervisor-requests/${requestId}/respond`, payload)
+    return response.data
+  },
+
+  getAvailableConsultants: async () => {
+    const response = await api.get("/supervisor-requests/available-consultants")
+    return response.data
+  },
+
+  // Supervisor topic management endpoints
+  getPendingTopicApprovals: async () => {
+    const response = await api.get("/pending-approvals")
+    return response.data
+  },
+
+  proposeTopicToStudent: async (studentId, proposedTopic) => {
+    const response = await api.put(`/${studentId}/propose-topic-supervisor`, { proposedTopic })
+    return response.data
+  },
+
+  approveStudentTopic: async (studentId, approved, comments) => {
+    const response = await api.put(`/${studentId}/approve-topic-supervisor`, { approved, comments })
+    return response.data
+  },
 }
 
-// Export the real API directly since we're not using mock data
 export const thesisAPI = realThesisAPI
 
 export default api

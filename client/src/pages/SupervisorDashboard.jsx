@@ -1,20 +1,19 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import {
-  FiFile,
   FiClock,
   FiCheck,
-  FiUser,
   FiDownload,
   FiEye,
   FiLogOut,
-  FiFilter,
   FiRefreshCw,
   FiEdit,
   FiUsers,
   FiMessageSquare,
+  FiBook,
+  FiSend,
+  FiX,
   FiAlertCircle,
-  FiStar,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
@@ -24,57 +23,100 @@ import SupervisorReviewAssessment from "../components/SupervisorReviewAssessment
 import SignedReviewViewer from "../components/SignedReviewViewer"
 
 const SupervisorDashboard = () => {
-  const { user, logout } = useAuth()
+  const { user, logout, refreshUser } = useAuth()
   const navigate = useNavigate()
   const [assignedTheses, setAssignedTheses] = useState([])
   const [completedReviews, setCompletedReviews] = useState([])
-  const [activeTab, setActiveTab] = useState("assigned")
+  const [pendingApprovals, setPendingApprovals] = useState([])
+  const [studentRequests, setStudentRequests] = useState([])
+  const [myStudents, setMyStudents] = useState([])
+  const [studentsStats, setStudentsStats] = useState({})
+  const [activeTab, setActiveTab] = useState("students")
   const [isLoading, setIsLoading] = useState(true)
   const [downloadingId, setDownloadingId] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedThesis, setSelectedThesis] = useState(null)
   const [showSignedReview, setShowSignedReview] = useState(false)
+  const [selectedStudent, setSelectedStudent] = useState(null)
+  const [showTopicModal, setShowTopicModal] = useState(false)
+  const [proposedTopic, setProposedTopic] = useState("")
+  const [isSubmittingTopic, setIsSubmittingTopic] = useState(false)
+  const [respondingRequestId, setRespondingRequestId] = useState(null)
+  const [studentFilter, setStudentFilter] = useState('all')
   const { toast, showToast, hideToast } = useToast()
+
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [selectedStudentId, setSelectedStudentId] = useState(null)
+  const [rejectComments, setRejectComments] = useState("")
 
   const fetchedRef = useRef(false)
   const isFetchingRef = useRef(false)
 
   const fetchTheses = useCallback(async () => {
-    if (isFetchingRef.current) return
+    if (!user || user.role !== "supervisor") return
 
     try {
-      isFetchingRef.current = true
       setIsLoading(true)
+      console.log("[Научный руководитель] Загрузка данных для руководителя:", user?.id)
 
-      const [assigned, completed] = await Promise.allSettled([
+      const [assigned, completed, pending, studentsData, requests] = await Promise.allSettled([
         thesisAPI.getSupervisorAssignedTheses(),
         thesisAPI.getSupervisorCompletedReviews(),
+        thesisAPI.getPendingTopicApprovals(),
+        thesisAPI.getMyStudents(),
+        thesisAPI.getMySupervisorRequests(),
       ])
 
       const assignedData = assigned.status === "fulfilled" ? assigned.value : []
       const completedData = completed.status === "fulfilled" ? completed.value : []
+      const pendingData = pending.status === "fulfilled" ? pending.value?.data || [] : []
+      const studentsResult = studentsData.status === "fulfilled" ? studentsData.value : {}
+      const requestsData = requests.status === "fulfilled" ? requests.value?.requests || [] : []
 
-      setAssignedTheses(assignedData)
-      setCompletedReviews(completedData)
+      console.log("[Научный руководитель] Получено студентов:", studentsResult.students?.length)
+      console.log("[Научный руководитель] Получено запросов:", requestsData?.length)
+
+      setAssignedTheses(Array.isArray(assignedData) ? assignedData : [])
+      setCompletedReviews(Array.isArray(completedData) ? completedData : [])
+      setPendingApprovals(Array.isArray(pendingData) ? pendingData : [])
+      setStudentRequests(Array.isArray(requestsData) ? requestsData : [])
+
+      // Устанавливаем студентов и статистику
+      setMyStudents(studentsResult.students || [])
+      setStudentsStats(studentsResult.stats || {})
+
+      console.log("[Научный руководитель] Количество моих студентов:", studentsResult.students?.length || 0)
+      console.log("[Научный руководитель] Статистика студентов:", studentsResult.stats)
+
       fetchedRef.current = true
-
-      if (assigned.status === "rejected" || completed.status === "rejected") {
-        showToast("Не удалось загрузить некоторые данные", "warning")
-      }
     } catch (error) {
-      console.error("Error fetching theses:", error)
+      console.error("[Научный руководитель] Ошибка загрузки данных:", error)
       showToast("Не удалось загрузить данные", "error")
     } finally {
       setIsLoading(false)
-      isFetchingRef.current = false
     }
-  }, [showToast])
+  }, [user, showToast])
 
   useEffect(() => {
     if (user && user.role === "supervisor" && !fetchedRef.current) {
       fetchTheses()
     }
   }, [user, fetchTheses])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && user && user.role === "supervisor") {
+        console.log("[Научный руководитель] Страница стала видимой, обновление данных")
+        refreshUser()
+        fetchTheses()
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [user, refreshUser, fetchTheses])
 
   const handleLogout = () => {
     logout()
@@ -121,6 +163,37 @@ const SupervisorDashboard = () => {
     fetchTheses()
   }
 
+  const handleRespondToRequest = async (requestId, action) => {
+    try {
+      setRespondingRequestId(requestId)
+
+      let declineReason = ""
+      if (action === "decline") {
+        declineReason = prompt("Укажите причину отклонения заявки (необязательно):")
+        if (declineReason === null) {
+          setRespondingRequestId(null)
+          return
+        }
+      }
+
+      await thesisAPI.respondToSupervisorRequest(requestId, action, declineReason)
+
+      showToast(action === "accept" ? "Заявка принята! Студент добавлен в ваш список." : "Заявка отклонена", "success")
+
+      await refreshUser()
+      await fetchTheses()
+    } catch (error) {
+      console.error("[Научный руководитель] Ошибка обработки запроса:", error)
+      showToast("Не удалось обработать заявку", "error")
+    } finally {
+      setRespondingRequestId(null)
+    }
+  }
+
+  const handleDeclineRequest = (requestId) => {
+    handleRespondToRequest(requestId, "decline")
+  }
+
   const getInitials = (fullName) => {
     if (!fullName || typeof fullName !== "string") return "?"
     return fullName
@@ -164,6 +237,162 @@ const SupervisorDashboard = () => {
         return status
     }
   }
+
+  const getStageBadgeColor = (color) => {
+    switch (color) {
+      case 'gray':
+        return 'bg-gray-100 text-gray-700 border-gray-200'
+      case 'blue':
+        return 'bg-blue-100 text-blue-700 border-blue-200'
+      case 'yellow':
+        return 'bg-yellow-100 text-yellow-700 border-yellow-200'
+      case 'orange':
+        return 'bg-orange-100 text-orange-700 border-orange-200'
+      case 'green':
+        return 'bg-green-100 text-green-700 border-green-200'
+      default:
+        return 'bg-gray-100 text-gray-700 border-gray-200'
+    }
+  }
+
+  // Вспомогательная функция для определения этапа на основе существующих флагов
+  const determineStudentStage = (student, thesis) => {
+    // Этап 1: Нет темы
+    if (!student.thesisTopic) {
+      return {
+        id: 1,
+        name: 'Нет темы',
+        description: 'Студент не предложил тему ВКР',
+        canProposeTopic: true,
+        needsAction: false,
+        color: 'gray'
+      };
+    }
+    
+    // Этап 2: Тема предложена студентом и ждет утверждения
+    if (student.topicProposedBy === 'student' && !student.isTopicApproved) {
+      return {
+        id: 2,
+        name: 'Тема на утверждении',
+        description: 'Студент предложил тему, требуется ваше утверждение',
+        canApproveTopic: true,
+        canRejectTopic: true,
+        needsAction: true,
+        color: 'orange'
+      };
+    }
+    
+    // Этап 3: Тема предложена руководителем и ждет ответа студента
+    if (student.topicProposedBy === 'supervisor' && 
+        student.studentTopicResponse?.status === 'pending') {
+      return {
+        id: 3,
+        name: 'Тема предложена',
+        description: 'Вы предложили тему, ждем ответа студента',
+        canProposeNewTopic: false, // Ждем ответа студента
+        needsAction: false,
+        color: 'blue'
+      };
+    }
+
+    // Этап 3.5: Студент отклонил тему руководителя
+    if (student.topicProposedBy === 'supervisor' && 
+        student.studentTopicResponse?.status === 'declined') {
+      return {
+        id: 3.5,
+        name: 'Тема отклонена',
+        description: 'Студент отклонил ваше предложение. Можете предложить новую тему.',
+        canProposeTopic: true,
+        needsAction: true,
+        color: 'red'
+      };
+    }
+    
+    // Этап 4: Тема утверждена, но нет дипломной работы
+    if (student.isTopicApproved && (!thesis || student.thesisStatus === 'not_submitted')) {
+      return {
+        id: 4,
+        name: 'Тема утверждена',
+        description: 'Тема утверждена, ожидается загрузка дипломной работы',
+        canProposeTopic: false, // Тема уже утверждена
+        needsAction: false,
+        color: 'green'
+      };
+    }
+    
+    // Этап 5: Дипломная работа у консультанта
+    if (student.thesisStatus === 'with_consultant') {
+      return {
+        id: 5,
+        name: 'У консультанта',
+        description: 'Дипломная работа находится на рассмотрении у консультанта',
+        needsAction: false,
+        color: 'blue'
+      };
+    }
+    
+    // Этап 6: Дипломная работа у руководителя
+    if (student.thesisStatus === 'with_supervisor') {
+      return {
+        id: 6,
+        name: 'У руководителя',
+        description: 'Дипломная работа находится на вашем рассмотрении',
+        canReviewThesis: true,
+        needsAction: true,
+        color: 'orange'
+      };
+    }
+    
+    // Этап 7: Дипломная работа у рецензента
+    if (student.thesisStatus === 'under_review') {
+      return {
+        id: 7,
+        name: 'У рецензента',
+        description: 'Дипломная работа находится на рассмотрении у рецензента',
+        needsAction: false,
+        color: 'blue'
+      };
+    }
+    
+    // Этап 8: Требуются исправления
+    if (student.thesisStatus === 'revisions_requested') {
+      return {
+        id: 8,
+        name: 'Исправления',
+        description: 'Требуются исправления в дипломной работе',
+        needsAction: false,
+        color: 'yellow'
+      };
+    }
+    
+    // Этап 9: Оценено
+    if (student.thesisStatus === 'evaluated') {
+      return {
+        id: 9,
+        name: 'Оценено',
+        description: 'Дипломная работа оценена',
+        needsAction: false,
+        color: 'green'
+      };
+    }
+    
+    return {
+      id: 0,
+      name: 'Неизвестно',
+      description: 'Статус не определен',
+      needsAction: false,
+      color: 'gray'
+    };
+  }
+
+  // Функция фильтрации студентов
+  const filteredStudents = useMemo(() => {
+    if (studentFilter === 'all') return myStudents
+    if (studentFilter === 'needsAction') return myStudents.filter(s => s.stage?.needsAction)
+    if (studentFilter === 'noTopic') return myStudents.filter(s => s.stage?.id === 1)
+    if (studentFilter === 'topicPending') return myStudents.filter(s => s.stage?.id === 2)
+    return myStudents
+  }, [myStudents, studentFilter])
 
   if (isLoading && !fetchedRef.current) {
     return (
@@ -241,11 +470,25 @@ const SupervisorDashboard = () => {
           {/* Tab Navigation */}
           <div className="flex gap-4 mb-6">
             <button
+              onClick={() => setActiveTab("requests")}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === "requests" ? "bg-[#372579] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Запросы студентов ({studentRequests.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("students")}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === "students" ? "bg-[#372579] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Студенты ({myStudents.length})
+            </button>
+            <button
               onClick={() => setActiveTab("assigned")}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === "assigned"
-                  ? "bg-[#372579] text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                activeTab === "assigned" ? "bg-[#372579] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
               На рассмотрении ({assignedTheses.length})
@@ -253,14 +496,371 @@ const SupervisorDashboard = () => {
             <button
               onClick={() => setActiveTab("completed")}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === "completed"
-                  ? "bg-[#372579] text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                activeTab === "completed" ? "bg-[#372579] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
               Завершённые ({completedReviews.length})
             </button>
           </div>
+
+          {/* Student Requests Tab */}
+          {activeTab === "requests" && (
+            <div className="space-y-4">
+              {studentRequests.length > 0 ? (
+                studentRequests.map((request) => (
+                  <div
+                    key={request.id}
+                    className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center">
+                            <span className="text-white font-semibold text-sm">
+                              {getInitials(request.student?.name || request.student?.fullName)}
+                            </span>
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900">
+                              {request.student?.name || request.student?.fullName}
+                            </h3>
+                            <p className="text-gray-600 text-sm">{request.student?.email}</p>
+                            {request.student?.program && (
+                              <p className="text-gray-500 text-xs">{request.student.program}</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="ml-13 space-y-2">
+                          <p className="text-sm text-gray-900">
+                            Факультет:{" "}
+                            <span className="font-medium">
+                              {request.faculty || request.student?.faculty || "не указано"}
+                            </span>
+                          </p>
+                          <p className="text-sm text-gray-900">
+                            Сообщение студента:{" "}
+                            <span className="font-medium">
+                              {request.studentMessage?.trim() || "Студент не оставил комментарий"}
+                            </span>
+                          </p>
+                          {request.createdAt && (
+                            <p className="text-xs text-gray-500">
+                              Отправлено:{" "}
+                              {new Date(request.createdAt).toLocaleString("ru-RU", {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2 w-full max-w-xs">
+                        <button
+                          onClick={() => handleRespondToRequest(request.id, "accept")}
+                          disabled={respondingRequestId === request.id}
+                          className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium disabled:opacity-60"
+                        >
+                          {respondingRequestId === request.id ? (
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <FiCheck className="w-4 h-4" />
+                          )}
+                          Принять
+                        </button>
+                        <button
+                          onClick={() => handleRespondToRequest(request.id, "decline")}
+                          disabled={respondingRequestId === request.id}
+                          className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-60"
+                        >
+                          <FiX className="w-4 h-4" />
+                          Отклонить
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+                  <FiUsers className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-600 mb-2">Нет новых запросов</h3>
+                  <p className="text-gray-500">Студенты ещё не отправили запросы на прикрепление.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Students Tab */}
+          {activeTab === "students" && (
+            <div className="space-y-4">
+              {/* Статистика */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <p className="text-gray-600 text-xs mb-1">Всего</p>
+                  <p className="text-xl font-bold text-gray-900">{myStudents.length}</p>
+                </div>
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                  <p className="text-orange-600 text-xs mb-1">Требуют действия</p>
+                  <p className="text-xl font-bold text-orange-900">
+                    {(studentsStats.topicPendingApproval || 0) + (studentsStats.withSupervisor || 0)}
+                  </p>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-blue-600 text-xs mb-1">На утверждении</p>
+                  <p className="text-xl font-bold text-blue-900">{studentsStats.topicPendingApproval || 0}</p>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <p className="text-green-600 text-xs mb-1">Утверждено</p>
+                  <p className="text-xl font-bold text-green-900">{studentsStats.topicApprovedNoWork || 0}</p>
+                </div>
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                  <p className="text-purple-600 text-xs mb-1">На рецензии</p>
+                  <p className="text-xl font-bold text-purple-900">{studentsStats.withSupervisor || 0}</p>
+                </div>
+              </div>
+
+              {/* Фильтры */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button
+                  onClick={() => setStudentFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${studentFilter === 'all' ? 'bg-[#372579] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Все студенты
+                </button>
+                <button
+                  onClick={() => setStudentFilter('needsAction')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${studentFilter === 'needsAction' ? 'bg-orange-500 text-white' : 'bg-orange-100 text-orange-700 hover:bg-orange-200'}`}
+                >
+                  Требуют действия
+                </button>
+                <button
+                  onClick={() => setStudentFilter('noTopic')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${studentFilter === 'noTopic' ? 'bg-gray-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                >
+                  Нет темы
+                </button>
+                <button
+                  onClick={() => setStudentFilter('topicPending')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${studentFilter === 'topicPending' ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                >
+                  Тема на утверждении
+                </button>
+              </div>
+
+              {/* Список студентов */}
+              {filteredStudents.length > 0 ? (
+                filteredStudents.map((student) => (
+                  <div
+                    key={student.id}
+                    className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        {/* Заголовок студента */}
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="w-10 h-10 bg-gradient-to-br from-[#372579] to-purple-600 rounded-full flex items-center justify-center">
+                            <span className="text-white font-semibold text-sm">{getInitials(student.fullName)}</span>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <h3 className="text-lg font-semibold text-gray-900">{student.fullName}</h3>
+                                <p className="text-gray-600 text-sm">{student.email}</p>
+                                <p className="text-gray-600 text-sm">
+                                  {student.faculty} - {student.group}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStageBadgeColor(student.stage?.color)}`}>
+                                  {student.stage?.name}
+                                </span>
+                                {student.stage?.needsAction && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
+                                    <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
+                                    Требует действия
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Описание этапа */}
+                            <p className="text-gray-600 text-sm mt-2">{student.stage?.description}</p>
+
+                            {/* Детали */}
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {/* Тема ВКР */}
+                              <div>
+                                <p className="text-sm text-gray-500 mb-1">Тема ВКР</p>
+                                {student.thesisTopic ? (
+                                  <div className="p-3 bg-gray-50 rounded-lg">
+                                    <p className="text-gray-900 font-medium">"{student.thesisTopic}"</p>
+                                    <div className="flex items-center gap-2 mt-2">
+                                      <span className={`text-xs px-2 py-0.5 rounded-full ${student.isTopicApproved ? 'bg-green-100 text-green-700' : student.topicProposedBy === 'student' ? 'bg-yellow-100 text-yellow-700' : student.studentTopicResponse?.status === 'declined' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                                        {student.isTopicApproved 
+                                          ? 'Утверждена' 
+                                          : student.topicProposedBy === 'student' 
+                                            ? 'На утверждении' 
+                                            : student.studentTopicResponse?.status === 'declined'
+                                              ? 'Отклонена студентом'
+                                              : 'Предложена руководителем'}
+                                      </span>
+                                      {student.topicProposedBy && (
+                                        <span className="text-xs text-gray-500">
+                                          {student.topicProposedBy === 'student' ? 'от студента' : 'от вас'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {student.topicRejectionComments && (
+                                      <p className="text-xs text-red-600 mt-1">
+                                        Отклонена вами: {student.topicRejectionComments}
+                                      </p>
+                                    )}
+                                    {student.studentTopicResponse?.status === 'declined' && student.studentTopicResponse?.comments && (
+                                      <div className="p-2 bg-red-50 rounded border border-red-200 mt-2">
+                                        <p className="text-xs text-red-700">
+                                          <span className="font-medium">Комментарий студента:</span> {student.studentTopicResponse.comments}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-gray-500 italic">Тема не предложена</p>
+                                )}
+                              </div>
+
+                              {/* Статус работы */}
+                              <div>
+                                <p className="text-sm text-gray-500 mb-1">Статус работы</p>
+                                <div className="p-3 bg-gray-50 rounded-lg">
+                                  {student.hasThesis ? (
+                                    <>
+                                      <p className="text-gray-900 font-medium">{student.thesis?.title}</p>
+                                      <div className="flex items-center gap-2 mt-2">
+                                        <span className={`text-xs px-2 py-0.5 rounded-full ${getStatusBadgeColor(student.thesisStatus)}`}>
+                                          {getStatusText(student.thesisStatus)}
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                          Отправлено: {new Date(student.thesis?.submissionDate).toLocaleDateString('ru-RU')}
+                                        </span>
+                                      </div>
+                                    </>
+                                  ) : student.isTopicApproved ? (
+                                    <p className="text-gray-900">Ожидается загрузка дипломной работы</p>
+                                  ) : (
+                                    <p className="text-gray-500">Дипломная работа не загружена</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Кнопки действий */}
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {/* Кнопки для этапа 1: Нет темы */}
+                              {student.stage?.id === 1 && student.stage?.canProposeTopic && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedStudent(student)
+                                    setShowTopicModal(true)
+                                    setProposedTopic("")
+                                  }}
+                                  className="px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium flex items-center gap-2"
+                                >
+                                  <FiBook className="w-4 h-4" />
+                                  Предложить тему
+                                </button>
+                              )}
+
+                              {/* Кнопки для этапа 2: Тема на утверждении */}
+                              {student.stage?.id === 2 && student.stage?.canApproveTopic && (
+                                <>
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await thesisAPI.approveStudentTopic(student.id, true, "")
+                                        showToast("Тема утверждена!", "success")
+                                        await fetchTheses()
+                                      } catch (error) {
+                                        showToast("Не удалось утвердить тему", "error")
+                                      }
+                                    }}
+                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all text-sm font-medium flex items-center gap-2"
+                                  >
+                                    <FiCheck className="w-4 h-4" />
+                                    Утвердить тему
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedStudentId(student.id)
+                                      setShowRejectModal(true)
+                                      setRejectComments("")
+                                    }}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all text-sm font-medium flex items-center gap-2"
+                                  >
+                                    <FiX className="w-4 h-4" />
+                                    Отклонить тему
+                                  </button>
+                                </>
+                              )}
+
+                              {/* Кнопки для этапа когда студент отклонил тему руководителя */}
+                              {(student.stage?.id === 3.5 || (student.topicProposedBy === 'supervisor' && student.studentTopicResponse?.status === 'declined')) && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedStudent(student)
+                                    setShowTopicModal(true)
+                                    setProposedTopic(student.thesisTopic || "")
+                                  }}
+                                  className="px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium flex items-center gap-2"
+                                >
+                                  <FiSend className="w-4 h-4" />
+                                  Предложить снова
+                                </button>
+                              )}
+
+                              {/* Кнопки для этапа 6: Дипломная работа у руководителя */}
+                              {student.stage?.id === 6 && student.stage?.canReviewThesis && student.hasThesis && (
+                                <button
+                                  onClick={() => handleViewThesis(student.thesis)}
+                                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium flex items-center gap-2"
+                                >
+                                  <FiEdit className="w-4 h-4" />
+                                  Рецензировать работу
+                                </button>
+                              )}
+
+                              {/* Общие кнопки */}
+                              {student.hasThesis && (
+                                <button
+                                  onClick={() => handleDownload(student.thesis.id, student.thesis.title)}
+                                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium flex items-center gap-2"
+                                >
+                                  <FiDownload className="w-4 h-4" />
+                                  Скачать работу
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+                  <FiUsers className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-600 mb-2">
+                    {studentFilter === 'all' 
+                      ? "Нет назначенных студентов" 
+                      : "Нет студентов с выбранным фильтром"}
+                  </h3>
+                  <p className="text-gray-500">
+                    {studentFilter === 'all' 
+                      ? "Вам ещё не назначены студенты для работы." 
+                      : "Попробуйте выбрать другой фильтр."}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Assigned Theses Tab */}
           {activeTab === "assigned" && (
@@ -447,11 +1047,7 @@ const SupervisorDashboard = () => {
         size="full"
       >
         {selectedThesis && (
-          <SupervisorReviewAssessment
-            thesisId={selectedThesis.id}
-            thesis={selectedThesis}
-            onClose={handleCloseModal}
-          />
+          <SupervisorReviewAssessment thesisId={selectedThesis.id} thesis={selectedThesis} onClose={handleCloseModal} />
         )}
       </Modal>
 
@@ -474,6 +1070,136 @@ const SupervisorDashboard = () => {
             }}
           />
         </Modal>
+      )}
+
+      {/* Propose Topic Modal */}
+      <Modal
+        isOpen={showTopicModal}
+        onClose={() => {
+          setShowTopicModal(false)
+          setSelectedStudent(null)
+          setProposedTopic("")
+        }}
+        title={`Предложить тему - ${selectedStudent?.fullName}`}
+        size="medium"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Тема дипломной работы</label>
+            <textarea
+              value={proposedTopic}
+              onChange={(e) => setProposedTopic(e.target.value)}
+              placeholder="Введите тему дипломной работы..."
+              rows="4"
+              className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
+              required
+            />
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setShowTopicModal(false)
+                setSelectedStudent(null)
+                setProposedTopic("")
+              }}
+              className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={async () => {
+                if (!proposedTopic.trim()) {
+                  showToast("Пожалуйста, введите тему", "error")
+                  return
+                }
+                try {
+                  setIsSubmittingTopic(true)
+                  await thesisAPI.proposeTopicToStudent(selectedStudent.id, proposedTopic.trim())
+                  showToast("Тема предложена студенту!", "success")
+                  setShowTopicModal(false)
+                  setSelectedStudent(null)
+                  setProposedTopic("")
+                  await fetchTheses()
+                } catch (error) {
+                  showToast(error.response?.data?.error || "Не удалось предложить тему", "error")
+                } finally {
+                  setIsSubmittingTopic(false)
+                }
+              }}
+              disabled={isSubmittingTopic || !proposedTopic.trim()}
+              className="flex-1 bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1d5f] focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {isSubmittingTopic ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <FiSend className="w-5 h-5" />
+                  Предложить тему
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Модальное окно для отказа темы студента */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Укажите причину отклонения темы студента</h3>
+            
+            <div className="mb-4">
+              <label htmlFor="rejectComments" className="block text-sm font-medium text-gray-700 mb-2">
+                Комментарий (обязательно)
+              </label>
+              <textarea
+                id="rejectComments"
+                value={rejectComments}
+                onChange={(e) => setRejectComments(e.target.value)}
+                placeholder="Почему вы отклоняете предложенную тему студента?"
+                rows="4"
+                className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
+                required
+              />
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowRejectModal(false)
+                  setSelectedStudentId(null)
+                  setRejectComments("")
+                }}
+                className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={async () => {
+                  if (!rejectComments.trim()) {
+                    showToast("Пожалуйста, укажите причину отклонения", "error")
+                    return
+                  }
+                  try {
+                    await thesisAPI.approveStudentTopic(selectedStudentId, false, rejectComments.trim())
+                    showToast("Тема отклонена", "success")
+                    setShowRejectModal(false)
+                    setSelectedStudentId(null)
+                    setRejectComments("")
+                    await fetchTheses()
+                  } catch (error) {
+                    showToast("Не удалось отклонить тему", "error")
+                  }
+                }}
+                disabled={!rejectComments.trim()}
+                className="flex-1 bg-red-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <FiX className="w-4 h-4" />
+                Отклонить тему
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

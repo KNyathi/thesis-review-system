@@ -19,7 +19,7 @@ const Modal = ({ isOpen, onClose, children, title, size = "large" }) => {
   const sizeClasses = {
     small: "max-w-md",
     medium: "max-w-2xl",
-    large: "max-w-6xl",
+    large: "max-w-3xl",
     full: "max-w-7xl",
   }
 
@@ -30,8 +30,8 @@ const Modal = ({ isOpen, onClose, children, title, size = "large" }) => {
       <div
         className={`relative bg-white rounded-lg border border-gray-200 shadow-2xl w-full ${sizeClasses[size]} max-h-[90vh] overflow-hidden`}
       >
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gray-50">
-          <h2 className="text-xl font-comfortaa font-bold text-gray-900">{title}</h2>
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+          <h2 className="text-lg font-comfortaa font-bold text-gray-900">{title}</h2>
           <button
             onClick={onClose}
             className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-colors"

@@ -20,10 +20,10 @@ import { thesisAPI } from "../services/api"
 import Modal from "../components/Modal"
 
 const AdminDashboard = () => {
-  const { user, logout } = useAuth()
+  const { user, logout, refreshUser } = useAuth()
   const navigate = useNavigate()
   const [students, setStudents] = useState([])
-  const [allUsers, setAllUsers] = useState([])
+  const [allUsers, setUsers] = useState([])
   const [theses, setTheses] = useState([])
   const [approvedReviewers, setApprovedReviewers] = useState([])
   const [supervisors, setSupervisors] = useState([])
@@ -47,84 +47,74 @@ const AdminDashboard = () => {
   const { toast, showToast, hideToast } = useToast()
 
   const fetchedRef = useRef(false)
-  const retryCountRef = useRef(0)
-  const maxRetries = 3
 
   const fetchData = useCallback(async () => {
-    if (fetchedRef.current && retryCountRef.current === 0) {
-      return
-    }
+    if (!user || user.role !== "admin") return
 
     try {
       setIsLoading(true)
-      retryCountRef.current += 1
+      console.log("[v0] Fetching admin data")
 
-      const fetchWithTimeout = (promise, timeout = 10000) => {
-        return Promise.race([
-          promise,
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Request timeout")), timeout)),
-        ])
-      }
-
-      const [allUsersResult, allThesesResult] = await Promise.allSettled([
-        fetchWithTimeout(thesisAPI.getAllUsers()),
-        fetchWithTimeout(thesisAPI.getAllTheses()),
+      const [usersResponse, thesesResponse] = await Promise.allSettled([
+        thesisAPI.getAllUsers(),
+        thesisAPI.getAllTheses(),
       ])
 
-      const users = allUsersResult.status === "fulfilled" && allUsersResult.value ? allUsersResult.value : []
-      const thesesData = allThesesResult.status === "fulfilled" && allThesesResult.value ? allThesesResult.value : []
+      const usersData = usersResponse.status === "fulfilled" ? usersResponse.value : []
+      const thesesData = thesesResponse.status === "fulfilled" ? thesesResponse.value : []
 
-      const studentUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "student") : []
-      const reviewerUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "reviewer") : []
-      const supervisorUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "supervisor") : []
-      const consultantUsers = Array.isArray(users) ? users.filter((user) => user && user.role === "consultant") : []
+      console.log("[v0] Users fetched:", usersData.length)
+      console.log("[v0] Theses fetched:", thesesData.length)
 
-      setStudents(studentUsers)
-      setAllUsers(users)
-      setTheses(thesesData)
-      setApprovedReviewers(reviewerUsers)
+      setUsers(Array.isArray(usersData) ? usersData : [])
+      setTheses(Array.isArray(thesesData) ? thesesData : [])
+
+      const supervisorUsers = Array.isArray(usersData)
+        ? usersData.filter((user) => user && user.role === "supervisor")
+        : []
+      const consultantUsers = Array.isArray(usersData)
+        ? usersData.filter((user) => user && user.role === "consultant")
+        : []
+      const reviewerUsers = Array.isArray(usersData) ? usersData.filter((user) => user && user.role === "reviewer") : []
+      const studentUsers = Array.isArray(usersData) ? usersData.filter((user) => user && user.role === "student") : []
+
+      console.log("[v0] Supervisors:", supervisorUsers.length)
+      console.log("[v0] Consultants:", consultantUsers.length)
+      console.log("[v0] Reviewers:", reviewerUsers.length)
+      console.log("[v0] Students:", studentUsers.length)
+
       setSupervisors(supervisorUsers)
       setConsultants(consultantUsers)
-
-      const failedRequests = [allUsersResult, allThesesResult].filter((result) => result.status === "rejected")
-
-      if (failedRequests.length > 0) {
-        console.warn("Some data requests failed:", failedRequests)
-        if (retryCountRef.current < maxRetries) {
-          showToast(
-            `Не удалось загрузить некоторые данные. Повтор... (${retryCountRef.current}/${maxRetries})`,
-            "warning",
-          )
-          setTimeout(() => {
-            fetchData()
-          }, 2000)
-          return
-        } else {
-          showToast("Не удалось загрузить некоторые данные после нескольких попыток", "error")
-        }
-      }
+      setApprovedReviewers(reviewerUsers)
+      setStudents(studentUsers)
 
       fetchedRef.current = true
-      retryCountRef.current = 0
     } catch (error) {
-      console.error("Error fetching data:", error)
-      if (retryCountRef.current < maxRetries) {
-        showToast(`Ошибка загрузки данных. Повтор... (${retryCountRef.current}/${maxRetries})`, "warning")
-        setTimeout(() => {
-          fetchData()
-        }, 2000)
-      } else {
-        showToast("Не удалось загрузить данные после нескольких попыток", "error")
-        retryCountRef.current = 0
-      }
+      console.error("[v0] Error fetching admin data:", error)
+      showToast("Не удалось загрузить данные", "error")
     } finally {
       setIsLoading(false)
     }
-  }, [showToast])
+  }, [user, showToast])
 
   useEffect(() => {
     if (user && user.role === "admin" && !fetchedRef.current) {
       fetchData()
+    }
+  }, [user])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && user && user.role === "admin") {
+        console.log("[v0] Page became visible, refreshing admin data")
+        fetchedRef.current = false
+        fetchData()
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
   }, [user, fetchData])
 
@@ -175,6 +165,12 @@ const AdminDashboard = () => {
 
     try {
       setAssigningStudent(studentId)
+
+      console.log("[v0] Assigning team to student:", studentId)
+      console.log("[v0] Supervisor:", selectedSupervisor)
+      console.log("[v0] Consultant:", selectedConsultant)
+      console.log("[v0] Reviewer:", selectedReviewer)
+
       await thesisAPI.assignThesisTeam({
         studentId,
         supervisorId: selectedSupervisor || undefined,
@@ -182,16 +178,20 @@ const AdminDashboard = () => {
         reviewerId: selectedReviewer || undefined,
       })
 
+      console.log("[v0] Team assigned successfully")
       showToast("Команда успешно назначена!", "success")
+
       fetchedRef.current = false
       await fetchData()
+
       setShowAssignmentModal(false)
       setSelectedSupervisor("")
       setSelectedConsultant("")
       setSelectedReviewer("")
       setAssignmentData(null)
     } catch (error) {
-      showToast("Не удалось назначить команду", "error")
+      console.error("[v0] Error assigning team:", error)
+      showToast(error.response?.data?.error || "Не удалось назначить команду", "error")
     } finally {
       setAssigningStudent(null)
     }
@@ -258,7 +258,7 @@ const AdminDashboard = () => {
       return "Не загружено"
     }
     if (!hasTeam) {
-      return "Ожидает назначения команды"
+      return "Ожидает н��значения команды"
     }
     switch (status) {
       case "under_review":
@@ -335,11 +335,6 @@ const AdminDashboard = () => {
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-[#372579] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-gray-600">Загрузка панели администратора...</p>
-          {retryCountRef.current > 0 && (
-            <p className="text-amber-600 text-sm mt-2">
-              Попытка {retryCountRef.current}/{maxRetries}
-            </p>
-          )}
         </div>
       </div>
     )
@@ -377,7 +372,6 @@ const AdminDashboard = () => {
               <button
                 onClick={() => {
                   fetchedRef.current = false
-                  retryCountRef.current = 0
                   fetchData()
                 }}
                 className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
@@ -806,7 +800,7 @@ const AdminDashboard = () => {
                 <option value="">Выберите научного руководителя</option>
                 {supervisors.map((supervisor) => (
                   <option key={supervisor.id} value={supervisor.id}>
-                    {supervisor.fullName} - {supervisor.institution}
+                    {supervisor.fullName || supervisor.name} {supervisor.department && `- ${supervisor.department}`}
                   </option>
                 ))}
               </select>
@@ -824,10 +818,10 @@ const AdminDashboard = () => {
                 onChange={(e) => setSelectedConsultant(e.target.value)}
                 className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all"
               >
-                <option value="">Выберите консультанта</option>
+                <option value="">Выберите консультанта (необязательно)</option>
                 {consultants.map((consultant) => (
                   <option key={consultant.id} value={consultant.id}>
-                    {consultant.fullName} - {consultant.institution}
+                    {consultant.fullName || consultant.name} {consultant.department && `- ${consultant.department}`}
                   </option>
                 ))}
               </select>
@@ -845,10 +839,10 @@ const AdminDashboard = () => {
                 onChange={(e) => setSelectedReviewer(e.target.value)}
                 className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all"
               >
-                <option value="">Выберите рецензента</option>
+                <option value="">Выберите рецензента (необязательно)</option>
                 {approvedReviewers.map((reviewer) => (
                   <option key={reviewer.id} value={reviewer.id}>
-                    {reviewer.fullName} - {reviewer.institution}
+                    {reviewer.fullName || reviewer.name} {reviewer.department && `- ${reviewer.department}`}
                   </option>
                 ))}
               </select>

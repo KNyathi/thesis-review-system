@@ -21,7 +21,6 @@ const RegisterPage = () => {
     { value: "consultant", label: "Консультант" },
     { value: "head_of_department", label: "Глава кафедры" },
     { value: "dean", label: "Декан" },
-    // note: admin intentionally omitted
   ];
 
   const handleChange = (e) => {
@@ -34,11 +33,12 @@ const RegisterPage = () => {
     setError("");
     setLoading(true);
     try {
-      // payload shape expected by server: { fullName, email, password, role }
-      await register(form);
-      navigate("/profile");
+      // fullName, email, password, role 
+      const result = await register(form);
+      // По роли отправляет на правильный дашборд 
+      const role = form.role;
+      navigate(`/${role}`, { replace: true });
     } catch (err) {
-      // err may be string or object
       const msg = err?.message || err?.detail || JSON.stringify(err) || "Ошибка регистрации";
       setError(msg);
     } finally {

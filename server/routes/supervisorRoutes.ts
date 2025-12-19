@@ -1,7 +1,7 @@
 import express from 'express';
 import upload from "../utils/multer"
 import { authenticate, isConsultantReview, isSupervisor } from '../middleware/auth';
-import { approveThesisTopic, downloadSignedReview, downloadThesis, getAssignedTheses, getCompletedReviews, getPendingApprovals, getSignedReview, getUnsignedReview, proposeThesisTopic, reReviewThesis, signedReview, submitReview, uploadSignedReview, viewThesis } from '../controllers/supervisorController';
+import { approveThesisTopic, downloadSignedReview, downloadThesis, getAssignedTheses, getCompletedReviews, getPendingApprovals, getSignedReview, getUnsignedReview, proposeThesisTopic, reReviewThesis, signedReview, submitReview, uploadSignedReview, viewThesis, getMyStudents } from '../controllers/supervisorController';
 
 const supervisorRouter = express.Router();
 
@@ -49,5 +49,7 @@ supervisorRouter.get(
 ) //complete
 
 supervisorRouter.get("/view-pdf-supervisor/:id", authenticate, isSupervisor, viewThesis) //complete
+
+supervisorRouter.get('/my-students', authenticate, isSupervisor, getMyStudents);
 
 export default supervisorRouter;

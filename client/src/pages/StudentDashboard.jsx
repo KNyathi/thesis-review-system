@@ -1,28 +1,25 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   FiUpload,
-  FiFile,
   FiCheck,
   FiClock,
   FiUser,
-  FiDownload,
   FiRefreshCw,
   FiLogOut,
   FiAlertCircle,
   FiEye,
-  FiEdit,
   FiSend,
   FiBook,
   FiUsers,
   FiMessageSquare,
   FiRotateCw,
+  FiSearch,
+  FiX,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
 import { thesisAPI } from "../services/api"
-import Modal from "../components/Modal"
-import StudentThesisDetails from "../components/StudentThesisDetails"
 import SignedReviewViewer from "../components/SignedReviewViewer"
 
 const StudentDashboard = () => {
@@ -39,8 +36,20 @@ const StudentDashboard = () => {
   const { toast, showToast, hideToast } = useToast()
   const [showSignedReview, setShowSignedReview] = useState(false)
   const [topicProposal, setTopicProposal] = useState("")
+  const [availableSupervisors, setAvailableSupervisors] = useState([]) 
+  const [searchQuery, setSearchQuery] = useState("")
+  const [isLoadingSupervisors, setIsLoadingSupervisors] = useState(false)
+  const [requestingStates, setRequestingStates] = useState({})
+  const [myRequests, setMyRequests] = useState([])
+  const [supervisorInfo, setSupervisorInfo] = useState(null)
+  const [consultantInfo, setConsultantInfo] = useState(null)
+  const [reviewerInfo, setReviewerInfo] = useState(null)
+  
+  const [showTopicResponseModal, setShowTopicResponseModal] = useState(false)
+  const [responseComments, setResponseComments] = useState("")
+  const [isResponding, setIsResponding] = useState(false)
 
-  // Use ref to prevent infinite loops
+  // Используем ref для предотвращения бесконечных циклов при начальной загрузке
   const fetchedRef = useRef(false)
   const lastUserUpdateRef = useRef(null)
 
@@ -49,44 +58,109 @@ const StudentDashboard = () => {
       try {
         setIsLoading(true)
 
-        // Only refresh user data if forced or if user data seems stale
+        // Обновляем данные пользователя только при принудительном обновлении или если данные устарели
         if (forceRefresh || !lastUserUpdateRef.current || Date.now() - lastUserUpdateRef.current > 30000) {
-          // 30 seconds
           await refreshUser()
           lastUserUpdateRef.current = Date.now()
         }
 
         const data = await thesisAPI.getMyThesis()
         setThesis(data)
-        setTitle(data?.title || "")
+        // Устанавливаем название из утверждённой темы
+        setTitle(data?.title || user?.thesisTopic || "")
 
-        // Set topic proposal from user data if available
+        // Устанавливаем предложение темы из данных пользователя, если доступно
         if (user?.thesisTopic) {
           setTopicProposal(user.thesisTopic)
         }
       } catch (error) {
         if (error.response?.status !== 404) {
-          console.error("Error fetching thesis:", error)
-          showToast("Failed to fetch thesis information", "error")
+          console.error("Ошибка при получении дипломной работы:", error)
         }
-        // 404 is expected when no thesis exists
         setThesis(null)
       } finally {
         setIsLoading(false)
         fetchedRef.current = true
       }
     },
-    [showToast, refreshUser, user?.thesisTopic],
+    [refreshUser, user?.thesisTopic],
   )
 
-  // Initial fetch - only once
-  useEffect(() => {
-    if (user && !fetchedRef.current) {
-      fetchThesis(true)
-    }
-  }, [user, fetchThesis])
+  const fetchAvailableSupervisors = useCallback(async () => {
+    try {
+      setIsLoadingSupervisors(true)
 
-  // Update title when user data changes (after profile update)
+      const response = await thesisAPI.getAvailableSupervisors()
+
+      const supervisorUsers = Array.isArray(response?.supervisors) ? response.supervisors : []
+
+      const normalizedSupervisors = supervisorUsers.map((sup) => ({
+        ...sup,
+        fullName: sup.fullName || sup.name || "Имя не указано",
+        department: sup.department || "",
+        position: sup.position || "",
+        email: sup.email || "",
+      }))
+
+      console.log("Загружено научных руководителей:", normalizedSupervisors.length)
+      setAvailableSupervisors(normalizedSupervisors)
+    } catch (error) {
+      console.error("Ошибка при получении научных руководителей:", error)
+      console.error("Детали ошибки:", error.response?.data)
+      showToast("Не удалось загрузить список научных руководителей", "error")
+      setAvailableSupervisors([])
+    } finally {
+      setIsLoadingSupervisors(false)
+    }
+  }, [showToast])
+
+  const fetchMyRequests = useCallback(async () => {
+    try {
+      const response = await thesisAPI.getMySupervisorRequests()
+      const requests = response?.requests || []
+      setMyRequests(requests)
+    } catch (error) {
+      console.error("Ошибка при получении моих запросов:", error)
+      setMyRequests([])
+    }
+  }, [])
+
+  // Начальная загрузка данных
+  useEffect(() => {
+    if (!user || user.role !== "student") return
+    if (fetchedRef.current) return
+
+    const initData = async () => {
+      await fetchThesis()
+      // Получаем объединённый список участников команды
+      await fetchAvailableSupervisors()
+      await fetchMyRequests()
+    }
+
+    initData()
+  }, [user, fetchThesis, fetchAvailableSupervisors, fetchMyRequests])
+
+  // Повторная загрузка при изменении видимости страницы
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && user) {
+        console.log("Страница стала видимой, обновляем данные")
+        refreshUser()
+        fetchAvailableSupervisors()
+        fetchMyRequests()
+        if (fetchedRef.current) {
+          fetchThesis(false)
+        }
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [user, refreshUser, fetchAvailableSupervisors, fetchMyRequests, fetchThesis])
+
+  // Обновление названия при изменении данных пользователя
   useEffect(() => {
     if (user?.thesisTopic && !thesis && fetchedRef.current) {
       setTitle(user.thesisTopic)
@@ -94,23 +168,112 @@ const StudentDashboard = () => {
     }
   }, [user?.thesisTopic, thesis])
 
+  // Установка информации о команде с использованием списка availableSupervisors
+  useEffect(() => {
+    if (!availableSupervisors || availableSupervisors.length === 0) return
+
+    const allUsersList = availableSupervisors
+
+    if (user?.supervisor) {
+      const supervisor = allUsersList.find((u) => u.id === user.supervisor)
+      setSupervisorInfo(supervisor || null)
+    } else {
+      setSupervisorInfo(null)
+    }
+
+    if (user?.consultant) {
+      const consultant = allUsersList.find((u) => u.id === user.consultant)
+      setConsultantInfo(consultant || null)
+    } else {
+      setConsultantInfo(null)
+    }
+
+    if (user?.reviewer) {
+      const reviewer = allUsersList.find((u) => u.id === user.reviewer)
+      setReviewerInfo(reviewer || null)
+    } else {
+      setReviewerInfo(null)
+    }
+  }, [user, availableSupervisors])
+
   const handleLogout = () => {
     logout()
     navigate("/login", { replace: true })
+  }
+
+  const handleRefresh = async () => {
+    fetchedRef.current = false
+    await Promise.all([fetchThesis(true), fetchAvailableSupervisors(), fetchMyRequests()])
+    showToast("Данные обновлены", "success")
   }
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0]
     if (selectedFile) {
       if (selectedFile.type !== "application/pdf") {
-        showToast("Please select a PDF file", "error")
+        showToast("Пожалуйста, выберите PDF файл", "error")
         return
       }
       if (selectedFile.size > 10 * 1024 * 1024) {
-        showToast("File size must be less than 10MB", "error")
+        showToast("Размер файла должен быть меньше 10МБ", "error")
         return
       }
       setFile(selectedFile)
+    }
+  }
+
+  const handleRequestSupervisor = async (supervisorId) => {
+    if (!supervisorId) {
+      showToast("Пожалуйста, выберите научного руководителя", "error")
+      return
+    }
+
+    try {
+      setRequestingStates((prev) => ({ ...prev, [supervisorId]: true }))
+      console.log("Отправка запроса научному руководителю:", supervisorId)
+
+      const result = await thesisAPI.requestSupervisor(supervisorId, "")
+      console.log("Запрос успешен:", result)
+
+      showToast("Запрос на научного руководителя отправлен!", "success")
+
+      await Promise.all([refreshUser(), fetchMyRequests(), fetchAvailableSupervisors()])
+    } catch (error) {
+      console.error("Ошибка при запросе научного руководителя:", error)
+      console.error("Ответ ошибки:", error.response?.data)
+      const errorMessage = error.response?.data?.error || "Не удалось отправить запрос"
+      showToast(errorMessage, "error")
+    } finally {
+      setRequestingStates((prev) => ({ ...prev, [supervisorId]: false }))
+    }
+  }
+
+  // Функция для ответа на предложенную тему
+  const handleRespondToTopic = async (accepted, comments = "") => {
+    if (!accepted && !comments.trim()) {
+      showToast("Пожалуйста, укажите причину отклонения", "error")
+      return
+    }
+
+    try {
+      setIsResponding(true)
+      
+      const response = await thesisAPI.respondToProposedTopic(accepted, comments)
+      
+      showToast(accepted ? "Тема принята!" : "Тема отклонена", "success")
+      
+      await refreshUser()
+      
+      // Закрываем модальное окно если оно открыто
+      if (showTopicResponseModal) {
+        setShowTopicResponseModal(false)
+        setResponseComments("")
+      }
+      
+    } catch (error) {
+      showToast(error.response?.data?.error || "Не удалось отправить ответ", "error")
+    } finally {
+      setIsResponding(false)
     }
   }
 
@@ -118,20 +281,18 @@ const StudentDashboard = () => {
     e.preventDefault()
 
     if (!topicProposal.trim()) {
-      showToast("Please enter a thesis topic", "error")
+      showToast("Пожалуйста, введите тему диплома", "error")
       return
     }
 
     try {
       setIsSubmittingTopic(true)
-
       await thesisAPI.submitTopic(topicProposal)
-      showToast("Thesis topic submitted for approval!", "success")
-
-      // Refresh user data
+      showToast("Тема отправлена на утверждение!", "success")
       await refreshUser()
+      setTopicProposal("")
     } catch (error) {
-      showToast("Failed to submit thesis topic", "error")
+      showToast("Не удалось отправить тему", "error")
     } finally {
       setIsSubmittingTopic(false)
     }
@@ -140,31 +301,29 @@ const StudentDashboard = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
 
-    // First check profile completeness
     const requiredProfileFields = ["faculty", "group", "subjectArea", "educationalProgram"]
-
     const missingFields = requiredProfileFields.filter((field) => !user[field] || user[field].trim() === "")
 
     if (missingFields.length > 0) {
-      showToast(`Please complete your profile first (missing: ${missingFields.join(", ")})`, "error")
+      showToast(`Пожалуйста, заполните профиль (отсутствует: ${missingFields.join(", ")})`, "error")
       return
     }
 
-    if (!file || !title.trim()) {
-      showToast("Please provide both title and file", "error")
+    if (!file) {
+      showToast("Пожалуйста, выберите файл диплома", "error")
       return
     }
 
     try {
       setIsUploading(true)
       const formData = new FormData()
-      formData.append("title", title.trim())
+      // Используем утверждённую тему из user.thesisTopic
+      formData.append("title", user?.thesisTopic || "Дипломная работа")
       formData.append("thesisFile", file)
 
       await thesisAPI.submitThesis(formData)
-      showToast(thesis ? "Thesis re-uploaded successfully!" : "Thesis submitted successfully!", "success")
+      showToast(thesis ? "Работа успешно обновлена!" : "Работа успешно отправлена!", "success")
 
-      // Force refresh after successful upload
       await fetchThesis(true)
       setFile(null)
       setShowReupload(false)
@@ -172,7 +331,7 @@ const StudentDashboard = () => {
       const fileInput = document.getElementById("thesisFile")
       if (fileInput) fileInput.value = ""
     } catch (error) {
-      showToast(error.response?.data?.error || "Failed to submit thesis", "error")
+      showToast(error.response?.data?.error || "Не удалось отправить работу", "error")
     } finally {
       setIsUploading(false)
     }
@@ -182,69 +341,44 @@ const StudentDashboard = () => {
     try {
       const blob = await thesisAPI.viewThesis(thesis?.id)
       const blobUrl = URL.createObjectURL(blob)
-
-      // Open in new tab with proper PDF handling
       const newWindow = window.open("", "_blank")
       if (newWindow) {
-        // Create a clean HTML document
-        newWindow.document.open()
-        newWindow.document.write(`<!DOCTYPE html>
-        <html>
-          <head>
-            <title>Thesis Viewer</title>
-            <style>
-              body { margin: 0; overflow: hidden; }
-              iframe { width: 100vw; height: 100vh; border: none; }
-            </style>
-          </head>
-          <body>
-            <iframe src="${blobUrl}"></iframe>
-          </body>
-        </html>`)
-        newWindow.document.close()
-
-        // Focus the new window
-        newWindow.focus()
+        newWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Просмотр работы</title>
+              <style>body { margin: 0; overflow: hidden; } iframe { width: 100vw; height: 100vh; border: none; }</style>
+            </head>
+            <body><iframe src="${blobUrl}"></iframe></body>
+          </html>
+        `)
       } else {
-        showToast("Popup blocked - please allow popups", "warning")
+        showToast("Попап заблокирован - пожалуйста, разрешите всплывающие окна", "warning")
       }
-
-      // Clean up after some time
       setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
     } catch (error) {
-      showToast("Failed to open thesis", "error")
+      showToast("Не удалось открыть файл", "error")
     }
   }
 
-  // Manual refresh function
-  const handleRefresh = () => {
-    fetchThesis(true)
-  }
-
-  // NEW: Handle thesis resubmission after revisions
   const handleResubmitThesis = async () => {
     try {
       setIsUploading(true)
       await thesisAPI.studentResubmitThesis(thesis.id)
-      showToast("Thesis resubmitted for review!", "success")
+      showToast("Работа отправлена на повторную проверку!", "success")
       await fetchThesis(true)
     } catch (error) {
-      showToast("Failed to resubmit thesis", "error")
+      showToast("Не удалось отправить повторно", "error")
     } finally {
       setIsUploading(false)
     }
   }
 
   const getStatusColor = (thesis) => {
-    if (thesis?.finalGrade && thesis?.status === "evaluated") {
-      return "text-green-400"
-    }
+    if (thesis?.finalGrade && thesis?.status === "evaluated") return "text-green-400"
+    if (thesis?.finalGrade && thesis?.status === "under_review") return "text-yellow-400"
 
-    if (thesis?.finalGrade && thesis?.status === "under_review") {
-      return "text-yellow-400"
-    }
-
-    // NEW: Colors for consultant and supervisor statuses
     switch (thesis?.status) {
       case "submitted":
         return "text-blue-400"
@@ -264,30 +398,24 @@ const StudentDashboard = () => {
   }
 
   const getStatusText = (thesis) => {
-    if (thesis?.finalGrade && thesis?.status === "evaluated") {
-      return "Evaluated - Review completed and signed"
-    }
+    if (thesis?.finalGrade && thesis?.status === "evaluated") return "Оценено - Рецензия подписана"
+    if (thesis?.finalGrade && thesis?.status === "under_review") return "Проверка завершена - Ожидание подписи"
 
-    if (thesis?.finalGrade && thesis?.status === "under_review") {
-      return "Review completed - Waiting for signature"
-    }
-
-    // NEW: Status texts for consultant and supervisor workflow
     switch (thesis?.status) {
       case "submitted":
-        return "Submitted - Waiting for team assignment"
+        return "Отправлено - Ожидание назначения"
       case "with_consultant":
-        return "Under consultant review"
+        return "На проверке у консультанта"
       case "with_supervisor":
-        return "Under supervisor review"
+        return "На проверке у руководителя"
       case "under_review":
-        return "Under final review"
+        return "На финальной проверке"
       case "revisions_requested":
-        return "Revisions requested - Please resubmit"
+        return "Требуются исправления"
       case "evaluated":
-        return "Evaluated"
+        return "Оценено"
       default:
-        return "Not submitted"
+        return "Не отправлено"
     }
   }
 
@@ -304,8 +432,42 @@ const StudentDashboard = () => {
     }
   }
 
-  // Check if topic is approved and student can upload thesis
-  const canUploadThesis = user?.isTopicApproved
+  const hasAssignedSupervisor = !!user?.supervisor
+  const hasAssignedTeam = !!(user?.supervisor || user?.consultant || user?.reviewer)
+  const canUploadThesis = hasAssignedSupervisor && 
+    (user?.isTopicApproved || 
+     (user?.topicProposedBy === "supervisor" && user?.studentTopicResponse?.status === "accepted"))
+  const hasSupervisorProposedTopic = user?.topicProposedBy === "supervisor" && 
+    user?.studentTopicResponse?.status === "pending"
+  const currentThesisTitle = user?.thesisTopic || ""
+
+  const filteredSupervisors = useMemo(() => {
+    // Список из выделенного endpoint
+    if (!Array.isArray(availableSupervisors)) return []
+
+    if (!searchQuery.trim()) {
+      return availableSupervisors
+    }
+
+    const query = searchQuery.toLowerCase()
+
+    return availableSupervisors.filter((sup) => {
+      const name = (sup.fullName || "").toLowerCase()
+      const position = (sup.position || "").toLowerCase()
+      const department = (sup.department || "").toLowerCase()
+      const email = (sup.email || "").toLowerCase()
+
+      return name.includes(query) || position.includes(query) || department.includes(query) || email.includes(query)
+    })
+  }, [availableSupervisors, searchQuery])
+
+  const getSupervisorRequestStatus = useCallback(
+    (supervisorId) => {
+      const request = myRequests.find((req) => req.supervisorId === supervisorId)
+      return request?.status || null
+    },
+    [myRequests],
+  )
 
   if (isLoading && !fetchedRef.current) {
     return (
@@ -318,12 +480,59 @@ const StudentDashboard = () => {
     )
   }
 
-  // Get the current thesis title - prioritize uploaded thesis title, then user profile topic
-  const currentThesisTitle = user?.thesisTopic || ""
-
   return (
     <div className="min-h-screen bg-white">
       <Toast {...toast} onClose={hideToast} />
+
+      {/* Модальное окно для комментария при отклонении темы */}
+      {showTopicResponseModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Укажите причину отклонения</h3>
+            
+            <div className="mb-4">
+              <label htmlFor="rejectionComments" className="block text-sm font-medium text-gray-700 mb-2">
+                Комментарий (обязательно)
+              </label>
+              <textarea
+                id="rejectionComments"
+                value={responseComments}
+                onChange={(e) => setResponseComments(e.target.value)}
+                placeholder="Почему вы отклоняете предложенную тему?"
+                rows="4"
+                className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
+                required
+              />
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowTopicResponseModal(false)
+                  setResponseComments("")
+                }}
+                className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={() => handleRespondToTopic(false, responseComments)}
+                disabled={isResponding || !responseComments.trim()}
+                className="flex-1 bg-red-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isResponding ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <FiX className="w-4 h-4" />
+                    Отклонить тему
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white border-b border-gray-200 p-4 shadow-sm">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
@@ -377,418 +586,699 @@ const StudentDashboard = () => {
               <span className="text-white font-bold text-xl">Д</span>
             </div>
             <h1 className="text-2xl font-semibold text-gray-900 mb-2">
-              {canUploadThesis ? "Подача дипломной работы" : "Предложение темы диплома"}
+              {hasAssignedTeam ? "Информация о вашей дипломной работе" : "Выбор научного руководителя"}
             </h1>
             <p className="text-gray-600">
-              {canUploadThesis
-                ? "Загрузите и управляйте своей дипломной работой"
-                : "Отправьте тему диплома на утверждение перед загрузкой работы"}
+              {hasAssignedTeam
+                ? "Управляйте своей дипломной работой и следите за процессом проверки."
+                : "Сначала выберите научного руководителя. Консультант назначается позднее администрацией."}
             </p>
           </div>
 
-          {!canUploadThesis && (
-            <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm mb-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
-                  <FiBook className="w-6 h-6 text-yellow-600" />
+          {/* Если студент может загружать диплом (шаг 3) - показываем команду и тему сверху */}
+          {canUploadThesis ? (
+            <>
+              {/* Команда */}
+              <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm mb-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                    <FiUsers className="w-6 h-6 text-green-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900 mb-1">Назначенная команда</h2>
+                    <p className="text-gray-600">Ваша команда для работы над дипломом</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Требуется утверждение темы диплома</h2>
-                  <p className="text-gray-600">
-                    Вам необходимо получить утверждение темы диплома перед загрузкой файла работы.
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {supervisorInfo && (
+                    <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                      <p className="text-orange-700 text-xs font-medium mb-1">Научный руководитель</p>
+                      <p className="text-gray-900 font-medium text-sm">
+                        {supervisorInfo.fullName || supervisorInfo.name}
+                      </p>
+                      {supervisorInfo.email && <p className="text-gray-600 text-xs mt-1">{supervisorInfo.email}</p>}
+                    </div>
+                  )}
+                  {consultantInfo && (
+                    <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                      <p className="text-purple-700 text-xs font-medium mb-1">Консультант</p>
+                      <p className="text-gray-900 font-medium text-sm">
+                        {consultantInfo.fullName || consultantInfo.name}
+                      </p>
+                      {consultantInfo.email && <p className="text-gray-600 text-xs mt-1">{consultantInfo.email}</p>}
+                    </div>
+                  )}
+                  {reviewerInfo && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-blue-700 text-xs font-medium mb-1">Рецензент</p>
+                      <p className="text-gray-900 font-medium text-sm">{reviewerInfo.fullName || reviewerInfo.name}</p>
+                      {reviewerInfo.email && <p className="text-gray-600 text-xs mt-1">{reviewerInfo.email}</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Утверждённая тема */}
+              <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm mb-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                    <FiBook className="w-6 h-6 text-green-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900 mb-1">Утверждённая тема ВКР</h2>
+                    <p className="text-gray-600">Ваша утверждённая тема дипломной работы</p>
+                  </div>
+                </div>
+                
+                <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                  <p className="font-medium text-green-800 mb-2">Тема дипломной работы:</p>
+                  <p className="text-gray-900 text-lg">"{user.thesisTopic}"</p>
+                  <p className="text-gray-500 text-sm mt-2">
+                    {user.topicProposedBy === "supervisor" 
+                      ? "Предложена и утверждена научным руководителем" 
+                      : "Предложена вами и утверждена научным руководителем"}
                   </p>
                 </div>
               </div>
 
-              <form onSubmit={handleSubmitTopic} className="space-y-4">
-                <div>
-                  <label htmlFor="topicProposal" className="block text-sm font-medium text-gray-700 mb-2">
-                    Предлагаемая тема диплома
-                  </label>
-                  <textarea
-                    id="topicProposal"
-                    value={topicProposal}
-                    onChange={(e) => setTopicProposal(e.target.value)}
-                    placeholder="Введите предлагаемую тему диплома подробно..."
-                    rows="4"
-                    className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
-                    required
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    type="submit"
-                    disabled={isSubmittingTopic || !topicProposal.trim()}
-                    className="flex-1 bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1d5f] focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {isSubmittingTopic ? (
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <FiSend className="w-5 h-5" />
-                        Отправить на утверждение
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-
-              {user?.thesisTopic && (
-                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <FiClock className="w-5 h-5 text-blue-600" />
-                    <div>
-                      <p className="text-blue-700 font-medium">Тема отправлена на утверждение</p>
-                      <p className="text-gray-900 text-sm mt-1">"{user.thesisTopic}"</p>
-                      <p className="text-gray-600 text-sm mt-1">
-                        Ваша тема ожидает утверждения научным руководителем. Вы получите уведомление после утверждения.
-                      </p>
-                    </div>
+              {/* Форма загрузки диплома (Шаг 3) */}
+              <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm mb-6">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                    <FiUpload className="w-6 h-6 text-green-600" />
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {canUploadThesis && currentThesisTitle && !thesis && (
-            <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">{currentThesisTitle}</h2>
-                  <div className="flex items-center gap-2 text-green-600">
-                    <FiCheck className="w-4 h-4" />
-                    <span className="text-sm">Тема утверждена - Готово к загрузке файла</span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => navigate("/profile")}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm"
-                >
-                  <FiEdit className="w-4 h-4" />
-                  Редактировать в профиле
-                </button>
-              </div>
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                <div className="flex items-center gap-3">
-                  <FiCheck className="w-5 h-5 text-green-600" />
                   <div>
-                    <p className="text-green-700 font-medium">Тема утверждена</p>
-                    <p className="text-gray-600 text-sm">
-                      Ваша тема диплома утверждена. Теперь вы можете загрузить файл работы.
+                    <h2 className="text-xl font-semibold text-gray-900 mb-1">Шаг 3: Загрузка диплома</h2>
+                    <p className="text-gray-600">
+                      Загрузите ваш диплом в формате PDF. Размер файла не должен превышать 10МБ.
+                    </p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Название диплома: <span className="font-medium">"{user.thesisTopic}"</span>
                     </p>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
 
-          {canUploadThesis && (
-            <>
-              {thesis && !showReupload ? (
-                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-                  <div className="flex items-start justify-between mb-6">
-                    <div>
-                      <h2 className="text-xl font-semibold text-gray-900 mb-2">{thesis.title}</h2>
-                      <div className={`flex items-center gap-2 ${getStatusColor(thesis)}`}>
-                        {getStatusIcon(thesis)}
-                        <span className="text-sm font-medium">{getStatusText(thesis)}</span>
-                      </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label htmlFor="thesisFile" className="block text-sm font-medium text-gray-700 mb-2">
+                      Файл диплома
+                    </label>
+                    <input
+                      id="thesisFile"
+                      type="file"
+                      accept="application/pdf"
+                      onChange={handleFileChange}
+                      className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all"
+                      required
+                    />
+                  </div>
 
-                      {(thesis.currentIteration > 0 || thesis.totalReviewCount > 0) && (
-                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
-                          {thesis.currentIteration > 0 && <span>Итерация: {thesis.currentIteration}</span>}
-                          {thesis.totalReviewCount > 0 && <span>Всего рецензий: {thesis.totalReviewCount}</span>}
-                        </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="submit"
+                      disabled={isUploading || !file}
+                      className="flex-1 bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1d5f] focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {isUploading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Загрузка...
+                        </>
+                      ) : (
+                        "Загрузить диплом"
                       )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Если студент не может загружать диплом - показываем обычный порядок шагов */}
+              {!hasAssignedTeam ? (
+                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm mb-6">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                      <FiUser className="w-6 h-6 text-blue-600" />
                     </div>
-                    <div className="text-right">
-                      <p className="text-gray-600 text-sm">Отправлено</p>
-                      <p className="text-gray-900 font-medium">
-                        {new Date(thesis.submissionDate).toLocaleDateString("ru-RU")}
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900">Шаг 1: Выбор научного руководителя</h2>
+                      <p className="text-gray-600 text-sm mt-1">
+                        Выберите научного руководителя из списка специалистов вашего факультета
                       </p>
                     </div>
                   </div>
 
-                  {(thesis.assignedConsultant || thesis.assignedSupervisor || thesis.assignedReviewer) && (
-                    <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <h3 className="text-gray-900 font-medium mb-3">Назначенная команда</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {thesis.assignedConsultant && (
-                          <div className="flex items-center gap-2 p-2 bg-purple-50 rounded border border-purple-200">
-                            <FiUsers className="w-4 h-4 text-purple-600" />
-                            <div>
-                              <p className="text-purple-700 text-xs">Консультант</p>
-                              <p className="text-gray-900 text-sm">
-                                {thesis.consultant?.fullName || thesis.assignedConsultant}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                        {thesis.assignedSupervisor && (
-                          <div className="flex items-center gap-2 p-2 bg-orange-50 rounded border border-orange-200">
-                            <FiUser className="w-4 h-4 text-orange-600" />
-                            <div>
-                              <p className="text-orange-700 text-xs">Научный руководитель</p>
-                              <p className="text-gray-900 text-sm">
-                                {thesis.supervisor?.fullName || thesis.assignedSupervisor}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                        {thesis.assignedReviewer && (
-                          <div className="flex items-center gap-2 p-2 bg-yellow-50 rounded border border-yellow-200">
-                            <FiMessageSquare className="w-4 h-4 text-yellow-600" />
-                            <div>
-                              <p className="text-yellow-700 text-xs">Рецензент</p>
-                              <p className="text-gray-900 text-sm">
-                                {thesis.reviewer?.fullName || thesis.assignedReviewer}
-                              </p>
-                            </div>
-                          </div>
-                        )}
+                  <div className="mb-4">
+                    <div className="relative">
+                      <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Поиск по имени, кафедре, должности..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+                    {isLoadingSupervisors ? (
+                      <div className="py-8 text-center text-gray-500">
+                        <div className="w-6 h-6 border-2 border-[#372579] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                        <p>Загрузка научных руководителей...</p>
                       </div>
+                    ) : filteredSupervisors.length === 0 ? (
+                      <div className="py-8 text-center text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                        <FiUser className="w-8 h-8 mx-auto mb-3 opacity-50" />
+                        <p className="font-medium text-gray-700">Научные руководители не найдены</p>
+                        <p className="text-sm mt-1">
+                          {searchQuery
+                            ? "Попробуйте изменить поисковый запрос"
+                            : "Список пуст. Попробуйте обновить страницу."}
+                        </p>
+                      </div>
+                    ) : (
+                      filteredSupervisors.map((supervisor) => {
+                        const requestStatus = getSupervisorRequestStatus(supervisor.id)
+                        const hasPendingRequest = requestStatus === "pending"
+                        const isAccepted = requestStatus === "accepted"
+                        const isDeclined = requestStatus === "declined"
+                        const isRequesting = requestingStates[supervisor.id] || false
+
+                        return (
+                          <div
+                            key={supervisor.id}
+                            className="p-4 border border-gray-200 rounded-lg hover:border-[#372579] hover:bg-blue-50 transition-all bg-white"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium text-gray-900">{supervisor.fullName}</p>
+                                  {hasPendingRequest && (
+                                    <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                                      <FiClock className="w-3 h-3" /> Ожидание ответа
+                                    </span>
+                                  )}
+                                  {isAccepted && (
+                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                                      <FiCheck className="w-3 h-3" /> Запрос принят
+                                    </span>
+                                  )}
+                                  {isDeclined && (
+                                    <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                                      <FiAlertCircle className="w-3 h-3" /> Отклонено
+                                    </span>
+                                  )}
+                                </div>
+                                {supervisor.position && <p className="text-sm text-gray-600 mt-1">{supervisor.position}</p>}
+                                {supervisor.department && (
+                                  <p className="text-sm text-gray-500 mt-0.5">{supervisor.department}</p>
+                                )}
+                                {supervisor.email && <p className="text-xs text-gray-400 mt-1">{supervisor.email}</p>}
+                                {isDeclined &&
+                                  (() => {
+                                    const declinedRequest = myRequests.find(
+                                      (req) => req.supervisorId === supervisor.id && req.status === "declined",
+                                    )
+                                    return declinedRequest?.declineReason ? (
+                                      <p className="text-xs text-red-600 mt-2 bg-red-50 p-2 rounded">
+                                        Причина: {declinedRequest.declineReason}
+                                      </p>
+                                    ) : null
+                                  })()}
+                              </div>
+                              <button
+                                onClick={() => handleRequestSupervisor(supervisor.id)}
+                                disabled={hasPendingRequest || isAccepted || isRequesting}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all text-sm font-medium whitespace-nowrap ${
+                                  hasPendingRequest || isAccepted
+                                    ? "bg-gray-100 text-gray-500 cursor-not-allowed"
+                                    : "bg-[#372579] text-white hover:bg-[#2a1d5f] disabled:opacity-50 disabled:cursor-not-allowed"
+                                }`}
+                              >
+                                {isRequesting ? (
+                                  <>
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    Отправка...
+                                  </>
+                                ) : hasPendingRequest ? (
+                                  <>
+                                    <FiClock className="w-4 h-4" />
+                                    Ожидание
+                                  </>
+                                ) : isAccepted ? (
+                                  <>
+                                    <FiCheck className="w-4 h-4" />
+                                    Принято
+                                  </>
+                                ) : isDeclined ? (
+                                  <>
+                                    <FiSend className="w-4 h-4" />
+                                    Отправить снова
+                                  </>
+                                ) : (
+                                  <>
+                                    <FiSend className="w-4 h-4" />
+                                    Отправить запрос
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  {myRequests.filter((req) => req.status === "pending").length > 0 && (
+                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-sm text-blue-800">
+                        <FiClock className="inline w-4 h-4 mr-1" />У вас есть{" "}
+                        {myRequests.filter((req) => req.status === "pending").length} ожидающих запросов
+                      </p>
                     </div>
                   )}
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm mb-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                      <FiUsers className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900 mb-1">Шаг 1: Назначенная команда</h2>
+                      <p className="text-gray-600">Вам назначена команда для работы над дипломом</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {supervisorInfo && (
+                      <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                        <p className="text-orange-700 text-xs font-medium mb-1">Научный руководитель</p>
+                        <p className="text-gray-900 font-medium text-sm">
+                          {supervisorInfo.fullName || supervisorInfo.name}
+                        </p>
+                        {supervisorInfo.email && <p className="text-gray-600 text-xs mt-1">{supervisorInfo.email}</p>}
+                      </div>
+                    )}
+                    {consultantInfo && (
+                      <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                        <p className="text-purple-700 text-xs font-medium mb-1">Консультант</p>
+                        <p className="text-gray-900 font-medium text-sm">
+                          {consultantInfo.fullName || consultantInfo.name}
+                        </p>
+                        {consultantInfo.email && <p className="text-gray-600 text-xs mt-1">{consultantInfo.email}</p>}
+                      </div>
+                    )}
+                    {reviewerInfo && (
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-blue-700 text-xs font-medium mb-1">Рецензент</p>
+                        <p className="text-gray-900 font-medium text-sm">{reviewerInfo.fullName || reviewerInfo.name}</p>
+                        {reviewerInfo.email && <p className="text-gray-600 text-xs mt-1">{reviewerInfo.email}</p>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
-                  {thesis.status === "revisions_requested" && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-                      <div className="flex items-center gap-3">
-                        <FiRotateCw className="w-5 h-5 text-red-600" />
-                        <div>
-                          <p className="text-red-700 font-medium">Требуются исправления</p>
-                          <p className="text-gray-600 text-sm">
-                            Ваша работа требует исправлений. Пожалуйста, ознакомьтесь с замечаниями и отправьте работу
-                            повторно.
+              {/* Шаг 2: Предложение темы (только когда нельзя загружать диплом) */}
+              {hasAssignedTeam && !canUploadThesis && (
+                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm mb-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                      <FiBook className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900 mb-1">Шаг 2: Утверждение темы диплома</h2>
+                      
+                      {/* Если руководитель предложил тему и ждёт ответа студента */}
+                      {user?.topicProposedBy === "supervisor" && user?.studentTopicResponse?.status === "pending" && (
+                        <div className="space-y-4">
+                          <p className="text-gray-600">
+                            Ваш научный руководитель предложил тему. Пожалуйста, примите или отклоните её.
                           </p>
-                          {thesis.reviewIterations && thesis.reviewIterations.length > 0 && (
-                            <div className="mt-2 p-3 bg-white rounded border border-red-100">
-                              <p className="text-gray-900 text-sm font-medium">Последние замечания:</p>
-                              <p className="text-gray-700 text-sm mt-1">
-                                {thesis.reviewIterations[thesis.reviewIterations.length - 1]?.consultantReview
-                                  ?.comments ||
-                                  thesis.reviewIterations[thesis.reviewIterations.length - 1]?.supervisorReview
-                                    ?.comments ||
-                                  "Пожалуйста, проверьте подробную рецензию для конкретных замечаний."}
+                          
+                          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                            <p className="font-medium text-blue-800 mb-2">Предложенная тема:</p>
+                            <p className="text-gray-900 text-lg">"{user.thesisTopic}"</p>
+                            <p className="text-gray-500 text-sm mt-2">
+                              Предложена: {new Date(user.topicProposedAt).toLocaleDateString("ru-RU")}
+                            </p>
+                          </div>
+                          
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => handleRespondToTopic(true, "")}
+                              disabled={isResponding}
+                              className="flex-1 bg-green-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                              {isResponding ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <>
+                                  <FiCheck className="w-4 h-4" />
+                                  Принять тему
+                                </>
+                              )}
+                            </button>
+                            
+                            <button
+                              onClick={() => setShowTopicResponseModal(true)}
+                              disabled={isResponding}
+                              className="flex-1 bg-red-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                              <FiX className="w-4 h-4" />
+                              Отклонить тему
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Если студент отклонил тему руководителя появляется возможность предложить свою тему */}
+                      {user?.topicProposedBy === "supervisor" && user?.studentTopicResponse?.status === "declined" && (
+                        <div className="space-y-6">
+                          <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                            <p className="font-medium text-yellow-800 mb-2">Вы отклонили предложенную тему</p>
+                            <p className="text-gray-600">
+                              Вы отклонили тему "{user.thesisTopic}" предложенную научным руководителем.
+                            </p>
+                            {user.studentTopicResponse?.comments && (
+                              <p className="text-gray-700 mt-2">
+                                <span className="font-medium">Ваш комментарий:</span> {user.studentTopicResponse.comments}
                               </p>
+                            )}
+                          </div>
+                          
+                          <div className="space-y-4">
+                            <div>
+                              <h3 className="text-lg font-medium text-gray-900 mb-2">Дальнейшие действия:</h3>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                  <h4 className="font-medium text-blue-800 mb-2">Ждать новое предложение</h4>
+                                  <p className="text-gray-600 text-sm mb-3">
+                                    Дождитесь, пока научный руководитель предложит новую тему.
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    Рекомендуется связаться с руководителем для обсуждения темы.
+                                  </p>
+                                </div>
+                                
+                                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                                  <h4 className="font-medium text-purple-800 mb-2">Предложить свою тему</h4>
+                                  <p className="text-gray-600 text-sm mb-3">
+                                    Или вы можете сами предложить тему для утверждения.
+                                  </p>
+                                  <button
+                                    onClick={() => {
+                                      // Сбрасываем форму, чтобы студент мог предложить свою тему
+                                      setTopicProposal("")
+                                    }}
+                                    className="w-full bg-[#372579] text-white font-medium py-2 px-4 rounded-lg hover:bg-[#2a1d5f] focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all"
+                                  >
+                                    Предложить свою тему
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Форма для предложения своей темы */}
+                            {!user?.thesisTopic && (
+                              <form onSubmit={handleSubmitTopic} className="space-y-4">
+                                <div>
+                                  <label htmlFor="topicProposal" className="block text-sm font-medium text-gray-700 mb-2">
+                                    Ваша предлагаемая тема диплома
+                                  </label>
+                                  <textarea
+                                    id="topicProposal"
+                                    value={topicProposal}
+                                    onChange={(e) => setTopicProposal(e.target.value)}
+                                    placeholder="Введите предлагаемую тему диплома подробно..."
+                                    rows="4"
+                                    className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
+                                    required
+                                  />
+                                </div>
+
+                                <div className="flex gap-3">
+                                  <button
+                                    type="submit"
+                                    disabled={isSubmittingTopic || !topicProposal.trim()}
+                                    className="flex-1 bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1d5f] focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                  >
+                                    {isSubmittingTopic ? (
+                                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                      "Предложить свою тему"
+                                    )}
+                                  </button>
+                                </div>
+                              </form>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Если студент предложил тему и ждёт утверждения руководителем */}
+                      {user?.topicProposedBy === "student" && !user?.isTopicApproved && (
+                        <div className="space-y-4">
+                          <p className="text-gray-600">
+                            Вы предложили тему. Ожидайте утверждения научным руководителем.
+                          </p>
+                          <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                            <p className="font-medium text-yellow-800 mb-2">Ваша предложенная тема:</p>
+                            <p className="text-gray-900 text-lg">"{user.thesisTopic}"</p>
+                            <p className="text-gray-500 text-sm mt-2">
+                              Отправлена на утверждение: {new Date(user.topicSubmittedAt).toLocaleDateString("ru-RU")}
+                            </p>
+                          </div>
+                          
+                          {user.topicRejectionComments && (
+                            <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                              <p className="font-medium text-red-800 mb-2">Тема отклонена руководителем:</p>
+                              <p className="text-red-600">{user.topicRejectionComments}</p>
+                              <p className="text-gray-600 text-sm mt-2">
+                                Вы можете предложить новую тему ниже:
+                              </p>
+                              
+                              <form onSubmit={handleSubmitTopic} className="space-y-4 mt-4">
+                                <div>
+                                  <label htmlFor="topicProposal" className="block text-sm font-medium text-gray-700 mb-2">
+                                    Новая предлагаемая тема
+                                  </label>
+                                  <textarea
+                                    id="topicProposal"
+                                    value={topicProposal}
+                                    onChange={(e) => setTopicProposal(e.target.value)}
+                                    placeholder="Введите новую предлагаемую тему диплома..."
+                                    rows="4"
+                                    className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
+                                    required
+                                  />
+                                </div>
+
+                                <div className="flex gap-3">
+                                  <button
+                                    type="submit"
+                                    disabled={isSubmittingTopic || !topicProposal.trim()}
+                                    className="flex-1 bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1d5f] focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                  >
+                                    {isSubmittingTopic ? (
+                                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                      "Предложить новую тему"
+                                    )}
+                                  </button>
+                                </div>
+                              </form>
                             </div>
                           )}
                         </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {thesis.status === "submitted" && !thesis.assignedReviewer && !thesis.finalGrade && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                      <div className="flex items-center gap-3">
-                        <FiAlertCircle className="w-5 h-5 text-blue-600" />
-                        <div>
-                          <p className="text-blue-700 font-medium">Ожидание назначения команды</p>
-                          <p className="text-gray-600 text-sm">
-                            Ваша работа успешно отправлена. Администратор скоро назначит команду для проверки вашей
-                            работы.
+                      )}
+                      
+                      {/* Если тема утверждена */}
+                      {user?.isTopicApproved && (
+                        <div className="space-y-4">
+                          <p className="text-gray-600">
+                            Тема утверждена. Теперь вы можете загрузить диплом.
                           </p>
+                          <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                            <p className="font-medium text-green-800 mb-2">Утверждённая тема:</p>
+                            <p className="text-gray-900 text-lg">"{user.thesisTopic}"</p>
+                            <p className="text-gray-500 text-sm mt-2">
+                              {user.topicProposedBy === "supervisor" 
+                                ? "Предложена и утверждена научным руководителем" 
+                                : "Предложена вами и утверждена научным руководителем"}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {thesis.finalGrade && (
-                    <div
-                      className={`bg-${thesis.status === "evaluated" ? "green" : "yellow"}-50 border border-${thesis.status === "evaluated" ? "green" : "yellow"}-200 rounded-lg p-4 mb-6`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <FiCheck className={`w-5 h-5 text-${thesis.status === "evaluated" ? "green" : "yellow"}-600`} />
-                        <div>
-                          <p className={`text-${thesis.status === "evaluated" ? "green" : "yellow"}-700 font-medium`}>
-                            Итоговая оценка: {thesis.finalGrade}
+                      )}
+                      
+                      {/* Если нет темы и нет предложений от руководителя */}
+                      {!user?.thesisTopic && !user?.isTopicApproved && user?.topicProposedBy !== "supervisor" && (
+                        <form onSubmit={handleSubmitTopic} className="space-y-4">
+                          <p className="text-gray-600">
+                            Предложите тему диплома для утверждения научным руководителем.
                           </p>
-                          <p className="text-gray-600 text-sm">
-                            {thesis.status === "evaluated"
-                              ? "Ваша работа оценена и подписана"
-                              : "Ваша работа оценена - ожидание подписи"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                          
+                          <div>
+                            <label htmlFor="topicProposal" className="block text-sm font-medium text-gray-700 mb-2">
+                              Предлагаемая тема диплома
+                            </label>
+                            <textarea
+                              id="topicProposal"
+                              value={topicProposal}
+                              onChange={(e) => setTopicProposal(e.target.value)}
+                              placeholder="Введите предлагаемую тему диплома подробно..."
+                              rows="4"
+                              className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
+                              required
+                            />
+                          </div>
 
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <FiFile className="w-4 h-4" />
-                      <span className="text-sm">PDF документ</span>
-                    </div>
-                    <div className="flex gap-3">
-                      {thesis.status === "revisions_requested" && (
-                        <button
-                          onClick={handleResubmitThesis}
-                          disabled={isUploading}
-                          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-                        >
-                          <FiRotateCw className="w-4 h-4" />
-                          {isUploading ? "Отправка..." : "Отправить повторно"}
-                        </button>
+                          <div className="flex gap-3">
+                            <button
+                              type="submit"
+                              disabled={isSubmittingTopic || !topicProposal.trim()}
+                              className="flex-1 bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1d5f] focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                              {isSubmittingTopic ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                "Отправить тему"
+                              )}
+                            </button>
+                          </div>
+                        </form>
                       )}
-
-                      {!thesis.finalGrade && thesis.status !== "revisions_requested" && (
-                        <button
-                          onClick={() => setShowReupload(true)}
-                          className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
-                        >
-                          <FiRefreshCw className="w-4 h-4" />
-                          Загрузить заново
-                        </button>
-                      )}
-                      <button
-                        onClick={handleViewPDF}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors"
-                      >
-                        <FiDownload className="w-4 h-4" />
-                        Скачать работу
-                      </button>
-                      {thesis.finalGrade && thesis.assessment && (
-                        <button
-                          onClick={() => setShowThesisDetails(true)}
-                          className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors"
-                        >
-                          <FiEye className="w-4 h-4" />
-                          Просмотр рецензии
-                        </button>
-                      )}
-                      {thesis.status === "evaluated" && thesis.finalGrade && thesis?.id && (
-                        <button
-                          onClick={() => setShowSignedReview(true)}
-                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                        >
-                          <FiEye className="w-4 h-4" />
-                          Подписанная рецензия
-                        </button>
-                      )}
+                      
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-                  {showReupload && (
-                    <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <FiRefreshCw className="w-5 h-5 text-yellow-600" />
-                        <div>
-                          <p className="text-yellow-700 font-medium">Повторная загрузка работы</p>
-                          <p className="text-gray-600 text-sm">
-                            Это заменит текущий файл работы. Старый файл будет удален безвозвратно.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <form onSubmit={handleSubmit} className="space-y-6">
-                    <div>
-                      <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
-                        Название работы
-                      </label>
-                      <input
-                        type="text"
-                        id="title"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        placeholder="Введите название вашей работы"
-                        className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all"
-                        required
-                      />
-                      {user?.thesisTopic && title !== user.thesisTopic && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          Утвержденная тема: "{user.thesisTopic}" -
-                          <button
-                            type="button"
-                            onClick={() => setTitle(user.thesisTopic)}
-                            className="text-[#372579] hover:text-[#2a1d5f] ml-1"
-                          >
-                            Использовать утвержденную тему
-                          </button>
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label htmlFor="thesisFile" className="block text-sm font-medium text-gray-700 mb-2">
-                        Файл работы (только PDF, макс. 10МБ)
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="file"
-                          id="thesisFile"
-                          accept=".pdf"
-                          onChange={handleFileChange}
-                          className="hidden"
-                          required
-                        />
-                        <label
-                          htmlFor="thesisFile"
-                          className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-[#372579] transition-colors"
-                        >
-                          <div className="text-center">
-                            <FiUpload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                            <p className="text-gray-600">{file ? file.name : "Нажмите для выбора PDF файла"}</p>
-                            <p className="text-gray-500 text-sm mt-1">Только PDF, макс. 10МБ</p>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3">
-                      {showReupload && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowReupload(false)
-                            setFile(null)
-                            const fileInput = document.getElementById("thesisFile")
-                            if (fileInput) fileInput.value = ""
-                          }}
-                          className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors"
-                        >
-                          Отмена
-                        </button>
-                      )}
-                      <button
-                        type="submit"
-                        disabled={isUploading || !file || !title.trim()}
-                        className="flex-1 bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1d5f] focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {isUploading ? (
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <>
-                            <FiUpload className="w-5 h-5" />
-                            {showReupload ? "Загрузить заново" : "Отправить работу"}
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </form>
                 </div>
               )}
             </>
           )}
+
+          {!hasAssignedTeam && myRequests.length > 0 && (
+            <div className="bg-blue-50 rounded-lg p-6 border border-blue-200 mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <FiMessageSquare className="w-5 h-5 text-blue-600" />
+                Мои запросы ({myRequests.length})
+              </h3>
+              <div className="space-y-3">
+                {myRequests.map((request) => (
+                  <div key={request.id} className="bg-white rounded-lg p-4 border border-gray-200">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{request.supervisor?.name}</p>
+                        <p className="text-sm text-gray-600">{request.supervisor?.email}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          {request.status === "pending" && (
+                            <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full flex items-center gap-1">
+                              <FiClock className="w-3 h-3" /> Ожидает ответа
+                            </span>
+                          )}
+                          {request.status === "accepted" && (
+                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full flex items-center gap-1">
+                              <FiCheck className="w-3 h-3" /> Принято
+                            </span>
+                          )}
+                          {request.status === "declined" && (
+                            <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full flex items-center gap-1">
+                              <FiAlertCircle className="w-3 h-3" /> Отклонено
+                            </span>
+                          )}
+                        </div>
+                        {request.declineReason && (
+                          <p className="text-xs text-red-600 mt-2 bg-red-50 p-2 rounded">
+                            Причина отклонения: {request.declineReason}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-2">
+                          Отправлено:{" "}
+                          {new Date(request.createdAt).toLocaleString("ru-RU", {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Шаг 4 */}
+          {thesis && (
+            <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm mb-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                  <FiEye className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Просмотр диплома</h2>
+                  <p className="text-gray-600">Просмотрите загруженный диплом в PDF формате.</p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleViewPDF}
+                className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm"
+              >
+                <FiEye className="w-4 h-4" />
+                Просмотреть диплом
+              </button>
+            </div>
+          )}
+
+          {/* Шаг 5 */}
+          {thesis && thesis.status === "revisions_requested" && (
+            <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm mb-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                  <FiSend className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Повторная отправка диплома</h2>
+                  <p className="text-gray-600">Отправьте диплом на повторную проверку.</p>
+                </div>
+              </div>
+
+              <button
+                onClick={handleResubmitThesis}
+                disabled={isUploading}
+                className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm"
+              >
+                {isUploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Отправка...
+                  </>
+                ) : (
+                  "Отправить на повторную проверку"
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Шаг 6: Подпись рецензии */}
+          {thesis && thesis.status === "evaluated" && (
+            <div className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm mb-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                  <FiCheck className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 mb-1">Рецензия на диплом</h2>
+                  <p className="text-gray-600">Просмотрите и подпишите рекензию на диплом.</p>
+                </div>
+              </div>
+
+              <SignedReviewViewer thesis={thesis} />
+            </div>
+          )}
         </div>
       </div>
-
-      <Modal isOpen={showThesisDetails} onClose={() => setShowThesisDetails(false)} title="Детали работы" size="full">
-        <StudentThesisDetails thesis={thesis} onClose={() => setShowThesisDetails(false)} />
-      </Modal>
-
-      {thesis?.status === "evaluated" && thesis?.id && (
-        <Modal
-          isOpen={showSignedReview}
-          onClose={() => setShowSignedReview(false)}
-          title="Подписанная рецензия"
-          size="full"
-        >
-          <SignedReviewViewer thesisId={thesis?.id} onClose={() => setShowSignedReview(false)} />
-        </Modal>
-      )}
     </div>
   )
 }

@@ -1401,4 +1401,217 @@ export const updateThesisTopic = async (req: Request, res: Response) => {
         console.error(err)
         res.status(500).json({ error: "Failed to update thesis topic" })
     }
-}
+};
+
+export const getMyStudents = async (req: Request, res: Response) => {
+  try {
+    const supervisor = req.user as AuthenticatedUser & ISupervisor;
+    
+    // Получить всех студентов
+    const allStudents = await userModel.getStudents();
+    
+    // Отфильтровать только студентов текущего руководителя
+    const myStudents = allStudents.filter(student => 
+      student.supervisor === supervisor.id
+    );
+    
+    // Получить дополнительные данные для каждого студента
+    const studentsWithDetails = await Promise.all(
+      myStudents.map(async (student) => {
+        // Получить дипломные работы студента
+        const studentTheses = await thesisModel.getThesesByStudent(student.id);
+        const thesis = studentTheses.length > 0 ? studentTheses[0] : null;
+        
+        // Определить этап работы на основе существующих флагов
+        const stage = determineStudentStage(student, thesis);
+        
+        return {
+          // Основная информация
+          id: student.id,
+          fullName: student.fullName,
+          email: student.email,
+          faculty: student.faculty,
+          group: student.group,
+          subjectArea: student.subjectArea,
+          degreeLevel: student.degreeLevel,
+          workType: student.workType,
+          
+          // Существующие флаги темы
+          thesisTopic: student.thesisTopic,
+          isTopicApproved: student.isTopicApproved,
+          topicProposedBy: student.topicProposedBy,
+          topicSubmittedAt: student.topicSubmittedAt,
+          topicRejectionComments: student.topicRejectionComments,
+          studentTopicResponse: student.studentTopicResponse,
+          
+          // Существующие флаги дипломной работы
+          thesisStatus: student.thesisStatus || 'not_submitted',
+          thesisGrade: student.thesisGrade,
+          currentReviewIteration: student.currentReviewIteration || 0,
+          totalReviewAttempts: student.totalReviewAttempts || 0,
+          
+          // Существующие флаги обратной связи
+          consultantFeedback: student.consultantFeedback,
+          supervisorFeedback: student.supervisorFeedback,
+          
+          // Информация о дипломной работе (если есть)
+          hasThesis: !!thesis,
+          thesis: thesis ? {
+            id: thesis.id,
+            title: thesis.data.title,
+            status: thesis.data.status,
+            submissionDate: thesis.data.submissionDate,
+          } : null,
+          
+          // Этап работы (рассчитанный на основе существующих флагов)
+          stage: stage
+        };
+      })
+    );
+    
+    // Группируем студентов по этапам (для статистики)
+    const stageStats = {
+      noTopic: studentsWithDetails.filter(s => s.stage.id === 1).length,
+      topicPendingApproval: studentsWithDetails.filter(s => s.stage.id === 2).length,
+      topicRejected: studentsWithDetails.filter(s => s.stage.id === 3).length,
+      topicApprovedNoWork: studentsWithDetails.filter(s => s.stage.id === 4).length,
+      withConsultant: studentsWithDetails.filter(s => s.stage.id === 5).length,
+      withSupervisor: studentsWithDetails.filter(s => s.stage.id === 6).length,
+      underReview: studentsWithDetails.filter(s => s.stage.id === 7).length,
+      revisionsRequested: studentsWithDetails.filter(s => s.stage.id === 8).length,
+      evaluated: studentsWithDetails.filter(s => s.stage.id === 9).length,
+    };
+    
+    res.json({
+      success: true,
+      students: studentsWithDetails,
+      count: studentsWithDetails.length,
+      stats: stageStats
+    });
+    
+  } catch (error) {
+    console.error("Error getting supervisor's students:", error);
+    res.status(500).json({ 
+      success: false,
+      error: "Failed to get students" 
+    });
+  }
+};
+
+// Вспомогательная функция для определения этапа на основе существующих флагов
+const determineStudentStage = (student: IStudent, thesis: any) => {
+  // Этап 1: Нет темы
+  if (!student.thesisTopic) {
+    return {
+      id: 1,
+      name: 'Нет темы',
+      description: 'Студент не предложил тему ВКР',
+      canProposeTopic: true,
+      needsAction: false,
+      color: 'gray'
+    };
+  }
+  
+  // Этап 2: Тема предложена студентом и ждет утверждения
+  if (student.topicProposedBy === 'student' && !student.isTopicApproved) {
+    return {
+      id: 2,
+      name: 'Тема на утверждении',
+      description: 'Студент предложил тему, требуется ваше утверждение',
+      canApproveTopic: true,
+      canRejectTopic: true,
+      needsAction: true,
+      color: 'orange'
+    };
+  }
+  
+  // Этап 3: Тема предложена руководителем и ждет ответа студента
+  if (student.topicProposedBy === 'supervisor' && 
+      student.studentTopicResponse?.status === 'pending') {
+    return {
+      id: 3,
+      name: 'Тема предложена',
+      description: 'Вы предложили тему, ждем ответа студента',
+      canProposeNewTopic: false, // Ждем ответа студента
+      needsAction: false,
+      color: 'blue'
+    };
+  }
+  
+  // Этап 4: Тема утверждена, но нет дипломной работы
+  if (student.isTopicApproved && (!thesis || student.thesisStatus === 'not_submitted')) {
+    return {
+      id: 4,
+      name: 'Тема утверждена',
+      description: 'Тема утверждена, ожидается загрузка дипломной работы',
+      canProposeTopic: false, // Тема уже утверждена
+      needsAction: false,
+      color: 'green'
+    };
+  }
+  
+  // Этап 5: Дипломная работа у консультанта
+  if (student.thesisStatus === 'with_consultant') {
+    return {
+      id: 5,
+      name: 'У консультанта',
+      description: 'Дипломная работа находится на рассмотрении у консультанта',
+      needsAction: false,
+      color: 'blue'
+    };
+  }
+  
+  // Этап 6: Дипломная работа у руководителя
+  if (student.thesisStatus === 'with_supervisor') {
+    return {
+      id: 6,
+      name: 'У руководителя',
+      description: 'Дипломная работа находится на вашем рассмотрении',
+      canReviewThesis: true,
+      needsAction: true,
+      color: 'orange'
+    };
+  }
+  
+  // Этап 7: Дипломная работа у рецензента
+  if (student.thesisStatus === 'under_review') {
+    return {
+      id: 7,
+      name: 'У рецензента',
+      description: 'Дипломная работа находится на рассмотрении у рецензента',
+      needsAction: false,
+      color: 'blue'
+    };
+  }
+  
+  // Этап 8: Требуются исправления
+  if (student.thesisStatus === 'revisions_requested') {
+    return {
+      id: 8,
+      name: 'Исправления',
+      description: 'Требуются исправления в дипломной работе',
+      needsAction: false,
+      color: 'yellow'
+    };
+  }
+  
+  // Этап 9: Оценено
+  if (student.thesisStatus === 'evaluated') {
+    return {
+      id: 9,
+      name: 'Оценено',
+      description: 'Дипломная работа оценена',
+      needsAction: false,
+      color: 'green'
+    };
+  }
+  
+  // Дефолтный этап
+  return {
+    id: 0,
+    name: 'Неизвестно',
+    description: 'Статус не определен',
+    needsAction: false,
+    color: 'gray'
+  };
+};
