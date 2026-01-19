@@ -45,9 +45,9 @@ const realThesisAPI = {
     return response.data
   },
 
-  respondToProposedTopic: async (accepted, comments) => {
-    const response = await api.put(`/approve-topic-student`, { accepted, comments })
-    return response.data
+  respondToProposedTopic: async (requestData) => {
+      const response = await api.put(`/approve-topic-student`, requestData)
+      return response.data
   },
 
   // Student endpoints

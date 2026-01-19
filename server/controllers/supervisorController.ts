@@ -1501,7 +1501,7 @@ export const getMyStudents = async (req: Request, res: Response) => {
 // Вспомогательная функция для определения этапа на основе существующих флагов
 const determineStudentStage = (student: IStudent, thesis: any) => {
   // Этап 1: Нет темы
-  if (!student.thesisTopic) {
+  if (!student.thesisTopic || student.thesisTopic.trim() === '') {
     return {
       id: 1,
       name: 'Нет темы',
@@ -1532,28 +1532,53 @@ const determineStudentStage = (student: IStudent, thesis: any) => {
       id: 3,
       name: 'Тема предложена',
       description: 'Вы предложили тему, ждем ответа студента',
-      canProposeNewTopic: false, // Ждем ответа студента
       needsAction: false,
       color: 'blue'
     };
   }
+
+  // Этап 4: Студент ответил на предложенную тему руководителя
+  if (student.topicProposedBy === 'supervisor' && 
+      student.studentTopicResponse?.status !== 'pending' && 
+      student.studentTopicResponse?.status !== undefined) {
+    
+    if (student.studentTopicResponse?.status === 'accepted') {
+      return {
+        id: 4,
+        name: 'Тема принята студентом',
+        description: 'Студент принял ваше предложение',
+        needsAction: false,
+        color: 'green'
+      };
+    } else {
+      // Студент отклонил и предложил свою тему
+      return {
+        id: 4,
+        name: 'Тема на утверждении',
+        description: 'Студент отклонил ваше предложение и предложил свою тему',
+        canApproveTopic: true,
+        canRejectTopic: true,
+        needsAction: true,
+        color: 'orange'
+      };
+    }
+  }
   
-  // Этап 4: Тема утверждена, но нет дипломной работы
+  // Этап 5: Тема утверждена, но нет дипломной работы
   if (student.isTopicApproved && (!thesis || student.thesisStatus === 'not_submitted')) {
     return {
-      id: 4,
+      id: 5,
       name: 'Тема утверждена',
       description: 'Тема утверждена, ожидается загрузка дипломной работы',
-      canProposeTopic: false, // Тема уже утверждена
       needsAction: false,
       color: 'green'
     };
   }
   
-  // Этап 5: Дипломная работа у консультанта
+  // Этап 6: Дипломная работа у консультанта
   if (student.thesisStatus === 'with_consultant') {
     return {
-      id: 5,
+      id: 6,
       name: 'У консультанта',
       description: 'Дипломная работа находится на рассмотрении у консультанта',
       needsAction: false,
@@ -1561,10 +1586,10 @@ const determineStudentStage = (student: IStudent, thesis: any) => {
     };
   }
   
-  // Этап 6: Дипломная работа у руководителя
+  // Этап 7: Дипломная работа у руководителя
   if (student.thesisStatus === 'with_supervisor') {
     return {
-      id: 6,
+      id: 7,
       name: 'У руководителя',
       description: 'Дипломная работа находится на вашем рассмотрении',
       canReviewThesis: true,
@@ -1573,10 +1598,10 @@ const determineStudentStage = (student: IStudent, thesis: any) => {
     };
   }
   
-  // Этап 7: Дипломная работа у рецензента
+  // Этап 8: Дипломная работа у рецензента
   if (student.thesisStatus === 'under_review') {
     return {
-      id: 7,
+      id: 8,
       name: 'У рецензента',
       description: 'Дипломная работа находится на рассмотрении у рецензента',
       needsAction: false,
@@ -1584,10 +1609,10 @@ const determineStudentStage = (student: IStudent, thesis: any) => {
     };
   }
   
-  // Этап 8: Требуются исправления
+  // Этап 9: Требуются исправления
   if (student.thesisStatus === 'revisions_requested') {
     return {
-      id: 8,
+      id: 9,
       name: 'Исправления',
       description: 'Требуются исправления в дипломной работе',
       needsAction: false,
@@ -1595,10 +1620,10 @@ const determineStudentStage = (student: IStudent, thesis: any) => {
     };
   }
   
-  // Этап 9: Оценено
+  // Этап 10: Оценено
   if (student.thesisStatus === 'evaluated') {
     return {
-      id: 9,
+      id: 10,
       name: 'Оценено',
       description: 'Дипломная работа оценена',
       needsAction: false,

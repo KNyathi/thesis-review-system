@@ -460,7 +460,7 @@ export const downloadReviewerUnSignedReview = async (req: Request, res: Response
 export const respondToProposedTopic = async (req: Request, res: Response) => {
     try {
         const studentId = (req.user as AuthenticatedUser).id;
-        const { accepted, comments } = req.body;
+        const { accepted, comments, newTopic } = req.body; 
 
         // Validate input
         if (typeof accepted !== 'boolean') {
@@ -470,11 +470,21 @@ export const respondToProposedTopic = async (req: Request, res: Response) => {
             return;
         }
 
-        if (!accepted && (!comments || comments.trim() === '')) {
-            res.status(400).json({
-                error: "Comments are required when rejecting a proposed thesis topic"
-            });
-            return;
+        if (!accepted) {
+            if (!comments || comments.trim() === '') {
+                res.status(400).json({
+                    error: "Comments are required when rejecting a proposed thesis topic"
+                });
+                return;
+            }
+            
+            // Новая тема при отклонении
+            if (!newTopic || newTopic.trim() === '') {
+                res.status(400).json({
+                    error: "You must propose your own topic when rejecting the supervisor's proposal"
+                });
+                return;
+            }
         }
 
         // Get student data
@@ -515,13 +525,16 @@ export const respondToProposedTopic = async (req: Request, res: Response) => {
             }
         };
 
-        // If student accepts the topic, mark it as approved
+        // Если студент принимает тему
         if (accepted) {
             updateData.isTopicApproved = true;
+            updateData.topicProposedBy = 'supervisor';
         } else {
-            // If rejected, clear the proposed topic but keep the history
-            updateData.thesisTopic = null;
+            updateData.thesisTopic = newTopic.trim(); 
             updateData.isTopicApproved = false;
+            updateData.topicProposedBy = 'student';
+            updateData.topicRejectionComments = null; 
+            updateData.topicSubmittedAt = new Date();
         }
 
         const updatedStudent = await userModel.updateUser(studentId, updateData);
@@ -545,7 +558,6 @@ export const respondToProposedTopic = async (req: Request, res: Response) => {
         });
     }
 };
-
 
 export const studentSignedReviewSupervisor = async (req: Request, res: Response) => {
     try {

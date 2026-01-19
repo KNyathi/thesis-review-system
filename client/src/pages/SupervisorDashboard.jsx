@@ -47,6 +47,8 @@ const SupervisorDashboard = () => {
 
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [selectedStudentId, setSelectedStudentId] = useState(null)
+  const [selectedStudentName, setSelectedStudentName] = useState("")
+  const [selectedStudentTopic, setSelectedStudentTopic] = useState("")
   const [rejectComments, setRejectComments] = useState("")
 
   const fetchedRef = useRef(false)
@@ -82,7 +84,15 @@ const SupervisorDashboard = () => {
       setStudentRequests(Array.isArray(requestsData) ? requestsData : [])
 
       // Устанавливаем студентов и статистику
-      setMyStudents(studentsResult.students || [])
+      const studentsWithStages = (studentsResult.students || []).map(student => {
+        const thesis = student.hasThesis ? student.thesis : null
+        return {
+          ...student,
+          stage: determineStudentStage(student, thesis)
+        }
+      })
+      
+      setMyStudents(studentsWithStages)
       setStudentsStats(studentsResult.stats || {})
 
       console.log("[Научный руководитель] Количество моих студентов:", studentsResult.students?.length || 0)
@@ -250,6 +260,8 @@ const SupervisorDashboard = () => {
         return 'bg-orange-100 text-orange-700 border-orange-200'
       case 'green':
         return 'bg-green-100 text-green-700 border-green-200'
+      case 'red':
+        return 'bg-red-100 text-red-700 border-red-200'
       default:
         return 'bg-gray-100 text-gray-700 border-gray-200'
     }
@@ -257,132 +269,151 @@ const SupervisorDashboard = () => {
 
   // Вспомогательная функция для определения этапа на основе существующих флагов
   const determineStudentStage = (student, thesis) => {
-    // Этап 1: Нет темы
-    if (!student.thesisTopic) {
+      // Этап 1: Нет темы
+      if (!student.thesisTopic || student.thesisTopic.trim() === '') {
+        return {
+          id: 1,
+          name: 'Нет темы',
+          description: 'Студент не предложил тему ВКР',
+          canProposeTopic: true,
+          needsAction: false,
+          color: 'gray'
+        };
+      }
+      
+      // Этап 2: Тема предложена студентом и ждет утверждения
+      if (student.topicProposedBy === 'student' && !student.isTopicApproved && !student.topicRejectionComments) {
+        return {
+          id: 2,
+          name: 'Тема на утверждении',
+          description: 'Студент предложил тему, требуется ваше утверждение',
+          canApproveTopic: true,
+          canRejectTopic: true,
+          needsAction: true,
+          color: 'orange'
+        };
+      }
+      
+      // Этап 3: Тема предложена руководителем и ждет ответа студента
+      if (student.topicProposedBy === 'supervisor' && 
+          student.studentTopicResponse?.status === 'pending') {
+        return {
+          id: 3,
+          name: 'Тема предложена',
+          description: 'Вы предложили тему, ждем ответа студента',
+          needsAction: false,
+          color: 'blue'
+        };
+      }
+
+      // Этап 4: Студент ответил на предложенную тему руководителя
+      if (student.topicProposedBy === 'supervisor' && 
+          student.studentTopicResponse?.status !== 'pending' && 
+          student.studentTopicResponse?.status !== undefined) {
+        
+        if (student.studentTopicResponse?.status === 'accepted') {
+          return {
+            id: 4,
+            name: 'Тема принята студентом',
+            description: 'Студент принял ваше предложение',
+            needsAction: false,
+            color: 'green'
+          };
+        } else {
+          // Студент отклонил и предложил свою тему
+          return {
+            id: 4,
+            name: 'Тема на утверждении',
+            description: 'Студент отклонил ваше предложение и предложил свою тему',
+            canApproveTopic: true,
+            canRejectTopic: true,
+            needsAction: true,
+            color: 'orange'
+          };
+        }
+      }
+      
+      // Этап 5: Тема утверждена, но нет дипломной работы
+      if (student.isTopicApproved && (!thesis || student.thesisStatus === 'not_submitted')) {
+        return {
+          id: 5,
+          name: 'Тема утверждена',
+          description: 'Тема утверждена, ожидается загрузка дипломной работы',
+          needsAction: false,
+          color: 'green'
+        };
+      }
+      
+      // Этап 6: Дипломная работа у консультанта
+      if (student.thesisStatus === 'with_consultant') {
+        return {
+          id: 6,
+          name: 'У консультанта',
+          description: 'Дипломная работа находится на рассмотрении у консультанта',
+          needsAction: false,
+          color: 'blue'
+        };
+      }
+      
+      // Этап 7: Дипломная работа у руководителя
+      if (student.thesisStatus === 'with_supervisor') {
+        return {
+          id: 7,
+          name: 'У руководителя',
+          description: 'Дипломная работа находится на вашем рассмотрении',
+          canReviewThesis: true,
+          needsAction: true,
+          color: 'orange'
+        };
+      }
+      
+      // Этап 8: Дипломная работа у рецензента
+      if (student.thesisStatus === 'under_review') {
+        return {
+          id: 8,
+          name: 'У рецензента',
+          description: 'Дипломная работа находится на рассмотрении у рецензента',
+          needsAction: false,
+          color: 'blue'
+        };
+      }
+      
+      // Этап 9: Требуются исправления
+      if (student.thesisStatus === 'revisions_requested') {
+        return {
+          id: 9,
+          name: 'Исправления',
+          description: 'Требуются исправления в дипломной работе',
+          needsAction: false,
+          color: 'yellow'
+        };
+      }
+      
+      // Этап 10: Оценено
+      if (student.thesisStatus === 'evaluated') {
+        return {
+          id: 10,
+          name: 'Оценено',
+          description: 'Дипломная работа оценена',
+          needsAction: false,
+          color: 'green'
+        };
+      }
+      
       return {
-        id: 1,
-        name: 'Нет темы',
-        description: 'Студент не предложил тему ВКР',
-        canProposeTopic: true,
+        id: 0,
+        name: 'Неизвестно',
+        description: 'Статус не определен',
         needsAction: false,
         color: 'gray'
       };
-    }
-    
-    // Этап 2: Тема предложена студентом и ждет утверждения
-    if (student.topicProposedBy === 'student' && !student.isTopicApproved) {
-      return {
-        id: 2,
-        name: 'Тема на утверждении',
-        description: 'Студент предложил тему, требуется ваше утверждение',
-        canApproveTopic: true,
-        canRejectTopic: true,
-        needsAction: true,
-        color: 'orange'
-      };
-    }
-    
-    // Этап 3: Тема предложена руководителем и ждет ответа студента
-    if (student.topicProposedBy === 'supervisor' && 
-        student.studentTopicResponse?.status === 'pending') {
-      return {
-        id: 3,
-        name: 'Тема предложена',
-        description: 'Вы предложили тему, ждем ответа студента',
-        canProposeNewTopic: false, // Ждем ответа студента
-        needsAction: false,
-        color: 'blue'
-      };
-    }
+  }
 
-    // Этап 3.5: Студент отклонил тему руководителя
-    if (student.topicProposedBy === 'supervisor' && 
-        student.studentTopicResponse?.status === 'declined') {
-      return {
-        id: 3.5,
-        name: 'Тема отклонена',
-        description: 'Студент отклонил ваше предложение. Можете предложить новую тему.',
-        canProposeTopic: true,
-        needsAction: true,
-        color: 'red'
-      };
-    }
-    
-    // Этап 4: Тема утверждена, но нет дипломной работы
-    if (student.isTopicApproved && (!thesis || student.thesisStatus === 'not_submitted')) {
-      return {
-        id: 4,
-        name: 'Тема утверждена',
-        description: 'Тема утверждена, ожидается загрузка дипломной работы',
-        canProposeTopic: false, // Тема уже утверждена
-        needsAction: false,
-        color: 'green'
-      };
-    }
-    
-    // Этап 5: Дипломная работа у консультанта
-    if (student.thesisStatus === 'with_consultant') {
-      return {
-        id: 5,
-        name: 'У консультанта',
-        description: 'Дипломная работа находится на рассмотрении у консультанта',
-        needsAction: false,
-        color: 'blue'
-      };
-    }
-    
-    // Этап 6: Дипломная работа у руководителя
-    if (student.thesisStatus === 'with_supervisor') {
-      return {
-        id: 6,
-        name: 'У руководителя',
-        description: 'Дипломная работа находится на вашем рассмотрении',
-        canReviewThesis: true,
-        needsAction: true,
-        color: 'orange'
-      };
-    }
-    
-    // Этап 7: Дипломная работа у рецензента
-    if (student.thesisStatus === 'under_review') {
-      return {
-        id: 7,
-        name: 'У рецензента',
-        description: 'Дипломная работа находится на рассмотрении у рецензента',
-        needsAction: false,
-        color: 'blue'
-      };
-    }
-    
-    // Этап 8: Требуются исправления
-    if (student.thesisStatus === 'revisions_requested') {
-      return {
-        id: 8,
-        name: 'Исправления',
-        description: 'Требуются исправления в дипломной работе',
-        needsAction: false,
-        color: 'yellow'
-      };
-    }
-    
-    // Этап 9: Оценено
-    if (student.thesisStatus === 'evaluated') {
-      return {
-        id: 9,
-        name: 'Оценено',
-        description: 'Дипломная работа оценена',
-        needsAction: false,
-        color: 'green'
-      };
-    }
-    
-    return {
-      id: 0,
-      name: 'Неизвестно',
-      description: 'Статус не определен',
-      needsAction: false,
-      color: 'gray'
-    };
+  // Определение отклонённых работ студента
+  const hasRejectedTopic = (student) => {
+    return student.topicProposedBy === 'student' && 
+           !student.isTopicApproved && 
+           student.topicRejectionComments
   }
 
   // Функция фильтрации студентов
@@ -391,8 +422,48 @@ const SupervisorDashboard = () => {
     if (studentFilter === 'needsAction') return myStudents.filter(s => s.stage?.needsAction)
     if (studentFilter === 'noTopic') return myStudents.filter(s => s.stage?.id === 1)
     if (studentFilter === 'topicPending') return myStudents.filter(s => s.stage?.id === 2)
+    if (studentFilter === 'topicRejected') return myStudents.filter(hasRejectedTopic)
     return myStudents
   }, [myStudents, studentFilter])
+
+  // Открытие модального окна отклонения темы
+  const openRejectModal = (studentId, studentName, studentTopic) => {
+    setSelectedStudentId(studentId)
+    setSelectedStudentName(studentName)
+    setSelectedStudentTopic(studentTopic)
+    setRejectComments("")
+    setProposedTopic("")
+    setShowRejectModal(true)
+  }
+
+  // Отклонения темы
+  const handleRejectTopic = async () => {
+    if (!rejectComments.trim()) {
+      showToast("Пожалуйста, укажите причину отклонения", "error")
+      return
+    }
+
+    try {
+      if (proposedTopic.trim()) {
+        await thesisAPI.approveStudentTopic(selectedStudentId, false, rejectComments.trim())
+        await thesisAPI.proposeTopicToStudent(selectedStudentId, proposedTopic.trim())
+        showToast("Тема отклонена и предложена новая тема!", "success")
+      } else {
+        await thesisAPI.approveStudentTopic(selectedStudentId, false, rejectComments.trim())
+        showToast("Тема отклонена", "success")
+      }
+
+      setShowRejectModal(false)
+      setSelectedStudentId(null)
+      setSelectedStudentName("")
+      setSelectedStudentTopic("")
+      setRejectComments("")
+      setProposedTopic("")
+      await fetchTheses()
+    } catch (error) {
+      showToast(error.response?.data?.error || "Не удалось отклонить тему", "error")
+    }
+  }
 
   if (isLoading && !fetchedRef.current) {
     return (
@@ -455,10 +526,8 @@ const SupervisorDashboard = () => {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="p-4">
         <div className="max-w-6xl mx-auto">
-          {/* Hero Section */}
           <div className="text-center mb-8">
             <div className="w-12 h-12 bg-[#372579] rounded-full flex items-center justify-center mx-auto mb-6">
               <span className="text-white font-bold text-xl">РУ</span>
@@ -467,7 +536,6 @@ const SupervisorDashboard = () => {
             <p className="text-gray-600">Управление студентами и рецензирование дипломных работ</p>
           </div>
 
-          {/* Tab Navigation */}
           <div className="flex gap-4 mb-6">
             <button
               onClick={() => setActiveTab("requests")}
@@ -503,7 +571,7 @@ const SupervisorDashboard = () => {
             </button>
           </div>
 
-          {/* Student Requests Tab */}
+          {/* Запросы студентов */}
           {activeTab === "requests" && (
             <div className="space-y-4">
               {studentRequests.length > 0 ? (
@@ -589,7 +657,6 @@ const SupervisorDashboard = () => {
             </div>
           )}
 
-          {/* Students Tab */}
           {activeTab === "students" && (
             <div className="space-y-4">
               {/* Статистика */}
@@ -644,6 +711,12 @@ const SupervisorDashboard = () => {
                 >
                   Тема на утверждении
                 </button>
+                <button
+                  onClick={() => setStudentFilter('topicRejected')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${studentFilter === 'topicRejected' ? 'bg-red-500 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
+                >
+                  Тема отклонена ({myStudents.filter(hasRejectedTopic).length})
+                </button>
               </div>
 
               {/* Список студентов */}
@@ -694,12 +767,12 @@ const SupervisorDashboard = () => {
                                   <div className="p-3 bg-gray-50 rounded-lg">
                                     <p className="text-gray-900 font-medium">"{student.thesisTopic}"</p>
                                     <div className="flex items-center gap-2 mt-2">
-                                      <span className={`text-xs px-2 py-0.5 rounded-full ${student.isTopicApproved ? 'bg-green-100 text-green-700' : student.topicProposedBy === 'student' ? 'bg-yellow-100 text-yellow-700' : student.studentTopicResponse?.status === 'declined' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                                      <span className={`text-xs px-2 py-0.5 rounded-full ${student.isTopicApproved ? 'bg-green-100 text-green-700' : student.topicProposedBy === 'student' ? (student.topicRejectionComments ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700') : student.studentTopicResponse?.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
                                         {student.isTopicApproved 
                                           ? 'Утверждена' 
                                           : student.topicProposedBy === 'student' 
-                                            ? 'На утверждении' 
-                                            : student.studentTopicResponse?.status === 'declined'
+                                            ? (student.topicRejectionComments ? 'Отклонена вами' : 'На утверждении')
+                                            : student.studentTopicResponse?.status === 'rejected'
                                               ? 'Отклонена студентом'
                                               : 'Предложена руководителем'}
                                       </span>
@@ -709,15 +782,23 @@ const SupervisorDashboard = () => {
                                         </span>
                                       )}
                                     </div>
-                                    {student.topicRejectionComments && (
-                                      <p className="text-xs text-red-600 mt-1">
-                                        Отклонена вами: {student.topicRejectionComments}
-                                      </p>
-                                    )}
-                                    {student.studentTopicResponse?.status === 'declined' && student.studentTopicResponse?.comments && (
+                                    
+                                    {/* Комментарий студента при отклонении */}
+                                    {student.studentTopicResponse?.status === 'rejected' && student.studentTopicResponse?.comments && (
                                       <div className="p-2 bg-red-50 rounded border border-red-200 mt-2">
                                         <p className="text-xs text-red-700">
                                           <span className="font-medium">Комментарий студента:</span> {student.studentTopicResponse.comments}
+                                        </p>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                          Студент может предложить свою тему. Вы увидите её здесь для утверждения.
+                                        </p>
+                                      </div>
+                                    )}
+                                    
+                                    {student.topicRejectionComments && (
+                                      <div className="p-2 bg-red-50 rounded border border-red-200 mt-2">
+                                        <p className="text-xs text-red-700">
+                                          <span className="font-medium">Ваш комментарий при отклонении:</span> {student.topicRejectionComments}
                                         </p>
                                       </div>
                                     )}
@@ -770,7 +851,7 @@ const SupervisorDashboard = () => {
                               )}
 
                               {/* Кнопки для этапа 2: Тема на утверждении */}
-                              {student.stage?.id === 2 && student.stage?.canApproveTopic && (
+                              {student.stage?.id === 2 && student.stage?.canApproveTopic && !student.topicRejectionComments && (
                                 <>
                                   <button
                                     onClick={async () => {
@@ -788,11 +869,7 @@ const SupervisorDashboard = () => {
                                     Утвердить тему
                                   </button>
                                   <button
-                                    onClick={() => {
-                                      setSelectedStudentId(student.id)
-                                      setShowRejectModal(true)
-                                      setRejectComments("")
-                                    }}
+                                    onClick={() => openRejectModal(student.id, student.fullName, student.thesisTopic)}
                                     className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all text-sm font-medium flex items-center gap-2"
                                   >
                                     <FiX className="w-4 h-4" />
@@ -801,18 +878,33 @@ const SupervisorDashboard = () => {
                                 </>
                               )}
 
-                              {/* Кнопки для этапа когда студент отклонил тему руководителя */}
-                              {(student.stage?.id === 3.5 || (student.topicProposedBy === 'supervisor' && student.studentTopicResponse?.status === 'declined')) && (
+                              {/* Кнопки для этапа 2.5: Тема отклонена  */}
+                              {(student.stage?.id === 2.5 || hasRejectedTopic(student)) && (
                                 <button
                                   onClick={() => {
                                     setSelectedStudent(student)
                                     setShowTopicModal(true)
-                                    setProposedTopic(student.thesisTopic || "")
+                                    setProposedTopic("")
+                                  }}
+                                  className="px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium flex items-center gap-2"
+                                >
+                                  <FiBook className="w-4 h-4" />
+                                  Предложить тему
+                                </button>
+                              )}
+
+                              {/* Кнопки для этапа 3.5: Студент отклонил тему руководителя */}
+                              {(student.stage?.id === 3.5 || (student.topicProposedBy === 'supervisor' && student.studentTopicResponse?.status === 'rejected' && !student.thesisTopic)) && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedStudent(student)
+                                    setShowTopicModal(true)
+                                    setProposedTopic("")
                                   }}
                                   className="px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium flex items-center gap-2"
                                 >
                                   <FiSend className="w-4 h-4" />
-                                  Предложить снова
+                                  Предложить новую тему
                                 </button>
                               )}
 
@@ -899,7 +991,7 @@ const SupervisorDashboard = () => {
                               <div className="flex items-center gap-2 text-gray-600 text-sm">
                                 <FiClock className="w-4 h-4" />
                                 <span>Отправлено {new Date(thesis.submissionDate).toLocaleDateString("ru-RU")}</span>
-                              </div>
+                            </div>
                             )}
                             <span
                               className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusBadgeColor(
@@ -1080,127 +1172,213 @@ const SupervisorDashboard = () => {
           setSelectedStudent(null)
           setProposedTopic("")
         }}
-        title={`Предложить тему - ${selectedStudent?.fullName}`}
-        size="medium"
+        title="Предложить тему дипломной работы"
+        subtitle={`Студент: ${selectedStudent?.fullName}`}
+        size="medium" 
       >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Тема дипломной работы</label>
-            <textarea
-              value={proposedTopic}
-              onChange={(e) => setProposedTopic(e.target.value)}
-              placeholder="Введите тему дипломной работы..."
-              rows="4"
-              className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
-              required
-            />
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => {
-                setShowTopicModal(false)
-                setSelectedStudent(null)
-                setProposedTopic("")
-              }}
-              className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Отмена
-            </button>
-            <button
-              onClick={async () => {
-                if (!proposedTopic.trim()) {
-                  showToast("Пожалуйста, введите тему", "error")
-                  return
-                }
-                try {
-                  setIsSubmittingTopic(true)
-                  await thesisAPI.proposeTopicToStudent(selectedStudent.id, proposedTopic.trim())
-                  showToast("Тема предложена студенту!", "success")
+        <div className="p-4"> 
+          <div className="space-y-6 max-w-2xl mx-auto"> 
+            {/* Заголовок */}
+            <div className="bg-[#372579] text-white p-4 rounded-lg"> 
+              <div className="flex items-center gap-3">
+                <FiBook className="w-6 h-6" />
+                <div>
+                  <h3 className="text-lg font-semibold">Предложение темы ВКР</h3>
+                  <p className="text-xs opacity-90 mt-1"> 
+                    Введите тему дипломной работы для студента
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-5"> 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Тема дипломной работы <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute top-3 left-3 text-gray-400">
+                    <FiBook className="w-4 h-4" />
+                  </div>
+                  <textarea
+                    value={proposedTopic}
+                    onChange={(e) => setProposedTopic(e.target.value)}
+                    placeholder="Введите тему дипломной работы..."
+                    rows="8"
+                    className="w-full bg-white border border-gray-300 rounded-lg pl-10 pr-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
+                    required
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Тема будет отправлена студенту на рассмотрение. Студент может принять или отклонить её.
+                </p>
+              </div>
+            </div>
+
+            {/* Кнопки действий */}
+            <div className="flex gap-3 pt-5 border-t border-gray-200"> 
+              <button
+                onClick={() => {
                   setShowTopicModal(false)
                   setSelectedStudent(null)
                   setProposedTopic("")
-                  await fetchTheses()
-                } catch (error) {
-                  showToast(error.response?.data?.error || "Не удалось предложить тему", "error")
-                } finally {
-                  setIsSubmittingTopic(false)
-                }
-              }}
-              disabled={isSubmittingTopic || !proposedTopic.trim()}
-              className="flex-1 bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1d5f] focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {isSubmittingTopic ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <>
-                  <FiSend className="w-5 h-5" />
-                  Предложить тему
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Модальное окно для отказа темы студента */}
-      {showRejectModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Укажите причину отклонения темы студента</h3>
-            
-            <div className="mb-4">
-              <label htmlFor="rejectComments" className="block text-sm font-medium text-gray-700 mb-2">
-                Комментарий (обязательно)
-              </label>
-              <textarea
-                id="rejectComments"
-                value={rejectComments}
-                onChange={(e) => setRejectComments(e.target.value)}
-                placeholder="Почему вы отклоняете предложенную тему студента?"
-                rows="4"
-                className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
-                required
-              />
-            </div>
-            
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowRejectModal(false)
-                  setSelectedStudentId(null)
-                  setRejectComments("")
                 }}
-                className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors"
+                className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors text-sm flex items-center justify-center gap-2"
               >
+                <FiX className="w-4 h-4" />
                 Отмена
               </button>
               <button
                 onClick={async () => {
-                  if (!rejectComments.trim()) {
-                    showToast("Пожалуйста, укажите причину отклонения", "error")
+                  if (!proposedTopic.trim()) {
+                    showToast("Пожалуйста, введите тему", "error")
                     return
                   }
                   try {
-                    await thesisAPI.approveStudentTopic(selectedStudentId, false, rejectComments.trim())
-                    showToast("Тема отклонена", "success")
-                    setShowRejectModal(false)
-                    setSelectedStudentId(null)
-                    setRejectComments("")
+                    setIsSubmittingTopic(true)
+                    await thesisAPI.proposeTopicToStudent(selectedStudent.id, proposedTopic.trim())
+                    showToast("Тема предложена студенту!", "success")
+                    setShowTopicModal(false)
+                    setSelectedStudent(null)
+                    setProposedTopic("")
                     await fetchTheses()
                   } catch (error) {
-                    showToast("Не удалось отклонить тему", "error")
+                    showToast(error.response?.data?.error || "Не удалось предложить тему", "error")
+                  } finally {
+                    setIsSubmittingTopic(false)
                   }
                 }}
-                disabled={!rejectComments.trim()}
-                className="flex-1 bg-red-600 text-white font-medium py-3 px-4 rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                disabled={isSubmittingTopic || !proposedTopic.trim()}
+                className="flex-1 bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1d5f] focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                <FiX className="w-4 h-4" />
-                Отклонить тему
+                {isSubmittingTopic ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <FiSend className="w-4 h-4" />
+                    Предложить тему
+                  </>
+                )}
               </button>
             </div>
           </div>
         </div>
-      )}
+      </Modal>
+
+      {/* Модальное окно отклонения темы */}
+      <Modal
+        isOpen={showRejectModal}
+        onClose={() => {
+          setShowRejectModal(false)
+          setSelectedStudentId(null)
+          setSelectedStudentName("")
+          setSelectedStudentTopic("")
+          setRejectComments("")
+          setProposedTopic("")
+        }}
+        title="Отклонение темы дипломной работы"
+        subtitle={`Студент: ${selectedStudentName}`}
+        size="full"
+      >
+        <div className="p-4"> 
+          <div className="space-y-6 max-w-4xl mx-auto">
+            {/* Заголовок */}
+            <div className="bg-[#372579] text-white p-5 rounded-lg">
+              <div className="flex items-center gap-3">
+                <FiAlertCircle className="w-6 h-6" />
+                <div>
+                  <h3 className="text-lg font-semibold">Отклонение темы ВКР</h3>
+                  <p className="text-sm opacity-90 mt-1">
+                    Укажите причину отклонения и предложите новую тему (опционально)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Предложенная тема студента */}
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <FiBook className="w-4 h-4 text-yellow-600" />
+                <p className="text-sm font-medium text-yellow-800">Предложенная студентом тема:</p>
+              </div>
+              <p className="text-gray-900 pl-6">"{selectedStudentTopic}"</p>
+            </div>
+
+            <div className="space-y-6">
+              {/* Причина отклонения */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Причина отклонения <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <div className="absolute top-3 left-3 text-gray-400">
+                    <FiMessageSquare className="w-4 h-4" />
+                  </div>
+                  <textarea
+                    value={rejectComments}
+                    onChange={(e) => setRejectComments(e.target.value)}
+                    placeholder="Пожалуйста, укажите причину, почему вы отклоняете предложенную тему..."
+                    rows="4"
+                    className="w-full bg-white border border-gray-300 rounded-lg pl-10 pr-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
+                    required
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Этот комментарий будет виден студенту.
+                </p>
+              </div>
+
+              {/* Предложить свою тему */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Предложить свою тему (опционально)
+                </label>
+                <div className="relative">
+                  <div className="absolute top-3 left-3 text-gray-400">
+                    <FiBook className="w-4 h-4" />
+                  </div>
+                  <textarea
+                    value={proposedTopic}
+                    onChange={(e) => setProposedTopic(e.target.value)}
+                    placeholder="Вы можете сразу предложить студенту свою тему..."
+                    rows="4"
+                    className="w-full bg-white border border-gray-300 rounded-lg pl-10 pr-4 py-3 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#372579] focus:border-transparent transition-all resize-none"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Если вы не хотите предлагать тему сейчас, оставьте поле пустым.
+                </p>
+              </div>
+            </div>
+
+            {/* Кнопки действий */}
+            <div className="flex gap-3 pt-6 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setShowRejectModal(false)
+                  setSelectedStudentId(null)
+                  setSelectedStudentName("")
+                  setSelectedStudentTopic("")
+                  setRejectComments("")
+                  setProposedTopic("")
+                }}
+                className="flex-1 bg-gray-100 text-gray-700 font-medium py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors text-sm flex items-center justify-center gap-2"
+              >
+                <FiX className="w-4 h-4" />
+                Отмена
+              </button>
+              <button
+                onClick={handleRejectTopic}
+                disabled={!rejectComments.trim()}
+                className="flex-1 bg-[#372579] text-white font-medium py-3 px-4 rounded-lg hover:bg-[#2a1d5f] focus:outline-none focus:ring-2 focus:ring-[#372579] focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <FiAlertCircle className="w-4 h-4" />
+                {proposedTopic.trim() ? "Отклонить и предложить новую" : "Отклонить тему"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
