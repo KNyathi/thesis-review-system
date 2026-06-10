@@ -19,6 +19,114 @@ interface AuthenticatedUser {
     email: string;
 }
 
+// Получение работ для подписания (статус awaiting_dean_signature)
+export const getThesesForSigning = async (req: Request, res: Response) => {
+    try {
+        const dean = req.user as AuthenticatedUser & IDean;
+        console.log("Dean faculty:", dean.faculty);
+        
+        const allTheses = await thesisModel.find();
+        console.log("Total theses found:", allTheses.length);
+        
+        // Фильтруем работы по статусу awaiting_dean_signature
+        const thesesForSigning = allTheses.filter(thesis => {
+            if (!thesis) return false;
+            return thesis.status === "awaiting_dean_signature";
+        });
+        
+        console.log("Theses with status awaiting_dean_signature:", thesesForSigning.length);
+        
+        // Получаем данные студентов
+        const thesesWithStudents = await Promise.all(
+            thesesForSigning.map(async (thesis) => {
+                try {
+                    const student = await userModel.getUserById(thesis.student) as IStudent;
+                    if (!student) return null;
+                    
+                    // Проверка факультета
+                    if (student?.faculty !== dean.faculty) return null;
+                    
+                    return {
+                        id: thesis.id,
+                        title: thesis.title || "Без названия",
+                        status: thesis.status,
+                        submissionDate: thesis.submissionDate,
+                        student: {
+                            id: student.id,
+                            fullName: student.fullName,
+                            email: student.email,
+                            faculty: student.faculty,
+                            group: student.group,
+                        },
+                        finalGrade: thesis.finalGrade,
+                        hodSignedReviewerPath: thesis.hodSignedReviewerPath,
+                    };
+                } catch (err) {
+                    console.error("Error processing thesis:", thesis.id, err);
+                    return null;
+                }
+            })
+        );
+        
+        const filteredTheses = thesesWithStudents.filter(t => t !== null);
+        console.log("Filtered theses for Dean:", filteredTheses.length);
+        
+        res.json(filteredTheses);
+    } catch (error) {
+        console.error("Error getting theses for signing:", error);
+        res.status(500).json({ error: "Failed to get theses" });
+    }
+};
+
+// Получение завершённых работ (статус evaluated)
+export const getCompletedTheses = async (req: Request, res: Response) => {
+    try {
+        const dean = req.user as AuthenticatedUser & IDean;
+        const allTheses = await thesisModel.find();
+        
+        const completedTheses = allTheses.filter(thesis => {
+            if (!thesis) return false;
+            return thesis.status === "evaluated";
+        });
+        
+        const thesesWithStudents = await Promise.all(
+            completedTheses.map(async (thesis) => {
+                try {
+                    const student = await userModel.getUserById(thesis.student) as IStudent;
+                    if (!student) return null;
+                    if (student?.faculty !== dean.faculty) return null;
+                    
+                    return {
+                        id: thesis.id,
+                        title: thesis.title || "Без названия",
+                        status: thesis.status,
+                        submissionDate: thesis.submissionDate,
+                        finalGrade: thesis.finalGrade,
+                        student: {
+                            id: student.id,
+                            fullName: student.fullName,
+                            email: student.email,
+                            faculty: student.faculty,
+                            group: student.group,
+                        },
+                        signedDate: thesis.deanSignedDate,
+                    };
+                } catch (err) {
+                    console.error("Error processing completed thesis:", thesis.id, err);
+                    return null;
+                }
+            })
+        );
+        
+        const filteredTheses = thesesWithStudents.filter(t => t !== null);
+        res.json(filteredTheses);
+    } catch (error) {
+        console.error("Error getting completed theses:", error);
+        res.status(500).json({ error: "Failed to get completed theses" });
+    }
+};
+
+// Получение неподписанной рецензии для декана (подписанная HOD)
 export const getUnsignedReview = async (req: Request, res: Response) => {
     try {
         const dean = req.user as AuthenticatedUser & IDean;
@@ -37,228 +145,54 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
             return;
         }
 
-        // Check conditions for BOTH files - Dean signs after HOD
-        const isHodSigned = thesis.data.hodSignedSupervisorPath && thesis.data.hodSignedReviewerPath;
-        const isThesisEvaluated = thesis.data.status === 'evaluated'; // Thesis should be evaluated
-        const deanNotSigned = !thesis.data.deanSignedSupervisorPath && !thesis.data.deanSignedReviewerPath;
-
-        // Get HOD signed paths (these are the "unsigned" files for Dean)
-        const hodSupervisorPath = thesis.data.hodSignedSupervisorPath;
-        const hodReviewerPath = thesis.data.hodSignedReviewerPath;
-
-        const hasHodSupervisorFile = hodSupervisorPath && fs.existsSync(hodSupervisorPath);
-        const hasHodReviewerFile = hodReviewerPath && fs.existsSync(hodReviewerPath);
-
-        // Only proceed if BOTH HOD-signed files are available and conditions are met
-        if (!isHodSigned || !isThesisEvaluated || !hasHodSupervisorFile || !hasHodReviewerFile || !deanNotSigned) {
-            res.status(400).json({
-                error: "Both reviews are not ready for Dean signing",
-                details: {
-                    hodSigned: isHodSigned,
-                    thesisEvaluated: isThesisEvaluated,
-                    hodSupervisorFileExists: hasHodSupervisorFile,
-                    hodReviewerFileExists: hasHodReviewerFile,
-                    deanNotSigned: deanNotSigned,
-                    allConditionsMet: isHodSigned && isThesisEvaluated && hasHodSupervisorFile && hasHodReviewerFile && deanNotSigned
-                }
-            });
+        // Проверяем, что HOD уже подписал
+        const hodSignedPath = thesis.data.hodSignedReviewerPath;
+        if (!hodSignedPath) {
+            res.status(400).json({ error: "HOD has not signed yet" });
             return;
         }
 
-        const supervisorPath = hodSupervisorPath!;
-        const reviewerPath = hodReviewerPath!;
-
-        if (!fs.existsSync(supervisorPath) || !fs.existsSync(reviewerPath)) {
-            res.status(404).json({
-                error: "HOD signed review files not found",
-                details: {
-                    supervisorExists: fs.existsSync(supervisorPath),
-                    reviewerExists: fs.existsSync(reviewerPath)
-                }
-            });
+        if (!fs.existsSync(hodSignedPath)) {
+            res.status(404).json({ error: "HOD signed review file not found" });
             return;
         }
 
-        // Set headers for multipart response
-        const boundary = '----DeanReviewBoundary';
-        res.setHeader('Content-Type', `multipart/mixed; boundary=${boundary}`);
-        res.setHeader('Content-Disposition', `inline; filename="dean_reviews_${thesisId}.multipart"`);
-
-        // Helper function to send a file part
-        const sendFilePart = (filePath: string, filename: string, contentType: string = 'application/pdf') => {
-            const fileStats = fs.statSync(filePath);
-
-            // Part header
-            res.write(`--${boundary}\r\n`);
-            res.write(`Content-Type: ${contentType}\r\n`);
-            res.write(`Content-Disposition: attachment; filename="${filename}"\r\n`);
-            res.write(`Content-Length: ${fileStats.size}\r\n`);
-            res.write('\r\n');
-
-            // File content
-            const fileStream = fs.createReadStream(filePath);
-            fileStream.pipe(res, { end: false });
-
-            return new Promise<void>((resolve, reject) => {
-                fileStream.on('end', () => resolve());
-                fileStream.on('error', (error) => reject(error));
-            });
-        };
-
-        // Send both HOD-signed files (these are "unsigned" for Dean)
-        await sendFilePart(supervisorPath, `hod_signed_supervisor_review_${thesis.data.student}.pdf`);
-        await sendFilePart(reviewerPath, `hod_signed_reviewer_review_${thesis.data.student}.pdf`);
-
-        // End of multipart
-        res.write(`--${boundary}--\r\n`);
-        res.end();
-
+        // Отдаём файл
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="dean_review_${thesis.data.student}.pdf"`);
+        
+        const fileStream = fs.createReadStream(hodSignedPath);
+        fileStream.pipe(res);
+        
+        fileStream.on("error", (error) => {
+            console.error("Error streaming file:", error);
+            res.status(500).json({ error: "Failed to stream file" });
+        });
+        
     } catch (error) {
-        console.error("Error getting unsigned reviews for Dean:", error);
-        res.status(500).json({ error: "Failed to get unsigned reviews" });
+        console.error("Error getting unsigned review for Dean:", error);
+        res.status(500).json({ error: "Failed to get unsigned review" });
     }
 };
 
-
-export const getSignedReview = async (req: Request, res: Response) => {
-    try {
-        const dean = req.user as AuthenticatedUser & IDean;
-        const { thesisId } = req.params;
-
-        // Find thesis
-        const thesis = await thesisModel.getThesisById(thesisId);
-        if (!thesis) {
-            res.status(404).json({ error: "Thesis not found" });
-            return;
-        }
-
-        // Verify Dean has access to this faculty
-        const student = await userModel.getUserById(thesis.data.student);
-        if (!student || (student as IStudent).faculty !== dean.faculty) {
-            res.status(403).json({ error: "Access denied: Not your faculty student" });
-            return;
-        }
-
-        // Get Dean signed paths
-        const deanSupervisorPath = thesis.data.deanSignedSupervisorPath;
-        const deanReviewerPath = thesis.data.deanSignedReviewerPath;
-
-        // Check if both Dean signed files exist
-        const hasDeanSupervisorFile = deanSupervisorPath && fs.existsSync(deanSupervisorPath);
-        const hasDeanReviewerFile = deanReviewerPath && fs.existsSync(deanReviewerPath);
-
-        if (!hasDeanSupervisorFile || !hasDeanReviewerFile) {
-            res.status(404).json({
-                error: "Dean signed reviews not found",
-                details: {
-                    deanSupervisorExists: hasDeanSupervisorFile,
-                    deanReviewerExists: hasDeanReviewerFile
-                }
-            });
-            return;
-        }
-
-        // Set headers for multipart response
-        const boundary = '----DeanSignedReviewBoundary';
-        res.setHeader('Content-Type', `multipart/mixed; boundary=${boundary}`);
-        res.setHeader('Content-Disposition', `inline; filename="dean_signed_reviews_${thesisId}.multipart"`);
-
-        // Helper function to send a file part
-        const sendFilePart = (filePath: string, filename: string, contentType: string = 'application/pdf') => {
-            const fileStats = fs.statSync(filePath);
-
-            // Part header
-            res.write(`--${boundary}\r\n`);
-            res.write(`Content-Type: ${contentType}\r\n`);
-            res.write(`Content-Disposition: attachment; filename="${filename}"\r\n`);
-            res.write(`Content-Length: ${fileStats.size}\r\n`);
-            res.write('\r\n');
-
-            // File content
-            const fileStream = fs.createReadStream(filePath);
-            fileStream.pipe(res, { end: false });
-
-            return new Promise<void>((resolve, reject) => {
-                fileStream.on('end', () => resolve());
-                fileStream.on('error', (error) => reject(error));
-            });
-        };
-
-        // Send both Dean signed files
-        await sendFilePart(deanSupervisorPath, `dean_signed_supervisor_review_${thesis.data.student}.pdf`);
-        await sendFilePart(deanReviewerPath, `dean_signed_reviewer_review_${thesis.data.student}.pdf`);
-
-        // End of multipart
-        res.write(`--${boundary}--\r\n`);
-        res.end();
-
-    } catch (error) {
-        console.error("Error getting Dean signed reviews:", error);
-        res.status(500).json({ error: "Failed to get Dean signed reviews" });
-    }
-};
-
-// Helper function to delete all review files from other roles
-const deleteAllOtherReviews = async (thesis: any) => {
-    try {
-        const baseDir = path.join(__dirname, "../../server/reviews");
-        const studentId = thesis.data.student;
-
-        const filesToDelete = [
-            // Supervisor files
-            thesis.data.supervisorSignedReviewPath,
-            thesis.data.reviewPdfSupervisor,
-            path.join(baseDir, "supervisor/signed", `signed_review1_${studentId}.pdf`),
-            path.join(baseDir, "supervisor/unsigned", `unsigned_review1_${studentId}.pdf`),
-
-            // Reviewer files
-            thesis.data.reviewerSignedReviewPath,
-            thesis.data.reviewPdfReviewer,
-            path.join(baseDir, "reviewer/signed", `signed_review2_${studentId}.pdf`),
-            path.join(baseDir, "reviewer/unsigned", `unsigned_review2_${studentId}.pdf`),
-
-            // Consultant files
-            thesis.data.consultantSignedReviewPath,
-            thesis.data.reviewPdfConsultant,
-            path.join(baseDir, "consultant/signed", `signed_review1_${studentId}.pdf`),
-            path.join(baseDir, "consultant/unsigned", `unsigned_review1_${studentId}.pdf`),
-
-            // HOD files
-            thesis.data.hodSignedSupervisorPath,
-            thesis.data.hodSignedReviewerPath,
-            path.join(baseDir, "hod/signed", `hod_signed_supervisor_${studentId}.pdf`),
-            path.join(baseDir, "hod/signed", `hod_signed_reviewer_${studentId}.pdf`)
-        ];
-
-        // Delete each file if it exists
-        for (const filePath of filesToDelete) {
-            if (filePath && fs.existsSync(filePath)) {
-                try {
-                    fs.unlinkSync(filePath);
-                    console.log(`Deleted file: ${filePath}`);
-                } catch (deleteError) {
-                    console.warn(`Could not delete file ${filePath}:`, deleteError);
-                    // Continue with other files even if one fails
-                }
-            }
-        }
-
-        console.log(`Finished cleaning up review files for student ${studentId}`);
-    } catch (error) {
-        console.error("Error deleting other review files:", error);
-        // Don't throw error - we want to continue with Dean upload even if cleanup fails
-    }
-};
-
+// Загрузка подписанной деканом рецензии
 export const uploadSignedDeanReviews = async (req: Request, res: Response) => {
     try {
+        console.log("=== uploadSignedDeanReviews START ===");
+        
         const dean = req.user as AuthenticatedUser & IDean;
         const { thesisId } = req.params;
-        const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+        const file = req.file;
 
-        console.log("Uploading Dean signed reviews:", { thesisId, files: files ? Object.keys(files) : 'no files' });
+        console.log("Dean ID:", dean.id);
+        console.log("Thesis ID:", thesisId);
+        console.log("File received:", file ? file.originalname : "No file");
 
-        // Find thesis and check access
+        if (!file) {
+            res.status(400).json({ error: "Signed PDF file is required" });
+            return;
+        }
+
         const thesis = await thesisModel.getThesisById(thesisId);
         if (!thesis) {
             res.status(404).json({ error: "Thesis not found" });
@@ -272,37 +206,9 @@ export const uploadSignedDeanReviews = async (req: Request, res: Response) => {
             return;
         }
 
-        // Check if both files are provided
-        if (!files || !files.supervisorReview || !files.reviewerReview) {
-            res.status(400).json({
-                error: "Both supervisor and reviewer signed reviews are required",
-                received: files ? Object.keys(files) : 'no files'
-            });
-            return;
-        }
-
-        // Check if reviews are ready for Dean signing
-        const isHodSigned = thesis.data.hodSignedSupervisorPath && thesis.data.hodSignedReviewerPath;
-        const isThesisEvaluated = thesis.data.status === 'evaluated';
-        const hasHodSupervisorFile = thesis.data.hodSignedSupervisorPath && fs.existsSync(thesis.data.hodSignedSupervisorPath);
-        const hasHodReviewerFile = thesis.data.hodSignedReviewerPath && fs.existsSync(thesis.data.hodSignedReviewerPath);
-
-        if (!isHodSigned || !isThesisEvaluated || !hasHodSupervisorFile || !hasHodReviewerFile) {
-            res.status(400).json({
-                error: "Reviews are not ready for Dean signing",
-                details: {
-                    hodSigned: isHodSigned,
-                    thesisEvaluated: isThesisEvaluated,
-                    hodSupervisorFileExists: hasHodSupervisorFile,
-                    hodReviewerFileExists: hasHodReviewerFile
-                }
-            });
-            return;
-        }
-
-        // Check if Dean already signed
-        if (thesis.data.deanSignedSupervisorPath || thesis.data.deanSignedReviewerPath) {
-            res.status(400).json({ error: "Reviews already signed by Dean" });
+        // Проверяем, что HOD уже подписал
+        if (!thesis.data.hodSignedReviewerPath) {
+            res.status(400).json({ error: "HOD has not signed yet" });
             return;
         }
 
@@ -312,211 +218,38 @@ export const uploadSignedDeanReviews = async (req: Request, res: Response) => {
             fs.mkdirSync(signedDir, { recursive: true });
         }
 
-        // Move uploaded files to Dean signed reviews directory
-        const deanSupervisorPath = path.join(signedDir, `dean_signed_supervisor_${thesis.data.student}.pdf`);
-        const deanReviewerPath = path.join(signedDir, `dean_signed_reviewer_${thesis.data.student}.pdf`);
+        // Сохраняем подписанный деканом файл
+        const deanSignedPath = path.join(signedDir, `dean_signed_reviewer_${thesis.data.student}.pdf`);
+        fs.renameSync(file.path, deanSignedPath);
 
-        fs.renameSync(files.supervisorReview[0].path, deanSupervisorPath);
-        fs.renameSync(files.reviewerReview[0].path, deanReviewerPath);
+        console.log(`Dean signed review saved to: ${deanSignedPath}`);
 
-        console.log(`Dean signed reviews saved to: ${deanSupervisorPath} and ${deanReviewerPath}`);
-
-        // Delete all corresponding reviews from other roles
-        await deleteAllOtherReviews(thesis);
-
-        // Update thesis with Dean signed PDF paths
+        // Обновляем статус работы
         await thesisModel.updateThesis(thesisId, {
-            deanSignedSupervisorPath: deanSupervisorPath,
-            deanSignedReviewerPath: deanReviewerPath,
-            deanSignedDate: new Date(),
-            // Clear all other review file paths
-            supervisorSignedReviewPath: undefined,
-            reviewerSignedReviewPath: undefined,
-            hodSignedSupervisorPath: undefined,
-            hodSignedReviewerPath: undefined,
-            reviewPdfConsultant: undefined,
-            reviewPdfSupervisor: undefined,
-            reviewPdfReviewer: undefined,
-            consultantSignedReviewPath: undefined
+            status: "evaluated",
+            deanSignedReviewerPath: deanSignedPath,
+            deanSignedDate: new Date()
         });
+
+        // Обновляем статус студента
+        await userModel.updateStudentThesisStatus(thesis.data.student, "evaluated");
 
         res.json({
-            message: "Both reviews signed successfully by Dean",
-            success: true,
-            signedPaths: {
-                supervisor: deanSupervisorPath,
-                reviewer: deanReviewerPath
-            }
+            message: "Review signed successfully by Dean",
+            success: true
         });
     } catch (error) {
-        console.error("Error uploading Dean signed reviews:", error);
-        res.status(500).json({ error: "Failed to upload signed reviews" });
+        console.error("Error uploading Dean signed review:", error);
+        res.status(500).json({ error: "Failed to upload signed review" });
     }
 };
 
-
-export const signedReview = async (req: Request, res: Response) => {
-    try {
-        const dean = req.user as AuthenticatedUser & IDean;
-        const { thesisId } = req.params;
-        const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-
-        if (!files || !files.supervisorReview || !files.reviewerReview) {
-            res.status(400).json({ error: "Both supervisor and reviewer signed files are required" });
-            return;
-        }
-
-        // Get the current thesis first to access student data
-        const currentThesis = await thesisModel.getThesisById(thesisId);
-        if (!currentThesis) {
-            res.status(404).json({ error: "Thesis not found" });
-            return;
-        }
-
-        // Verify Dean has access to this faculty
-        const student = await userModel.getUserById(currentThesis.data.student);
-        if (!student || (student as IStudent).faculty !== dean.faculty) {
-            res.status(403).json({ error: "Access denied: Not your faculty student" });
-            return;
-        }
-
-        // Move signed PDFs to permanent storage
-        const supervisorSignedPath = path.join(__dirname, "../../server/reviews/dean/signed", `dean_signed_supervisor_${currentThesis.data.student}.pdf`);
-        const reviewerSignedPath = path.join(__dirname, "../../server/reviews/dean/signed", `dean_signed_reviewer_${currentThesis.data.student}.pdf`);
-
-        fs.renameSync(files.supervisorReview[0].path, supervisorSignedPath);
-        fs.renameSync(files.reviewerReview[0].path, reviewerSignedPath);
-
-        // Delete all corresponding reviews from other roles
-        await deleteAllOtherReviews(currentThesis);
-
-        // Update thesis with Dean signed paths and metadata
-        const thesis = await thesisModel.updateThesis(thesisId, {
-            deanSignedSupervisorPath: supervisorSignedPath,
-            deanSignedReviewerPath: reviewerSignedPath,
-            deanSignedDate: new Date(),
-
-            // Clear all other review file paths
-            supervisorSignedReviewPath: undefined,
-            reviewerSignedReviewPath: undefined,
-            hodSignedSupervisorPath: undefined,
-            hodSignedReviewerPath: undefined,
-            reviewPdfConsultant: undefined,
-            reviewPdfSupervisor: undefined,
-            reviewPdfReviewer: undefined,
-            consultantSignedReviewPath: undefined
-        });
-
-        if (!thesis) {
-            res.status(404).json({ error: "Thesis not found" });
-            return;
-        }
-
-        res.json({
-            success: true,
-            message: "Both reviews signed successfully by Dean"
-        });
-    } catch (error) {
-        console.error("Error finalizing Dean review:", error);
-        res.status(500).json({ error: "Failed to finalize Dean review" });
-    }
-};
-
-
-export const downloadSignedReview = async (req: Request, res: Response) => {
-    try {
-        const dean = req.user as AuthenticatedUser & IDean;
-        const { thesisId } = req.params;
-
-        // Find thesis
-        const thesis = await thesisModel.getThesisById(thesisId);
-        if (!thesis) {
-            res.status(404).json({ error: "Thesis not found" });
-            return;
-        }
-
-        // Verify Dean has access to this faculty
-        const student = await userModel.getUserById(thesis.data.student);
-        if (!student || (student as IStudent).faculty !== dean.faculty) {
-            res.status(403).json({ error: "Access denied: Not your faculty student" });
-            return;
-        }
-
-        let supervisorSignedPath: string;
-        let reviewerSignedPath: string;
-
-        // Get Dean signed paths with fallbacks
-        if (thesis.data.deanSignedSupervisorPath && fs.existsSync(thesis.data.deanSignedSupervisorPath)) {
-            supervisorSignedPath = thesis.data.deanSignedSupervisorPath;
-        } else {
-            supervisorSignedPath = path.join(__dirname, "../../server/reviews/dean/signed", `dean_signed_supervisor_${thesis.data.student}.pdf`);
-        }
-
-        if (thesis.data.deanSignedReviewerPath && fs.existsSync(thesis.data.deanSignedReviewerPath)) {
-            reviewerSignedPath = thesis.data.deanSignedReviewerPath;
-        } else {
-            reviewerSignedPath = path.join(__dirname, "../../server/reviews/dean/signed", `dean_signed_reviewer_${thesis.data.student}.pdf`);
-        }
-
-        // Check if both files exist
-        if (!fs.existsSync(supervisorSignedPath) || !fs.existsSync(reviewerSignedPath)) {
-            res.status(404).json({
-                error: "Dean signed reviews not found",
-                details: {
-                    supervisorExists: fs.existsSync(supervisorSignedPath),
-                    reviewerExists: fs.existsSync(reviewerSignedPath)
-                }
-            });
-            return;
-        }
-
-        // Set headers for multipart response
-        const boundary = '----DeanSignedReviewBoundary';
-        res.setHeader('Content-Type', `multipart/mixed; boundary=${boundary}`);
-        res.setHeader('Content-Disposition', `attachment; filename="dean_signed_reviews_${thesis.data.student}.multipart"`);
-
-        // Helper function to send a file part
-        const sendFilePart = (filePath: string, filename: string, contentType: string = 'application/pdf') => {
-            const fileStats = fs.statSync(filePath);
-
-            // Part header
-            res.write(`--${boundary}\r\n`);
-            res.write(`Content-Type: ${contentType}\r\n`);
-            res.write(`Content-Disposition: attachment; filename="${filename}"\r\n`);
-            res.write(`Content-Length: ${fileStats.size}\r\n`);
-            res.write('\r\n');
-
-            // File content
-            const fileStream = fs.createReadStream(filePath);
-            fileStream.pipe(res, { end: false });
-
-            return new Promise<void>((resolve, reject) => {
-                fileStream.on('end', () => resolve());
-                fileStream.on('error', (error) => reject(error));
-            });
-        };
-
-        // Send both files
-        await sendFilePart(supervisorSignedPath, `dean_signed_supervisor_${thesis.data.student}.pdf`);
-        await sendFilePart(reviewerSignedPath, `dean_signed_reviewer_${thesis.data.student}.pdf`);
-
-        // End of multipart
-        res.write(`--${boundary}--\r\n`);
-        res.end();
-
-    } catch (error) {
-        console.error("Error downloading Dean signed reviews:", error);
-        res.status(500).json({ error: "Failed to download Dean signed reviews" });
-    }
-};
-
-
+// Утверждение защиты (без подписи, просто кнопка)
 export const approveDefense = async (req: Request, res: Response) => {
     try {
         const dean = req.user as AuthenticatedUser & IDean;
         const { thesisId } = req.params;
 
-        // Find thesis
         const thesis = await thesisModel.getThesisById(thesisId);
         if (!thesis) {
             res.status(404).json({ error: "Thesis not found" });
@@ -530,41 +263,152 @@ export const approveDefense = async (req: Request, res: Response) => {
             return;
         }
 
-
-        // Check if HOD has signed the reviews (prerequisite)
-        if (!thesis.data.hodSignedSupervisorPath || !thesis.data.hodSignedReviewerPath) {
-            res.status(400).json({ 
-                error: "HOD must sign reviews first",
-                details: {
-                    hodSupervisorSigned: !!thesis.data.hodSignedSupervisorPath,
-                    hodReviewerSigned: !!thesis.data.hodSignedReviewerPath
-                }
-            });
+        // Проверяем, что HOD уже подписал
+        if (!thesis.data.hodSignedReviewerPath) {
+            res.status(400).json({ error: "HOD has not signed yet" });
             return;
         }
 
-        // Update thesis with Dean signed PDF paths and clear other paths
+        // Обновляем статус работы
         await thesisModel.updateThesis(thesisId, {
-            deanSignedDate: new Date(),
-            // Clear all other review file paths
-            supervisorSignedReviewPath: undefined,
-            reviewerSignedReviewPath: undefined,
-            hodSignedSupervisorPath: undefined,
-            hodSignedReviewerPath: undefined,
-            reviewPdfConsultant: undefined,
-            reviewPdfSupervisor: undefined,
-            reviewPdfReviewer: undefined,
-            consultantSignedReviewPath: undefined
+            status: "evaluated",
+            deanSignedDate: new Date()
         });
+
+        await userModel.updateStudentThesisStatus(thesis.data.student, "evaluated");
 
         res.json({
-            success: true,
-            message: "Thesis approved successfully by Dean",
-         
+            message: "Defense approved successfully by Dean",
+            success: true
+        });
+    } catch (error) {
+        console.error("Error approving defense:", error);
+        res.status(500).json({ error: "Failed to approve defense" });
+    }
+};
+
+// Получение подписанной рецензии для просмотра
+export const getSignedReview = async (req: Request, res: Response) => {
+    try {
+        const dean = req.user as AuthenticatedUser & IDean;
+        const { thesisId } = req.params;
+
+        const thesis = await thesisModel.getThesisById(thesisId);
+        if (!thesis) {
+            res.status(404).json({ error: "Thesis not found" });
+            return;
+        }
+
+        // Verify Dean has access to this faculty
+        const student = await userModel.getUserById(thesis.data.student);
+        if (!student || (student as IStudent).faculty !== dean.faculty) {
+            res.status(403).json({ error: "Access denied: Not your faculty student" });
+            return;
+        }
+
+        let signedPath = thesis.data.deanSignedReviewerPath;
+        if (!signedPath || !fs.existsSync(signedPath)) {
+            const fallbackPath = path.join(__dirname, "../../server/reviews/dean/signed", `dean_signed_reviewer_${thesis.data.student}.pdf`);
+            if (fs.existsSync(fallbackPath)) {
+                signedPath = fallbackPath;
+            } else {
+                res.status(404).json({ error: "Signed review not found" });
+                return;
+            }
+        }
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="dean_signed_review_${thesis.data.student}.pdf"`);
+        fs.createReadStream(signedPath).pipe(res);
+        
+    } catch (error) {
+        console.error("Error getting signed review:", error);
+        res.status(500).json({ error: "Failed to get signed review" });
+    }
+};
+
+// Скачивание подписанной рецензии
+export const downloadSignedReview = async (req: Request, res: Response) => {
+    try {
+        const dean = req.user as AuthenticatedUser & IDean;
+        const { thesisId } = req.params;
+
+        const thesis = await thesisModel.getThesisById(thesisId);
+        if (!thesis) {
+            res.status(404).json({ error: "Thesis not found" });
+            return;
+        }
+
+        const student = await userModel.getUserById(thesis.data.student);
+        if (!student || (student as IStudent).faculty !== dean.faculty) {
+            res.status(403).json({ error: "Access denied" });
+            return;
+        }
+
+        let signedPath = thesis.data.deanSignedReviewerPath;
+        if (!signedPath || !fs.existsSync(signedPath)) {
+            const fallbackPath = path.join(__dirname, "../../server/reviews/dean/signed", `dean_signed_reviewer_${thesis.data.student}.pdf`);
+            if (fs.existsSync(fallbackPath)) {
+                signedPath = fallbackPath;
+            } else {
+                res.status(404).json({ error: "Signed review not found" });
+                return;
+            }
+        }
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="dean_signed_review_${thesis.data.student}.pdf"`);
+        fs.createReadStream(signedPath).pipe(res);
+        
+    } catch (error) {
+        console.error("Error downloading signed review:", error);
+        res.status(500).json({ error: "Failed to download signed review" });
+    }
+};
+
+// Альтернативный метод подписания рецензии
+export const signedReview = async (req: Request, res: Response) => {
+    try {
+        const dean = req.user as AuthenticatedUser & IDean;
+        const { thesisId } = req.params;
+        const file = req.file;
+
+        if (!file) {
+            res.status(400).json({ error: "Signed PDF file is required" });
+            return;
+        }
+
+        const thesis = await thesisModel.getThesisById(thesisId);
+        if (!thesis) {
+            res.status(404).json({ error: "Thesis not found" });
+            return;
+        }
+
+        const student = await userModel.getUserById(thesis.data.student);
+        if (!student || (student as IStudent).faculty !== dean.faculty) {
+            res.status(403).json({ error: "Access denied" });
+            return;
+        }
+
+        const signedDir = path.join(__dirname, "../../server/reviews/dean/signed");
+        if (!fs.existsSync(signedDir)) {
+            fs.mkdirSync(signedDir, { recursive: true });
+        }
+
+        const signedPath = path.join(signedDir, `dean_signed_reviewer_${thesis.data.student}.pdf`);
+        fs.renameSync(file.path, signedPath);
+
+        await thesisModel.updateThesis(thesisId, {
+            status: "evaluated",
+            deanSignedReviewerPath: signedPath,
+            deanSignedDate: new Date()
         });
 
+        await userModel.updateStudentThesisStatus(thesis.data.student, "evaluated");
+
+        res.json({ success: true });
     } catch (error) {
-        console.error("Error approving thesis by Dean:", error);
-        res.status(500).json({ error: "Failed to approve thesis" });
+        console.error("Error finalizing Dean review:", error);
+        res.status(500).json({ error: "Failed to finalize Dean review" });
     }
 };

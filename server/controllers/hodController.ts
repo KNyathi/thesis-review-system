@@ -19,6 +19,119 @@ interface AuthenticatedUser {
     email: string;
 }
 
+// Получение работ для подписания (статус awaiting_hod_signature)
+export const getThesesForSigning = async (req: Request, res: Response) => {
+  try {
+    const hod = req.user as AuthenticatedUser & IHeadOfDepartment;
+    console.log("HOD faculty:", hod.faculty);
+    
+    // Используем метод find() который возвращает массив с данными
+    const allTheses = await thesisModel.find();
+    console.log("Total theses found:", allTheses.length);
+    
+    // Фильтруем работы по статусу awaiting_hod_signature
+    // ВНИМАНИЕ: в returned объекте нет поля .data, данные находятся на верхнем уровне
+    const thesesForSigning = allTheses.filter(thesis => {
+      if (!thesis) return false;
+      return thesis.status === "awaiting_hod_signature";
+    });
+    
+    console.log("Theses with status awaiting_hod_signature:", thesesForSigning.length);
+    console.log("First thesis:", thesesForSigning[0]);
+    
+    // Получаем данные студентов
+    const thesesWithStudents = await Promise.all(
+      thesesForSigning.map(async (thesis) => {
+        try {
+          const student = await userModel.getUserById(thesis.student) as IStudent;
+          if (!student) return null;
+          
+          console.log("Student faculty:", student?.faculty, "HOD faculty:", hod.faculty);
+          
+          // Проверка факультета (временно убрана)
+          // if (student?.faculty !== hod.faculty) return null;
+          
+          return {
+            id: thesis.id,
+            title: thesis.title || "Без названия",
+            status: thesis.status,
+            submissionDate: thesis.submissionDate,
+            student: {
+              id: student.id,
+              fullName: student.fullName,
+              email: student.email,
+              faculty: student.faculty,
+              group: student.group,
+            },
+            finalGrade: thesis.finalGrade,
+            reviewerSignedReviewPath: thesis.reviewerSignedReviewPath,
+          };
+        } catch (err) {
+          console.error("Error processing thesis:", thesis.id, err);
+          return null;
+        }
+      })
+    );
+    
+    const filteredTheses = thesesWithStudents.filter(t => t !== null);
+    console.log("Filtered theses for HOD:", filteredTheses.length);
+    
+    res.json(filteredTheses);
+  } catch (error) {
+    console.error("Error getting theses for signing:", error);
+    res.status(500).json({ error: "Failed to get theses" });
+  }
+};
+
+// Получение уже подписанных работ
+export const getSignedTheses = async (req: Request, res: Response) => {
+  try {
+    const hod = req.user as AuthenticatedUser & IHeadOfDepartment;
+    const allTheses = await thesisModel.find();
+    
+    const signedTheses = allTheses.filter(thesis => {
+      if (!thesis) return false;
+      return thesis.status === "awaiting_dean_signature" && 
+             thesis.hodSignedReviewerPath;
+    });
+    
+    const thesesWithStudents = await Promise.all(
+      signedTheses.map(async (thesis) => {
+        try {
+          const student = await userModel.getUserById(thesis.student) as IStudent;
+          if (!student) return null;
+          if (student?.faculty !== hod.faculty) return null;
+          
+          return {
+            id: thesis.id,
+            title: thesis.title || "Без названия",
+            status: thesis.status,
+            submissionDate: thesis.submissionDate,
+            student: {
+              id: student.id,
+              fullName: student.fullName,
+              email: student.email,
+              faculty: student.faculty,
+              group: student.group,
+            },
+            finalGrade: thesis.finalGrade,
+            signedDate: thesis.hodSignedDate,
+          };
+        } catch (err) {
+          console.error("Error processing signed thesis:", thesis.id, err);
+          return null;
+        }
+      })
+    );
+    
+    const filteredTheses = thesesWithStudents.filter(t => t !== null);
+    res.json(filteredTheses);
+  } catch (error) {
+    console.error("Error getting signed theses:", error);
+    res.status(500).json({ error: "Failed to get signed theses" });
+  }
+};
+
 export const getUnsignedReview = async (req: Request, res: Response) => {
     try {
         const hod = req.user as AuthenticatedUser & IHeadOfDepartment;
@@ -37,92 +150,35 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
             return;
         }
 
-        // Check conditions for BOTH files
-        const currentIteration = thesis.data.currentIteration;
-        const currentIterationData = thesis.data.reviewIterations[currentIteration - 1];
-
-        const isSupervisorSigned = currentIterationData?.supervisorReview?.status === 'signed';
-        const isThesisNotEvaluated = thesis.data.status !== 'evaluated';
-
-        // Get paths and check existence
-        const supervisorReviewPath = thesis.data.reviewerSignedReview1Path;
-        const reviewerReviewPath = thesis.data.reviewerSignedReviewPath;
-
-        const hasSupervisorFile = supervisorReviewPath && fs.existsSync(supervisorReviewPath);
-        const hasReviewerFile = reviewerReviewPath && fs.existsSync(reviewerReviewPath);
-
-        const hodNotSigned = !thesis.data.hodSignedSupervisorPath && !thesis.data.hodSignedReviewerPath;
-
-        // Only proceed if BOTH files are available and conditions are met
-        if (!isSupervisorSigned || !isThesisNotEvaluated || !hasSupervisorFile || !hasReviewerFile || !hodNotSigned) {
-            res.status(400).json({
-                error: "Both reviews are not ready for HOD signing",
-                details: {
-                    supervisorSigned: isSupervisorSigned,
-                    thesisNotEvaluated: isThesisNotEvaluated,
-                    supervisorFileExists: hasSupervisorFile,
-                    reviewerFileExists: hasReviewerFile,
-                    hodNotSigned: hodNotSigned,
-                    allConditionsMet: isSupervisorSigned && isThesisNotEvaluated && hasSupervisorFile && hasReviewerFile && hodNotSigned
-                }
-            });
+        // Проверяем, что рецензент уже подписал
+        const reviewerSignedPath = thesis.data.reviewerSignedReviewPath;
+        if (!reviewerSignedPath) {
+            res.status(400).json({ error: "Reviewer has not signed yet" });
             return;
         }
 
-        const supervisorPath = supervisorReviewPath!;
-        const reviewerPath = reviewerReviewPath!;
-
-        if (!fs.existsSync(supervisorPath) || !fs.existsSync(reviewerPath)) {
-            res.status(404).json({ 
-                error: "Review files not found",
-                details: {
-                    supervisorExists: fs.existsSync(supervisorPath),
-                    reviewerExists: fs.existsSync(reviewerPath)
-                }
-            });
+        if (!fs.existsSync(reviewerSignedPath)) {
+            res.status(404).json({ error: "Reviewer signed review file not found" });
             return;
         }
 
-        // Set headers for multipart response
-        const boundary = '----HODReviewBoundary';
-        res.setHeader('Content-Type', `multipart/mixed; boundary=${boundary}`);
-        res.setHeader('Content-Disposition', `inline; filename="hod_reviews_${thesisId}.multipart"`);
-
-        // Helper function to send a file part - FIXED Promise types
-        const sendFilePart = (filePath: string, filename: string, contentType: string = 'application/pdf') => {
-            const fileStats = fs.statSync(filePath);
-
-            // Part header
-            res.write(`--${boundary}\r\n`);
-            res.write(`Content-Type: ${contentType}\r\n`);
-            res.write(`Content-Disposition: attachment; filename="${filename}"\r\n`);
-            res.write(`Content-Length: ${fileStats.size}\r\n`);
-            res.write('\r\n');
-
-            // File content
-            const fileStream = fs.createReadStream(filePath);
-            fileStream.pipe(res, { end: false });
-
-            return new Promise<void>((resolve, reject) => { // Changed to Promise<void>
-                fileStream.on('end', () => resolve()); // Fixed: resolve without arguments
-                fileStream.on('error', (error) => reject(error)); // Fixed: reject with error
-            });
-        };
-
-        // Send both files
-        await sendFilePart(supervisorPath, `unsigned_supervisor_review_${thesis.data.student}.pdf`);
-        await sendFilePart(reviewerPath, `unsigned_reviewer_review_${thesis.data.student}.pdf`);
-
-        // End of multipart
-        res.write(`--${boundary}--\r\n`);
-        res.end();
-
+        // Отдаём файл напрямую (один файл, не multipart)
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="hod_review_${thesis.data.student}.pdf"`);
+        
+        const fileStream = fs.createReadStream(reviewerSignedPath);
+        fileStream.pipe(res);
+        
+        fileStream.on("error", (error) => {
+            console.error("Error streaming file:", error);
+            res.status(500).json({ error: "Failed to stream file" });
+        });
+        
     } catch (error) {
-        console.error("Error getting unsigned reviews for HOD:", error);
-        res.status(500).json({ error: "Failed to get unsigned reviews" });
+        console.error("Error getting unsigned review for HOD:", error);
+        res.status(500).json({ error: "Failed to get unsigned review" });
     }
 };
-
 
 export const getSignedReview = async (req: Request, res: Response) => {
     try {
@@ -202,16 +258,19 @@ export const getSignedReview = async (req: Request, res: Response) => {
     }
 };
 
-
 export const uploadSignedHodReviews = async (req: Request, res: Response) => {
     try {
         const hod = req.user as AuthenticatedUser & IHeadOfDepartment;
         const { thesisId } = req.params;
-        const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+        const file = req.file;
 
-        console.log("Uploading HOD signed reviews:", { thesisId, files: files ? Object.keys(files) : 'no files' });
+        console.log("Uploading HOD signed review:", { thesisId, hasFile: !!file, file });
 
-        // Find thesis and check access
+        if (!file) {
+            res.status(400).json({ error: "Signed PDF file is required" });
+            return;
+        }
+
         const thesis = await thesisModel.getThesisById(thesisId);
         if (!thesis) {
             res.status(404).json({ error: "Thesis not found" });
@@ -225,40 +284,9 @@ export const uploadSignedHodReviews = async (req: Request, res: Response) => {
             return;
         }
 
-        // Check if both files are provided
-        if (!files || !files.supervisorReview || !files.reviewerReview) {
-            res.status(400).json({ 
-                error: "Both supervisor and reviewer signed reviews are required",
-                received: files ? Object.keys(files) : 'no files'
-            });
-            return;
-        }
-
-        // Check if reviews are ready for HOD signing
-        const currentIteration = thesis.data.currentIteration;
-        const currentIterationData = thesis.data.reviewIterations[currentIteration - 1];
-        
-        const isSupervisorSigned = currentIterationData?.supervisorReview?.status === 'signed';
-        const isThesisNotEvaluated = thesis.data.status !== 'evaluated';
-        const hasSupervisorFile = thesis.data.reviewerSignedReview1Path && fs.existsSync(thesis.data.reviewerSignedReview1Path);
-        const hasReviewerFile = thesis.data.reviewerSignedReviewPath && fs.existsSync(thesis.data.reviewerSignedReviewPath);
-
-        if (!isSupervisorSigned || !isThesisNotEvaluated || !hasSupervisorFile || !hasReviewerFile) {
-            res.status(400).json({ 
-                error: "Reviews are not ready for HOD signing",
-                details: {
-                    supervisorSigned: isSupervisorSigned,
-                    thesisNotEvaluated: isThesisNotEvaluated,
-                    supervisorFileExists: hasSupervisorFile,
-                    reviewerFileExists: hasReviewerFile
-                }
-            });
-            return;
-        }
-
-        // Check if HOD already signed
-        if (thesis.data.hodSignedSupervisorPath || thesis.data.hodSignedReviewerPath) {
-            res.status(400).json({ error: "Reviews already signed by HOD" });
+        // Проверяем, что рецензент уже подписал
+        if (!thesis.data.reviewerSignedReviewPath) {
+            res.status(400).json({ error: "Reviewer has not signed yet" });
             return;
         }
 
@@ -268,37 +296,30 @@ export const uploadSignedHodReviews = async (req: Request, res: Response) => {
             fs.mkdirSync(signedDir, { recursive: true });
         }
 
-        // Move uploaded files to HOD signed reviews directory
-        const hodSupervisorPath = path.join(signedDir, `hod_signed_supervisor_${thesis.data.student}.pdf`);
+        // Сохраняем подписанный HOD файл
         const hodReviewerPath = path.join(signedDir, `hod_signed_reviewer_${thesis.data.student}.pdf`);
+        
+        // Перемещаем загруженный файл
+        fs.renameSync(file.path, hodReviewerPath);
+        
+        console.log(`HOD signed review saved to: ${hodReviewerPath}`);
 
-        fs.renameSync(files.supervisorReview[0].path, hodSupervisorPath);
-        fs.renameSync(files.reviewerReview[0].path, hodReviewerPath);
-
-        console.log(`HOD signed reviews saved to: ${hodSupervisorPath} and ${hodReviewerPath}`);
-
-        // Update thesis with HOD signed PDF paths
+        // Обновляем статус работы
         await thesisModel.updateThesis(thesisId, {
-            hodSignedSupervisorPath: hodSupervisorPath,
+            status: "awaiting_dean_signature",
             hodSignedReviewerPath: hodReviewerPath,
             hodSignedDate: new Date()
         });
 
-
         res.json({
-            message: "Both reviews signed successfully by HOD",
-            success: true,
-            signedPaths: {
-                supervisor: hodSupervisorPath,
-                reviewer: hodReviewerPath
-            }
+            message: "Review signed successfully by HOD",
+            success: true
         });
     } catch (error) {
-        console.error("Error uploading HOD signed reviews:", error);
-        res.status(500).json({ error: "Failed to upload signed reviews" });
+        console.error("Error uploading HOD signed review:", error);
+        res.status(500).json({ error: "Failed to upload signed review" });
     }
 };
-
 
 export const signedReview = async (req: Request, res: Response) => {
   try {

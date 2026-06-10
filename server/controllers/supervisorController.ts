@@ -318,13 +318,16 @@ export const submitReview = async (req: Request, res: Response) => {
             iteration.consultantReview?.isFinalApproval === true
         );
 
-        if (hasConsultantApproval && thesis.data.assignedConsultant) {
+        // Проверяем, есть ли у консультанта подписанный PDF (он мог подписать после студента)
+        const hasConsultantSigned = !!thesis.data.consultantSignedReviewPath && fs.existsSync(thesis.data.consultantSignedReviewPath);
+
+        if (hasConsultantApproval && thesis.data.assignedConsultant && hasConsultantSigned) {
             // Get the signed consultant PDF
             const consultantSignedPdfPath = thesis.data.consultantSignedReviewPath;
 
             if (!consultantSignedPdfPath) {
                 res.status(400).json({ error: "Consultant signed PDF not found" });
-                return
+                return;
             }
 
 
@@ -354,7 +357,8 @@ export const submitReview = async (req: Request, res: Response) => {
                 });
                 return;
             }
-
+            
+            /*
             // VALIDATION 2: Check if student has signed their submission
             if (!(student as IStudent).studentSignedRevOneAt) {
                 res.status(400).json({
@@ -363,7 +367,7 @@ export const submitReview = async (req: Request, res: Response) => {
                 });
                 return;
             }
-
+            */
 
             // Submit supervisor review (just signing)
             updatedThesis = await thesisModel.submitSupervisorReview(
@@ -487,7 +491,7 @@ export const submitReview = async (req: Request, res: Response) => {
             // Update thesis with PDF path
             await thesisModel.updateThesis(thesisId, {
                 reviewPdfSupervisor: pdfPath,
-                status: "under_review" // Ready for final review
+                status: "awaiting_student_signature" // Изменяем статус
             });
 
             // VALIDATION 1: Check if student has submitted thesis content
@@ -499,6 +503,7 @@ export const submitReview = async (req: Request, res: Response) => {
                 return;
             }
 
+            /*
             // VALIDATION 2: Check if student has signed their submission
             if (!(student as IStudent).studentSignedRevOneAt) {
                 res.status(400).json({
@@ -507,7 +512,7 @@ export const submitReview = async (req: Request, res: Response) => {
                 });
                 return;
             }
-
+            */
 
             // Update student with supervisor feedback and approval
             await userModel.updateStudentSupervisorFeedback(
@@ -528,11 +533,11 @@ export const submitReview = async (req: Request, res: Response) => {
             await userModel.addThesisToSupervisorReviewed(supervisor.id, thesisId);
 
             res.json({
-                message: "Review submitted and approved successfully",
-                redirectToSign: true, // Supervisor needs to sign their own PDF
+                message: "Review generated. Waiting for student signature.",
+                redirectToSign: false,  // Меняем на false
                 thesisId: thesisId,
                 pdfPath: pdfPath,
-                action: "approved"
+                action: "awaiting_student_signature"  // Меняем action
             });
             return
         }
@@ -750,64 +755,162 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
         const supervisor = req.user as AuthenticatedUser & ISupervisor;
         const { thesisId } = req.params;
 
-        // Find thesis and check access
         const thesis = await thesisModel.getThesisById(thesisId);
-        if (!thesis) {
-            res.status(404).json({ error: "Thesis not found" });
-            return;
-        }
-
-        // Check if supervisor has access
-        if (thesis.data.assignedSupervisor !== supervisor.id) {
+        if (!thesis || thesis.data.assignedSupervisor !== supervisor.id) {
             res.status(403).json({ error: "Access denied" });
             return;
         }
 
-        // Find the student associated with this thesis
-        const student = await userModel.getUserById(thesis.data.student);
-        if (!student) {
-            res.status(404).json({ error: "Student not found for this thesis" });
-            return;
-        }
-
-        // Check if student has signed (studentSignedRevOneAt is defined)
-        if (!(student as IStudent).studentSignedRevOneAt) {
-            res.status(400).json({ 
-                error: "Cannot access unsigned review: Student has not signed their submission yet",
-                requiredAction: "await_student_signature"
-            });
-            return;
-        }
-
+        const studentId = thesis.data.student;
+        let filePath: string;
         
-        if (!thesis.data.reviewPdfSupervisor) {
-            res.status(404).json({ error: "Unsigned review not found" });
-            return;
-        }
-
-        // Use full path from database
-        const unsignedReviewPath = thesis.data.reviewPdfSupervisor;
-
-        if (!fs.existsSync(unsignedReviewPath)) {
-            res.status(404).json({ error: "Unsigned review file not found" });
-            return;
+        // Определяем, какой файл отдавать в зависимости от статуса
+        if (thesis.data.status === "awaiting_supervisor_signature") {
+            // Финальная подпись руководителя - скачиваем файл, подписанный СТУДЕНТОМ
+            // (НЕ файл консультанта!)
+            const studentSignedPath = thesis.data.studentSignedReviewPath;
+            if (studentSignedPath && fs.existsSync(studentSignedPath)) {
+                filePath = studentSignedPath;
+                console.log("Using student signed review for supervisor final signature:", filePath);
+            } else {
+                // Fallback: ищем в папке студента
+                const fallbackPath = path.join(__dirname, "../../server/reviews/student/signed", `student_signed_${studentId}.pdf`);
+                if (fs.existsSync(fallbackPath)) {
+                    filePath = fallbackPath;
+                } else {
+                    res.status(404).json({ error: "Student signed review not found" });
+                    return;
+                }
+            }
+        } else {
+            // Обычная unsigned рецензия для руководителя
+            const unsignedPath = thesis.data.reviewPdfSupervisor;
+            if (unsignedPath && fs.existsSync(unsignedPath)) {
+                filePath = unsignedPath;
+            } else {
+                const fallbackPath = path.join(__dirname, "../../server/reviews/supervisor/unsigned", `unsigned_review1_${studentId}.pdf`);
+                if (fs.existsSync(fallbackPath)) {
+                    filePath = fallbackPath;
+                } else {
+                    res.status(404).json({ error: "Unsigned review not found" });
+                    return;
+                }
+            }
         }
 
         res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `inline; filename="unsigned_review1_${thesis.data.student}.pdf"`);
-
-        const fileStream = fs.createReadStream(unsignedReviewPath);
+        res.setHeader("Content-Disposition", `attachment; filename="final_review_${thesisId}.pdf"`);
+        
+        const fileStream = fs.createReadStream(filePath);
         fileStream.pipe(res);
-
+        
         fileStream.on("error", (error) => {
-            console.error("Error streaming unsigned review:", error);
-            res.status(500).json({ error: "Failed to stream unsigned review" });
+            console.error("Error streaming file:", error);
+            res.status(500).json({ error: "Failed to stream file" });
         });
+        
     } catch (error) {
-        console.error("Error getting unsigned review:", error);
+        console.error("Error in getUnsignedReview:", error);
         res.status(500).json({ error: "Failed to get unsigned review" });
     }
-}
+};
+
+export const getUnsignedSupervisorReview = async (req: Request, res: Response): Promise<void> => {
+  try {
+    console.log("=== STEP 1: Function started (supervisor) ===");
+    const { thesisId } = req.params;
+    console.log("ThesisId:", thesisId);
+    
+    // Получаем текущего пользователя (руководителя)
+    const supervisor = req.user as AuthenticatedUser & ISupervisor;
+    console.log("Supervisor ID:", supervisor.id);
+    
+    console.log("=== STEP 2: Finding thesis ===");
+    const thesis = await thesisModel.getThesisById(thesisId);
+    if (!thesis) {
+      console.log("ERROR: Thesis not found");
+      res.status(404).json({ error: "Thesis not found" });
+      return;
+    }
+    console.log("Thesis found, student owner:", thesis.data.student);
+    console.log("Thesis status:", thesis.data.status);
+    
+    // Проверяем, что руководитель назначен
+    if (thesis.data.assignedSupervisor !== supervisor.id) {
+      console.log("ERROR: Access denied - supervisor mismatch");
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+    
+    console.log("=== STEP 3: Getting student ID ===");
+    const studentId = thesis.data.student;
+    console.log("Student ID:", studentId);
+    
+    console.log("=== STEP 4: Building file path ===");
+    
+    let possiblePaths: string[] = [];
+    
+    // Если статус awaiting_supervisor_signature - студент уже подписал, ищем в папке student
+    if (thesis.data.status === "awaiting_supervisor_signature") {
+      possiblePaths = [
+        path.join(process.cwd(), "server", "reviews", "student", "signed", `student_signed_${studentId}.pdf`),
+        path.join(__dirname, "../../server/reviews/student/signed", `student_signed_${studentId}.pdf`),
+        `D:\\четвёртый курс проект\\thesis-review-system\\server\\reviews\\student\\signed\\student_signed_${studentId}.pdf`,
+        `D:/четвёртый курс проект/thesis-review-system/server/reviews/student/signed/student_signed_${studentId}.pdf`,
+      ];
+    } else {
+      // Иначе ищем в папке руководителя
+      possiblePaths = [
+        path.join(process.cwd(), "server", "reviews", "supervisor", "unsigned", `unsigned_review1_${studentId}.pdf`),
+        path.join(__dirname, "../../server/reviews/supervisor/unsigned", `unsigned_review1_${studentId}.pdf`),
+        `D:\\четвёртый курс проект\\thesis-review-system\\server\\reviews\\supervisor\\unsigned\\unsigned_review1_${studentId}.pdf`,
+        `D:/четвёртый курс проект/thesis-review-system/server/reviews/supervisor/unsigned/unsigned_review1_${studentId}.pdf`,
+      ];
+    }
+    
+    let filePath = null;
+    for (const pathCandidate of possiblePaths) {
+      console.log("Checking path:", pathCandidate);
+      if (fs.existsSync(pathCandidate)) {
+        filePath = pathCandidate;
+        console.log("✅ FILE FOUND at:", pathCandidate);
+        break;
+      } else {
+        console.log("❌ Not found");
+      }
+    }
+    
+    if (!filePath) {
+      console.log("ERROR: File not found in any of the possible paths");
+      res.status(404).json({ 
+        error: "File not found",
+        studentId: studentId,
+        status: thesis.data.status,
+        searchedPaths: possiblePaths
+      });
+      return;
+    }
+    
+    console.log("=== STEP 5: Sending file ===");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="review_${thesis.data.status}.pdf"`);
+    
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+    
+    fileStream.on("error", (err) => {
+      console.error("Stream error:", err);
+      res.status(500).json({ error: "Error streaming file" });
+    });
+    
+    console.log("=== Function completed successfully ===");
+    
+  } catch (error) {
+    console.error("=== FATAL ERROR in getUnsignedSupervisorReview ===");
+    console.error(error);
+    res.status(500).json({ error: "Server error: " + (error as Error).message });
+  }
+};
 
 export const uploadSignedReview = async (req: Request, res: Response) => {
     try {
@@ -1639,4 +1742,50 @@ const determineStudentStage = (student: IStudent, thesis: any) => {
     needsAction: false,
     color: 'gray'
   };
+};
+
+// Загрузка финальной подписанной рецензии руководителем (после студента и консультанта)
+export const uploadFinalSupervisorSignedReview = async (req: Request, res: Response) => {
+  try {
+    const supervisor = req.user as AuthenticatedUser & ISupervisor;
+    const { thesisId } = req.params;
+    const file = req.file;
+    
+    if (!file) {
+      res.status(400).json({ error: "No file uploaded" });
+      return;
+    }
+    
+    const thesis = await thesisModel.getThesisById(thesisId);
+    if (!thesis || thesis.data.assignedSupervisor !== supervisor.id) {
+      res.status(404).json({ error: "Thesis not found" });
+      return;
+    }
+    
+    if (thesis.data.status !== "awaiting_supervisor_signature") {
+      res.status(400).json({ error: "Not awaiting supervisor signature" });
+      return;
+    }
+    
+    const signedDir = path.join(__dirname, "../../server/reviews/supervisor/signed");
+    if (!fs.existsSync(signedDir)) fs.mkdirSync(signedDir, { recursive: true });
+    
+    const fileName = `final_signed_${thesisId}.pdf`;
+    const signedPath = path.join(signedDir, fileName);
+    fs.renameSync(file.path, signedPath);
+    
+    await thesisModel.updateThesis(thesisId, {
+      status: "under_review",
+      supervisorSignedReviewPath: signedPath,
+      signedDate: new Date()
+    });
+    
+    res.json({ 
+      message: "Final supervisor signed review uploaded successfully",
+      redirectToSign: false
+    });
+  } catch (error) {
+    console.error("Error uploading final supervisor signed review:", error);
+    res.status(500).json({ error: "Failed to upload signed review" });
+  }
 };

@@ -70,6 +70,11 @@ const realThesisAPI = {
     return response.data
   },
 
+  saveThesisContent: async (thesisContent) => {
+    const response = await api.post("/thesis-content", { thesisContent })
+    return response.data
+  },
+
   // Reviewer endpoints
   getAssignedTheses: async () => {
     const response = await api.get("/assigned-theses")
@@ -175,70 +180,169 @@ const realThesisAPI = {
     return response.data
   },
 
-  getSupervisorUnsignedReview: async (thesisId) => {
+  getUnsignedSupervisorReview: async (thesisId) => {
     const response = await api.get(`/unsigned-review-supervisor/${thesisId}`, {
       responseType: "blob",
     })
     return response.data
   },
 
-  uploadSupervisorSignedReview: async (thesisId, formData) => {
+  uploadSignedSupervisorReview: async (thesisId, file) => {
+    const formData = new FormData()
+    formData.append("signedReview", file)
     const response = await api.post(`/upload-signed-review-supervisor/${thesisId}`, formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+    return response.data
+  },
+
+  getSignedSupervisorReview: async (thesisId) => {
+    const response = await api.get(`/signed-review-supervisor/${thesisId}`, {
+      responseType: "blob",
+    })
+    return response.data
+  },
+
+  downloadSignedSupervisorReview: async (thesisId) => {
+    const response = await api.get(`/download-signed-review-supervisor/${thesisId}`, {
+      responseType: "blob",
+    })
+    return response.data
+  },
+
+  reReviewThesisSupervisor: async (thesisId) => {
+    const response = await api.post(`/re-review-supervisor/${thesisId}`)
+    return response.data
+  },
+
+  // Consultant endpoints
+  getConsultantAssignedTheses: async () => {
+    const response = await api.get("/assigned-theses-consultant")
+    return response.data
+  },
+
+  getConsultantCompletedReviews: async () => {
+    const response = await api.get("/completed-theses-consultant")
+    return response.data
+  },
+
+  submitConsultantReview: async (thesisId, reviewData) => {
+    const response = await api.post(`/submit-review-consultant/${thesisId}`, reviewData)
+    return response.data
+  },
+
+  getUnsignedConsultantReview: async (thesisId) => {
+    const response = await api.get(`/unsigned-review-consultant/${thesisId}`, {
+      responseType: "blob",
+    })
+    return response.data
+  },
+
+  uploadSignedConsultantReview: async (thesisId, file) => {
+    const formData = new FormData()
+    formData.append("signedReview", file)
+    const response = await api.post(`/upload-signed-review-consultant/${thesisId}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+    return response.data
+  },
+
+  getSignedConsultantReview: async (thesisId) => {
+    const response = await api.get(`/signed-review-consultant/${thesisId}`, {
+      responseType: "blob",
+    })
+    return response.data
+  },
+
+  reReviewThesisConsultant: async (thesisId) => {
+    const response = await api.post(`/re-review-consultant/${thesisId}`)
+    return response.data
+  },
+
+  // HOD (Head of Department) endpoints
+  getHodThesesForSigning: async () => {
+    const response = await api.get("/theses-for-signing")
+    return response.data
+  },
+
+  getHodSignedTheses: async () => {
+    const response = await api.get("/signed-theses")
+    return response.data
+  },
+
+  getHodUnsignedReview: async (thesisId) => {
+    const response = await api.get(`/unsigned-review-hod/${thesisId}`, {
+      responseType: "blob",
+    })
+    return response.data
+  },
+
+  uploadHodSignedReview: async (thesisId, file) => {
+    const formData = new FormData()
+    formData.append("signedReview", file)
+    const response = await api.post(`/upload-signed-review-hod/${thesisId}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
+    return response.data
+  },
+
+  getHodSignedReview: async (thesisId) => {
+    const response = await api.get(`/signed-review-hod/${thesisId}`, {
+      responseType: "blob",
+    })
+    return response.data
+  },
+
+  downloadHodSignedReview: async (thesisId) => {
+    const response = await api.get(`/download-signed-review-hod/${thesisId}`, {
+      responseType: "blob",
     })
     return response.data
   },
 
   // Dean endpoints
-  getDeanTheses: async () => {
-    const response = await api.get("/dean/theses")
+  getDeanThesesForSigning: async () => {
+    const response = await api.get("/theses-for-signing")
     return response.data
   },
 
-  getDeanThesesReadyForSigning: async () => {
-    const response = await api.get("/dean/theses-ready-for-signing")
-    return response.data
-  },
-
-  getDeanSignedTheses: async () => {
-    const response = await api.get("/dean/signed-theses")
+  getDeanCompletedTheses: async () => {
+    const response = await api.get("/completed-theses")
     return response.data
   },
 
   getDeanUnsignedReview: async (thesisId) => {
-    const response = await api.get(`/dean/unsigned-review-dean/${thesisId}`, {
+    const response = await api.get(`/unsigned-review-dean/${thesisId}`, {
       responseType: "blob",
+    })
+    return response.data
+  },
+
+  uploadDeanSignedReview: async (thesisId, file) => {
+    const formData = new FormData()
+    formData.append("signedReview", file)
+    const response = await api.post(`/upload-signed-review-dean/${thesisId}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
     })
     return response.data
   },
 
   getDeanSignedReview: async (thesisId) => {
-    const response = await api.get(`/dean/signed-review-dean/${thesisId}`, {
+    const response = await api.get(`/signed-review-dean/${thesisId}`, {
       responseType: "blob",
     })
     return response.data
   },
 
-  uploadDeanSignedReview: async (thesisId, formData) => {
-    const response = await api.post(`/dean/upload-signed-review-dean/${thesisId}`, formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    })
-    return response.data
-  },
-
   downloadDeanSignedReview: async (thesisId) => {
-    const response = await api.get(`/dean/download-signed-review-dean/${thesisId}`, {
+    const response = await api.get(`/download-signed-review-dean/${thesisId}`, {
       responseType: "blob",
     })
     return response.data
   },
 
   approveDeanDefense: async (thesisId) => {
-    const response = await api.post(`/dean/approve-defense/${thesisId}`)
+    const response = await api.post(`/approve-defense/${thesisId}`)
     return response.data
   },
 
@@ -296,40 +400,7 @@ const realThesisAPI = {
     return response.data
   },
 
-  getConsultantAssignedTheses: async () => {
-    const response = await api.get("/assigned-theses-consultant")
-    return response.data
-  },
-
-  getConsultantCompletedReviews: async () => {
-    const response = await api.get("/completed-theses-consultant")
-    return response.data
-  },
-
-  submitConsultantReview: async (thesisId, reviewData) => {
-    const response = await api.post(`/submit-review-consultant/${thesisId}`, reviewData)
-    return response.data
-  },
-
-  reReviewThesis: async (thesisId) => {
-    const response = await api.post(`/re-review-consultant/${thesisId}`)
-    return response.data
-  },
-
-  getUnsignedConsultantReview: async (thesisId) => {
-    const response = await api.get(`/unsigned-review-consultant/${thesisId}`)
-    return response.data
-  },
-
-  uploadSignedConsultantReview: async (thesisId, file) => {
-    const formData = new FormData()
-    formData.append("file", file)
-    const response = await api.post(`/signed-review-consultant/${thesisId}`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    })
-    return response.data
-  },
-
+  // Supervisor requests endpoints
   getAvailableSupervisors: async () => {
     const response = await api.get("/supervisor-requests/available-supervisors")
     return response.data
@@ -381,6 +452,86 @@ const realThesisAPI = {
   approveStudentTopic: async (studentId, approved, comments) => {
     const response = await api.put(`/${studentId}/approve-topic-supervisor`, { approved, comments })
     return response.data
+  },
+
+  // Plagiarism check endpoints
+  checkPlagiarismStart: async (thesisId) => {
+    const response = await api.post(`/plagiarism-start/${thesisId}`)
+    return response.data
+  },
+
+  checkPlagiarismSupervisor: async (thesisId) => {
+    const response = await api.post(`/plagiarism-supervisor/${thesisId}`)
+    return response.data
+  },
+
+  downloadPlagiarismReport: async (thesisId) => {
+    const response = await api.get(`/download-plagiarism-doc/${thesisId}`, {
+      responseType: "blob",
+    })
+    return response.data
+  },
+
+  // Student: получить unsigned рецензию для подписания
+  getUnsignedReviewForStudent: async (thesisId) => {
+    console.log("API call to:", `/unsigned-review/${thesisId}`);
+    const response = await api.get(`/unsigned-review/${thesisId}`, {
+      responseType: "blob",
+    });
+    console.log("API response:", response);
+    return response.data;
+  },
+
+  getMySignedReview: async (thesisId) => {
+    const response = await api.get(`/my-signed-review/${thesisId}`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
+  // Student: загрузить подписанную рецензию
+  uploadStudentSignedReview: async (thesisId, file) => {
+    const formData = new FormData();
+    formData.append("signedReview", file);
+    const response = await api.post(`/upload-signed-review/${thesisId}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  },
+
+  getStudentSignedReviewForSupervisor: async (thesisId) => {
+    const response = await api.get(`/get-student-signed/${thesisId}`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
+  // Supervisor: загрузить финальную подписанную рецензию (после студента и консультанта)
+  uploadFinalSupervisorSignedReview: async (thesisId, file) => {
+    const formData = new FormData();
+    formData.append("finalSignedReview", file);
+    const response = await api.post(`/upload-final-signed-review/${thesisId}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
+  },
+
+  // Consultant: получить unsigned рецензию для подписания
+  getUnsignedReviewForConsultant: async (thesisId) => {
+    const response = await api.get(`/consultant/unsigned-review/${thesisId}`, {
+      responseType: "blob",
+    });
+    return response.data;
+  },
+
+  // Consultant: загрузить подписанную рецензию
+  uploadConsultantSignedReview: async (thesisId, file) => {
+    const formData = new FormData();
+    formData.append("signedReview", file);
+    const response = await api.post(`/consultant/upload-signed-review/${thesisId}`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return response.data;
   },
 }
 

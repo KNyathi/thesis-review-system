@@ -60,7 +60,7 @@ export interface IThesis {
   student: string // UUID reference to student
   fileUrl: string
   submissionDate: Date
-  status: "submitted" | "with_consultant" | "with_supervisor" | "under_review" | "evaluated" | "revisions_requested"
+  status: "submitted" | "with_consultant" | "with_supervisor" | "under_review" | "evaluated" | "revisions_requested" | "awaiting_student_signature" | "awaiting_consultant_signature" | "awaiting_supervisor_signature" | "awaiting_hod_signature" | "awaiting_dean_signature"
   assignedReviewer?: string
   assignedConsultant?: string
   assignedSupervisor?: string
@@ -96,6 +96,8 @@ export interface IThesis {
   supervisorSignedReviewPath?: string
   reviewerSignedReviewPath?: string // Reviewer signed PDF
   reviewerSignedReview1Path?: string // Reviewer signed PDF
+
+  studentSignedReviewPath?: string
 
   hodSignedSupervisorPath?: string
   hodSignedReviewerPath?: string

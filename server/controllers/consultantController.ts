@@ -98,32 +98,77 @@ export const submitReview = async (req: Request, res: Response) => {
       return
     }
 
-    // CASE 2: Final Approval (with assessment and comments)
-    if (isFinalApproval && assessment && assessment.trim().length > 0) {
+  // CASE 2: Final Approval (with assessment and comments)
+  if (isFinalApproval && assessment && assessment.trim().length > 0) {
       console.log("Submitting final approval with assessment")
 
       const student = await Student.findById(userModel, thesis.data.student)
       if (!student) {
-        res.status(404).json({ error: "Student not found" })
-        return
+          res.status(404).json({ error: "Student not found" })
+          return
       }
 
       if (!(student as IStudent).thesisContent) {
-        res.status(400).json({
-          error: "Cannot proceed: Student has not submitted thesis structure/content",
-          requiredAction: "await_student_submission",
-        })
-        return
+          res.status(400).json({
+              error: "Cannot proceed: Student has not submitted thesis structure/content",
+              requiredAction: "await_student_submission",
+          })
+          return
+      }
+
+      // Создаём структуру consultantAssessment для PDF генератора
+      let assessmentStructure;
+      if (typeof assessment === 'string' && assessment.trim().length > 0) {
+          // Если пришла строка с заключением, создаём структуру с оценками по умолчанию (5)
+          assessmentStructure = {
+              section1: {
+                  topicCorrespondence: 5,
+                  relevanceJustification: 5,
+                  subjectAreaCorrespondence: 5,
+                  researchMethodsCorrectness: 5,
+                  materialPresentation: 5,
+                  assertionsJustification: 5,
+                  researchValue: 5,
+                  researchFindingsIntegration: 5
+              },
+              section2: {
+                  questions: [],
+                  advantages: [],
+                  disadvantages: []
+              }
+          };
+      } else if (assessment && typeof assessment === 'object') {
+          // Если пришёл объект (полная структура), используем его
+          assessmentStructure = assessment;
+      } else {
+          // Значения по умолчанию, если ничего не пришло
+          assessmentStructure = {
+              section1: {
+                  topicCorrespondence: 5,
+                  relevanceJustification: 5,
+                  subjectAreaCorrespondence: 5,
+                  researchMethodsCorrectness: 5,
+                  materialPresentation: 5,
+                  assertionsJustification: 5,
+                  researchValue: 5,
+                  researchFindingsIntegration: 5
+              },
+              section2: {
+                  questions: [],
+                  advantages: [],
+                  disadvantages: []
+              }
+          };
       }
 
       // Update the thesis with assessment first
       updatedThesis = await thesisModel.updateThesis(thesisId, {
-        consultantAssessment: assessment,
+          consultantAssessment: assessmentStructure,
       })
 
       if (!updatedThesis) {
-        res.status(404).json({ error: i18n.errors.thesisNotFound })
-        return
+          res.status(404).json({ error: i18n.errors.thesisNotFound })
+          return
       }
 
       // Submit the consultant review with final approval
@@ -132,24 +177,24 @@ export const submitReview = async (req: Request, res: Response) => {
       // Generate unsigned PDF for consultant review
       const unsignedDir = path.join(__dirname, "../../server/reviews/consultant/unsigned")
       if (!fs.existsSync(unsignedDir)) {
-        fs.mkdirSync(unsignedDir, { recursive: true })
+          fs.mkdirSync(unsignedDir, { recursive: true })
       }
 
       try {
-        pdfPath = await generateConsultantReviewPDF(updatedThesis.data, consultant, false)
+          pdfPath = await generateConsultantReviewPDF(updatedThesis.data, consultant, false)
       } catch (pdfError) {
-        console.error("PDF generation error:", pdfError)
-        res.status(500).json({
-          error: `Failed to generate PDF: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`,
-          details: pdfError,
-        })
-        return
+          console.error("PDF generation error:", pdfError)
+          res.status(500).json({
+              error: `Failed to generate PDF: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`,
+              details: pdfError,
+          })
+          return
       }
 
       // Update thesis with PDF path and status
       await thesisModel.updateThesis(thesisId, {
-        ...(pdfPath ? { reviewPdfConsultant: pdfPath } : {}),
-        status: thesis.data.assignedSupervisor ? "with_supervisor" : "under_review",
+          ...(pdfPath ? { reviewPdfConsultant: pdfPath } : {}),
+          status: thesis.data.assignedSupervisor ? "with_supervisor" : "under_review",
       })
 
       try {
@@ -203,9 +248,12 @@ export const getAssignedTheses = async (req: Request, res: Response) => {
     // Exclude theses with revisions_requested or approved status
     const assignedTheses = await thesisModel.getThesesByConsultant(consultant.id)
 
+    // Показываем работы со статусом:
+    // - "with_consultant" (ожидают проверки консультанта)
+    // - "awaiting_consultant_signature" (ожидают подписи консультанта)
     const activeTheses = assignedTheses.filter((thesis) => {
       const status = thesis.data.status
-      return status === "with_consultant"
+      return status === "with_consultant" || status === "awaiting_consultant_signature"
     })
 
     // Fetch student details for each thesis
@@ -423,60 +471,51 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
 
 export const uploadSignedReview = async (req: Request, res: Response) => {
   try {
-    const consultant = req.user as AuthenticatedUser & IConsultant
-    const { thesisId } = req.params
-    const { file } = req
+    const consultant = req.user as AuthenticatedUser & IConsultant;
+    const { thesisId } = req.params;
+    const { file } = req;
 
-    console.log("Uploading signed review:", { thesisId, hasFile: !!file })
-
-    // Find thesis and check access
-    const thesis = await thesisModel.getThesisById(thesisId)
-    if (!thesis) {
-      res.status(404).json({ error: i18n.errors.thesisNotFound })
-      return
-    }
-
-    if (thesis.data.assignedConsultant !== consultant.id) {
-      res.status(403).json({ error: i18n.errors.accessDenied })
-      return
-    }
+    console.log("Consultant uploading signed review:", { thesisId, hasFile: !!file });
 
     if (!file) {
-      res.status(400).json({ error: i18n.errors.signedPdfRequired })
-      return
+      res.status(400).json({ error: "No file uploaded" });
+      return;
     }
 
-    // Ensure signed reviews directory exists
-    const signedDir = path.join(__dirname, "../../server/reviews/consultant/signed")
-    if (!fs.existsSync(signedDir)) {
-      fs.mkdirSync(signedDir, { recursive: true })
+    const thesis = await thesisModel.getThesisById(thesisId);
+    if (!thesis || thesis.data.assignedConsultant !== consultant.id) {
+      res.status(403).json({ error: "Access denied" });
+      return;
     }
 
-    // Move uploaded file to signed reviews directory
-    const signedReviewPath = path.join(signedDir, `signed_review1_${thesis.data.student}.pdf`)
-    fs.renameSync(file.path, signedReviewPath)
+    if (thesis.data.status !== "awaiting_consultant_signature") {
+      res.status(400).json({ error: "Not awaiting consultant signature" });
+      return;
+    }
 
-    console.log(`Signed review saved to: ${signedReviewPath}`)
+    // Сохраняем подписанный консультантом PDF в отдельную папку
+    const consultantSignedDir = path.join(__dirname, "../../server/reviews/consultant/signed");
+    if (!fs.existsSync(consultantSignedDir)) fs.mkdirSync(consultantSignedDir, { recursive: true });
+    
+    const fileName = `consultant_signed_${thesis.data.student}.pdf`;
+    const consultantSignedPath = path.join(consultantSignedDir, fileName);
+    fs.renameSync(file.path, consultantSignedPath);
 
-    // Update thesis with signed PDF path and status
+    // Обновляем статус на ожидание финальной подписи руководителя
     await thesisModel.updateThesis(thesisId, {
-      status: "with_supervisor",
-      consultantSignedReviewPath: signedReviewPath,
-      signedDate: new Date(),
-    })
+      status: "awaiting_supervisor_signature",
+      consultantSignedReviewPath: consultantSignedPath
+    });
 
-    // Update student status to evaluated
-    await userModel.updateStudentThesisStatus(thesis.data.student, "with_supervisor")
-
-    res.json({
-      message: i18n.success.reviewUploaded,
-      success: true,
-    })
+    res.json({ 
+      message: "Consultant signed review uploaded successfully", 
+      success: true 
+    });
   } catch (error) {
-    console.error("Error uploading signed review:", error)
-    res.status(500).json({ error: i18n.errors.failedToUploadReview })
+    console.error("Error uploading consultant signed review:", error);
+    res.status(500).json({ error: "Failed to upload signed review" });
   }
-}
+};
 
 export const getSignedReview = async (req: Request, res: Response) => {
   try {

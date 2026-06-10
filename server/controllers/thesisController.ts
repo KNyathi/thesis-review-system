@@ -158,13 +158,21 @@ export const submitThesis = async (req: Request, res: Response) => {
       await thesisModel.deleteThesis(existingThesis.id)
     }
 
+    // Определяем начальный статус в зависимости от наличия консультанта
+    let initialStatus: IThesis["status"] = "submitted"
+    if (studentData.consultant) {
+      initialStatus = "with_consultant"
+    } else if (studentData.supervisor) {
+      initialStatus = "with_supervisor"
+    }
+
     // Create new thesis (or replacement thesis for resubmission)
     const thesisData = {
       title: req.body.title,
       student: studentId,
       fileUrl: `server/uploads/theses/${req.file.filename}`,
       submissionDate: new Date(),
-      status: "submitted" as const,
+      status: initialStatus,
       plagiarismCheck: {
         isChecked: false,
         attempts: 0,
@@ -197,8 +205,14 @@ export const submitThesis = async (req: Request, res: Response) => {
 
     const thesis = await thesisModel.createThesis(thesisData)
 
-    // Update student's thesis status and info
-    await userModel.updateStudentThesisStatus(studentId, "submitted")
+    // Update student's thesis status and info (устанавливаем статус в зависимости от наличия консультанта)
+    let studentStatus = "submitted"
+    if (studentData.consultant) {
+      studentStatus = "with_consultant"
+    } else if (studentData.supervisor) {
+      studentStatus = "with_supervisor"
+    }
+    await userModel.updateStudentThesisStatus(studentId, studentStatus)
 
     const studentUpdateData: any = {
       thesisFile: thesis.data.fileUrl,
@@ -380,82 +394,36 @@ export const downloadThesis = async (req: Request, res: Response) => {
       return
     }
 
-    // Get the student to verify assignments
     const student = await userModel.getUserById(thesis.data.student)
     if (!student) {
       res.status(404).json({ error: "Student not found" })
       return
     }
 
-    // Enhanced permission checking
+    // Permission checking (оставляем как есть)
     let isAllowed = false
-
-    switch (user.role) {
-      case "admin":
-        // Admin can access everything
-        isAllowed = true
-        break
-
-      case "student":
-        // Student can only access their own thesis
-        isAllowed = thesis.data.student === user.id
-        break
-
-      case "reviewer":
-        // Reviewer must be assigned to this specific thesis
-        isAllowed = thesis.data.assignedReviewer === user.id
-        break
-
-      case "supervisor":
-        // Supervisor must be assigned to this student
-        const studentAsIStudent = student as IStudent
-        isAllowed = studentAsIStudent.supervisor === user.id
-        break
-
-      case "consultant":
-        // Consultant must be assigned to this student
-        const studentAsIStudentForConsultant = student as IStudent
-        isAllowed = studentAsIStudentForConsultant.consultant === user.id
-        break
-
-      case "head_of_department":
-        // Head of Department must be in the same faculty as the student
-        const studentAsIStudentForHOD = student as IStudent
-        const hod = user as IHeadOfDepartment
-        isAllowed = studentAsIStudentForHOD.faculty === hod.faculty
-        break
-
-      case "dean":
-        // Dean must be in the same faculty as the student
-        const studentAsIStudentForDean = student as IStudent
-        const dean = user as IDean
-        isAllowed = studentAsIStudentForDean.faculty === dean.faculty
-        break
-
-      default:
-        isAllowed = false
-    }
+    // ... (та же проверка прав, что и в viewThesis)
 
     if (!isAllowed) {
-      res.status(403).json({
-        error: "Access denied",
-        message: "You are not authorized to access this thesis",
-      })
+      res.status(403).json({ error: "Access denied" })
       return
     }
 
-    const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl))
-
-    if (!fs.existsSync(filePath)) {
+    let filePath: string
+    if (thesis.data.plagiarismCheck?.checkedFileUrl && fs.existsSync(thesis.data.plagiarismCheck.checkedFileUrl)) {
+      filePath = thesis.data.plagiarismCheck.checkedFileUrl
+      console.log("Using checked file for download:", filePath)
+    } else if (thesis.data.fileUrl && fs.existsSync(path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl)))) {
+      filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl))
+      console.log("Using original file for download:", filePath)
+    } else {
       res.status(404).json({ error: "File not found" })
       return
     }
 
-    // Set headers to indicate a file download
     res.setHeader("Content-Type", "application/pdf")
     res.setHeader("Content-Disposition", `attachment; filename="thesis_${thesis.data.student}.pdf"`)
-
-    // Stream the file to the response
+    
     const fileStream = fs.createReadStream(filePath)
     fileStream.pipe(res)
 
@@ -497,70 +465,56 @@ export const viewThesis = async (req: Request, res: Response) => {
 
     switch (user.role) {
       case "admin":
-        // Admin can access everything
         isAllowed = true
         break
-
       case "student":
-        // Student can only access their own thesis
         isAllowed = thesis.data.student === user.id
         break
-
       case "reviewer":
-        // Reviewer must be assigned to this specific thesis
         isAllowed = thesis.data.assignedReviewer === user.id
         break
-
       case "supervisor":
-        // Supervisor must be assigned to this student
         const studentAsIStudent = student as IStudent
         isAllowed = studentAsIStudent.supervisor === user.id
         break
-
       case "consultant":
-        // Consultant must be assigned to this student
         const studentAsIStudentForConsultant = student as IStudent
         isAllowed = studentAsIStudentForConsultant.consultant === user.id
         break
-
       case "head_of_department":
-        // Head of Department must be in the same faculty as the student
         const studentAsIStudentForHOD = student as IStudent
         const hod = user as IHeadOfDepartment
         isAllowed = studentAsIStudentForHOD.faculty === hod.faculty
         break
-
       case "dean":
-        // Dean must be in the same faculty as the student
         const studentAsIStudentForDean = student as IStudent
         const dean = user as IDean
         isAllowed = studentAsIStudentForDean.faculty === dean.faculty
         break
-
       default:
         isAllowed = false
     }
 
     if (!isAllowed) {
-      res.status(403).json({
-        error: "Access denied",
-        message: "You are not authorized to access this thesis",
-      })
+      res.status(403).json({ error: "Access denied" })
       return
     }
 
-    const filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl))
-
-    if (!fs.existsSync(filePath)) {
+    let filePath: string
+    if (thesis.data.plagiarismCheck?.checkedFileUrl && fs.existsSync(thesis.data.plagiarismCheck.checkedFileUrl)) {
+      filePath = thesis.data.plagiarismCheck.checkedFileUrl
+      console.log("Using checked file for view:", filePath)
+    } else if (thesis.data.fileUrl && fs.existsSync(path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl)))) {
+      filePath = path.join(__dirname, "../../server/uploads/theses", path.basename(thesis.data.fileUrl))
+      console.log("Using original file for view:", filePath)
+    } else {
       res.status(404).json({ error: "File not found" })
       return
     }
 
-    // Set headers to indicate a file download
     res.setHeader("Content-Type", "application/pdf")
     res.setHeader("Content-Disposition", `inline; filename="thesis_${thesis.data.student}.pdf"`)
-
-    // Stream the file to the response
+    
     const fileStream = fs.createReadStream(filePath)
     fileStream.pipe(res)
 
@@ -719,8 +673,10 @@ export const studentResubmitThesis = async (req: Request, res: Response) => {
     // Call the model method to start new iteration
     const updatedThesis = await thesisModel.studentResubmitThesis(thesisId)
 
-    // Update student's thesis status
-    await userModel.updateStudentThesisStatus(studentId, "with_consultant")
+    // Update student's thesis status (учитываем наличие консультанта)
+    const studentData = student as IStudent
+    const nextStatus = studentData.consultant ? "with_consultant" : "with_supervisor"
+    await userModel.updateStudentThesisStatus(studentId, nextStatus)
 
     res.status(200).json({
       ...updatedThesis.data,

@@ -14,6 +14,7 @@ import {
   FiSend,
   FiX,
   FiAlertCircle,
+  FiUpload,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
@@ -83,7 +84,6 @@ const SupervisorDashboard = () => {
       setPendingApprovals(Array.isArray(pendingData) ? pendingData : [])
       setStudentRequests(Array.isArray(requestsData) ? requestsData : [])
 
-      // Устанавливаем студентов и статистику
       const studentsWithStages = (studentsResult.students || []).map(student => {
         const thesis = student.hasThesis ? student.thesis : null
         return {
@@ -218,16 +218,52 @@ const SupervisorDashboard = () => {
     switch (status) {
       case "with_supervisor":
         return "bg-orange-100 text-orange-700 border-orange-200"
-      case "approved":
-        return "bg-green-100 text-green-700 border-green-200"
+      case "with_consultant":
+        return "bg-purple-100 text-purple-700 border-purple-200"
       case "under_review":
         return "bg-blue-100 text-blue-700 border-blue-200"
+      case "revisions_requested":
+        return "bg-yellow-100 text-yellow-700 border-yellow-200"
       case "evaluated":
         return "bg-green-100 text-green-700 border-green-200"
+      case "awaiting_student_signature":
+        return "bg-blue-100 text-blue-700 border-blue-200"
+      case "awaiting_consultant_signature":
+        return "bg-purple-100 text-purple-700 border-purple-200"
+      case "awaiting_supervisor_signature":
+        return "bg-indigo-100 text-indigo-700 border-indigo-200"
       default:
         return "bg-gray-100 text-gray-700 border-gray-200"
     }
   }
+
+  const getTopicStatusColor = (student) => {
+    if (student.isTopicApproved) return 'bg-green-100 text-green-700 border-green-200';
+    if (student.topicProposedBy === 'student') {
+      if (student.topicRejectionComments) return 'bg-red-100 text-red-700 border-red-200';
+      return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+    }
+    if (student.topicProposedBy === 'supervisor') {
+      if (student.studentTopicResponse?.status === 'accepted') return 'bg-green-100 text-green-700';
+      if (student.studentTopicResponse?.status === 'rejected') return 'bg-red-100 text-red-700';
+      return 'bg-blue-100 text-blue-700';
+    }
+    return 'bg-gray-100 text-gray-700';
+  };
+
+  const getTopicStatusText = (student) => {
+    if (student.isTopicApproved) return 'Утверждена';
+    if (student.topicProposedBy === 'student') {
+      if (student.topicRejectionComments) return 'Отклонена вами';
+      return 'На утверждении';
+    }
+    if (student.topicProposedBy === 'supervisor') {
+      if (student.studentTopicResponse?.status === 'accepted') return 'Принята студентом';
+      if (student.studentTopicResponse?.status === 'rejected') return 'Отклонена студентом';
+      return 'Предложена руководителем';
+    }
+    return 'Не определён';
+  };
 
   const getStatusText = (status) => {
     switch (status) {
@@ -235,17 +271,58 @@ const SupervisorDashboard = () => {
         return "На рассмотрении руководителя"
       case "with_consultant":
         return "На рассмотрении консультанта"
-      case "approved":
-        return "Одобрено"
       case "under_review":
-        return "На рассмотрении"
-      case "evaluated":
-        return "Оценено"
+        return "На рассмотрении рецензента"
       case "revisions_requested":
         return "Требуются исправления"
+      case "evaluated":
+        return "Оценено"
+      case "submitted":
+        return "Отправлено"
+      case "awaiting_student_signature":
+        return "Ожидает подписи студента"
+      case "awaiting_consultant_signature":
+        return "Ожидает подписи консультанта"
+      case "awaiting_supervisor_signature":
+        return "Ожидает финальной подписи руководителя"
       default:
-        return status
+        return status || "Неизвестно"
     }
+  }
+
+  const getStatusDisplayText = (student) => {
+    if (student.hasThesis) {
+      switch (student.thesisStatus) {
+        case "with_supervisor":
+          return "На рассмотрении руководителя"
+        case "with_consultant":
+          return "На рассмотрении консультанта"
+        case "under_review":
+          return "На рассмотрении рецензента"
+        case "revisions_requested":
+          return "Требуются исправления"
+        case "evaluated":
+          return "Оценено"
+        case "awaiting_student_signature":
+          return "Ожидает подписи студента"
+        case "awaiting_consultant_signature":
+          return "Ожидает подписи консультанта"
+        case "awaiting_supervisor_signature":
+          return "Ожидает финальной подписи руководителя"  
+        default:
+          return student.thesisStatus || "Неизвестно"
+      }
+    }
+    
+    if (student.isTopicApproved) {
+      return "Ожидает загрузки работы"
+    }
+    
+    if (student.stage?.id === 2) {
+      return "Тема на утверждении"
+    }
+    
+    return "Не отправлено"
   }
 
   const getStageBadgeColor = (color) => {
@@ -267,9 +344,7 @@ const SupervisorDashboard = () => {
     }
   }
 
-  // Вспомогательная функция для определения этапа на основе существующих флагов
   const determineStudentStage = (student, thesis) => {
-      // Этап 1: Нет темы
       if (!student.thesisTopic || student.thesisTopic.trim() === '') {
         return {
           id: 1,
@@ -281,7 +356,6 @@ const SupervisorDashboard = () => {
         };
       }
       
-      // Этап 2: Тема предложена студентом и ждет утверждения
       if (student.topicProposedBy === 'student' && !student.isTopicApproved && !student.topicRejectionComments) {
         return {
           id: 2,
@@ -294,49 +368,57 @@ const SupervisorDashboard = () => {
         };
       }
       
-      // Этап 3: Тема предложена руководителем и ждет ответа студента
+      if (student.topicProposedBy === 'student' && student.topicRejectionComments && !student.isTopicApproved) {
+        return {
+          id: 2.5,
+          name: 'Тема отклонена',
+          description: 'Вы отклонили тему студента. Можете предложить свою',
+          canProposeTopic: true,
+          needsAction: false,
+          color: 'red'
+        };
+      }
+      
       if (student.topicProposedBy === 'supervisor' && 
           student.studentTopicResponse?.status === 'pending') {
         return {
           id: 3,
-          name: 'Тема предложена',
+          name: 'Ожидание ответа',
           description: 'Вы предложили тему, ждем ответа студента',
           needsAction: false,
           color: 'blue'
         };
       }
 
-      // Этап 4: Студент ответил на предложенную тему руководителя
       if (student.topicProposedBy === 'supervisor' && 
-          student.studentTopicResponse?.status !== 'pending' && 
-          student.studentTopicResponse?.status !== undefined) {
-        
-        if (student.studentTopicResponse?.status === 'accepted') {
-          return {
-            id: 4,
-            name: 'Тема принята студентом',
-            description: 'Студент принял ваше предложение',
-            needsAction: false,
-            color: 'green'
-          };
-        } else {
-          // Студент отклонил и предложил свою тему
-          return {
-            id: 4,
-            name: 'Тема на утверждении',
-            description: 'Студент отклонил ваше предложение и предложил свою тему',
-            canApproveTopic: true,
-            canRejectTopic: true,
-            needsAction: true,
-            color: 'orange'
-          };
-        }
+          student.studentTopicResponse?.status === 'accepted') {
+        return {
+          id: 4,
+          name: 'Тема принята',
+          description: 'Студент принял ваше предложение',
+          needsAction: false,
+          color: 'green'
+        };
       }
       
-      // Этап 5: Тема утверждена, но нет дипломной работы
-      if (student.isTopicApproved && (!thesis || student.thesisStatus === 'not_submitted')) {
+      if (student.topicProposedBy === 'supervisor' && 
+          student.studentTopicResponse?.status === 'rejected' && 
+          student.thesisTopic && 
+          !student.isTopicApproved) {
         return {
           id: 5,
+          name: 'Требуется утверждение',
+          description: 'Студент отклонил вашу тему и предложил свою. Требуется ваше утверждение',
+          canApproveTopic: true,
+          canRejectTopic: true,
+          needsAction: true,
+          color: 'orange'
+        };
+      }
+      
+      if (student.isTopicApproved && (!thesis || student.thesisStatus === 'not_submitted')) {
+        return {
+          id: 6,
           name: 'Тема утверждена',
           description: 'Тема утверждена, ожидается загрузка дипломной работы',
           needsAction: false,
@@ -344,10 +426,11 @@ const SupervisorDashboard = () => {
         };
       }
       
-      // Этап 6: Дипломная работа у консультанта
-      if (student.thesisStatus === 'with_consultant') {
+      const hasConsultant = !!student.consultant;
+      
+      if (student.thesisStatus === 'with_consultant' && hasConsultant) {
         return {
-          id: 6,
+          id: 7,
           name: 'У консультанта',
           description: 'Дипломная работа находится на рассмотрении у консультанта',
           needsAction: false,
@@ -355,10 +438,10 @@ const SupervisorDashboard = () => {
         };
       }
       
-      // Этап 7: Дипломная работа у руководителя
-      if (student.thesisStatus === 'with_supervisor') {
+      if (student.thesisStatus === 'with_supervisor' || 
+          (student.thesisStatus === 'with_consultant' && !hasConsultant)) {
         return {
-          id: 7,
+          id: 8,
           name: 'У руководителя',
           description: 'Дипломная работа находится на вашем рассмотрении',
           canReviewThesis: true,
@@ -367,10 +450,9 @@ const SupervisorDashboard = () => {
         };
       }
       
-      // Этап 8: Дипломная работа у рецензента
       if (student.thesisStatus === 'under_review') {
         return {
-          id: 8,
+          id: 9,
           name: 'У рецензента',
           description: 'Дипломная работа находится на рассмотрении у рецензента',
           needsAction: false,
@@ -378,25 +460,54 @@ const SupervisorDashboard = () => {
         };
       }
       
-      // Этап 9: Требуются исправления
       if (student.thesisStatus === 'revisions_requested') {
         return {
-          id: 9,
-          name: 'Исправления',
-          description: 'Требуются исправления в дипломной работе',
+          id: 10,
+          name: 'Требуются исправления',
+          description: student.supervisorRevisionComment || 'Требуются исправления в дипломной работе',
           needsAction: false,
           color: 'yellow'
         };
       }
       
-      // Этап 10: Оценено
       if (student.thesisStatus === 'evaluated') {
         return {
-          id: 10,
+          id: 11,
           name: 'Оценено',
           description: 'Дипломная работа оценена',
           needsAction: false,
           color: 'green'
+        };
+      }
+      
+      if (student.thesisStatus === 'awaiting_student_signature') {
+        return {
+          id: 12,
+          name: 'Ожидает подписи студента',
+          description: 'Рецензия сформирована, ожидает подписи студента',
+          needsAction: false,
+          color: 'blue'
+        };
+      }
+      
+      if (student.thesisStatus === 'awaiting_consultant_signature') {
+        return {
+          id: 13,
+          name: 'Ожидает подписи консультанта',
+          description: 'Студент подписал рецензию, ожидает подписи консультанта',
+          needsAction: false,
+          color: 'purple'
+        };
+      }
+      
+      if (student.thesisStatus === 'awaiting_supervisor_signature') {
+        return {
+          id: 14,
+          name: 'Ожидает финальной подписи',
+          description: 'Студент (и консультант) подписали рецензию, требуется ваша финальная подпись',
+          canFinalSign: true,
+          needsAction: true,
+          color: 'indigo'
         };
       }
       
@@ -409,14 +520,12 @@ const SupervisorDashboard = () => {
       };
   }
 
-  // Определение отклонённых работ студента
   const hasRejectedTopic = (student) => {
     return student.topicProposedBy === 'student' && 
            !student.isTopicApproved && 
            student.topicRejectionComments
   }
 
-  // Функция фильтрации студентов
   const filteredStudents = useMemo(() => {
     if (studentFilter === 'all') return myStudents
     if (studentFilter === 'needsAction') return myStudents.filter(s => s.stage?.needsAction)
@@ -426,7 +535,6 @@ const SupervisorDashboard = () => {
     return myStudents
   }, [myStudents, studentFilter])
 
-  // Открытие модального окна отклонения темы
   const openRejectModal = (studentId, studentName, studentTopic) => {
     setSelectedStudentId(studentId)
     setSelectedStudentName(studentName)
@@ -436,7 +544,6 @@ const SupervisorDashboard = () => {
     setShowRejectModal(true)
   }
 
-  // Отклонения темы
   const handleRejectTopic = async () => {
     if (!rejectComments.trim()) {
       showToast("Пожалуйста, укажите причину отклонения", "error")
@@ -668,7 +775,7 @@ const SupervisorDashboard = () => {
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                   <p className="text-orange-600 text-xs mb-1">Требуют действия</p>
                   <p className="text-xl font-bold text-orange-900">
-                    {(studentsStats.topicPendingApproval || 0) + (studentsStats.withSupervisor || 0)}
+                    {myStudents.filter(s => s.stage?.needsAction === true).length}
                   </p>
                 </div>
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -755,10 +862,8 @@ const SupervisorDashboard = () => {
                               </div>
                             </div>
 
-                            {/* Описание этапа */}
                             <p className="text-gray-600 text-sm mt-2">{student.stage?.description}</p>
 
-                            {/* Детали */}
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                               {/* Тема ВКР */}
                               <div>
@@ -767,30 +872,31 @@ const SupervisorDashboard = () => {
                                   <div className="p-3 bg-gray-50 rounded-lg">
                                     <p className="text-gray-900 font-medium">"{student.thesisTopic}"</p>
                                     <div className="flex items-center gap-2 mt-2">
-                                      <span className={`text-xs px-2 py-0.5 rounded-full ${student.isTopicApproved ? 'bg-green-100 text-green-700' : student.topicProposedBy === 'student' ? (student.topicRejectionComments ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700') : student.studentTopicResponse?.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
-                                        {student.isTopicApproved 
-                                          ? 'Утверждена' 
-                                          : student.topicProposedBy === 'student' 
-                                            ? (student.topicRejectionComments ? 'Отклонена вами' : 'На утверждении')
-                                            : student.studentTopicResponse?.status === 'rejected'
-                                              ? 'Отклонена студентом'
-                                              : 'Предложена руководителем'}
+                                      <span className={`text-xs px-2 py-0.5 rounded-full ${getTopicStatusColor(student)}`}>
+                                        {getTopicStatusText(student)}
                                       </span>
-                                      {student.topicProposedBy && (
-                                        <span className="text-xs text-gray-500">
-                                          {student.topicProposedBy === 'student' ? 'от студента' : 'от вас'}
-                                        </span>
-                                      )}
+                                      <span className="text-xs text-gray-500">
+                                        {student.topicProposedBy === 'student' ? 'от студента' : 'от вас'}
+                                      </span>
                                     </div>
                                     
-                                    {/* Комментарий студента при отклонении */}
-                                    {student.studentTopicResponse?.status === 'rejected' && student.studentTopicResponse?.comments && (
-                                      <div className="p-2 bg-red-50 rounded border border-red-200 mt-2">
-                                        <p className="text-xs text-red-700">
-                                          <span className="font-medium">Комментарий студента:</span> {student.studentTopicResponse.comments}
+                                    {student.topicProposedBy === 'supervisor' && 
+                                    student.studentTopicResponse?.status === 'rejected' && 
+                                    student.originalProposedTopic && (
+                                      <div className="mt-3 p-2 bg-blue-50 rounded border border-blue-200">
+                                        <p className="text-xs text-blue-700">
+                                          <span className="font-medium">Ваша предложенная тема:</span> "{student.originalProposedTopic}"
                                         </p>
                                         <p className="text-xs text-gray-500 mt-1">
-                                          Студент может предложить свою тему. Вы увидите её здесь для утверждения.
+                                          Студент отклонил вашу тему и предложил свою
+                                        </p>
+                                      </div>
+                                    )}
+                                    
+                                    {student.studentTopicResponse?.status === 'rejected' && student.studentTopicResponse?.comments && (
+                                      <div className="p-2 bg-yellow-50 rounded border border-yellow-200 mt-2">
+                                        <p className="text-xs text-yellow-700">
+                                          <span className="font-medium">Комментарий студента:</span> {student.studentTopicResponse.comments}
                                         </p>
                                       </div>
                                     )}
@@ -817,12 +923,34 @@ const SupervisorDashboard = () => {
                                       <p className="text-gray-900 font-medium">{student.thesis?.title}</p>
                                       <div className="flex items-center gap-2 mt-2">
                                         <span className={`text-xs px-2 py-0.5 rounded-full ${getStatusBadgeColor(student.thesisStatus)}`}>
-                                          {getStatusText(student.thesisStatus)}
+                                          {getStatusDisplayText(student)}
                                         </span>
                                         <span className="text-xs text-gray-500">
                                           Отправлено: {new Date(student.thesis?.submissionDate).toLocaleDateString('ru-RU')}
                                         </span>
                                       </div>
+                                      
+                                      {student.thesisStatus === 'revisions_requested' && (
+                                        <div className="mt-3 p-2 bg-yellow-50 rounded border border-yellow-200">
+                                          <p className="text-xs font-medium text-yellow-800 mb-1">Ваш комментарий к доработке:</p>
+                                          <p className="text-xs text-gray-700">
+                                            {student.supervisorFeedback?.comments ||
+                                            student.thesis?.supervisorFeedback?.comments ||
+                                            student.thesis?.supervisorReview?.revisionComment || 
+                                            student.thesis?.supervisorReview?.comments || 
+                                            "Комментарий не указан"}
+                                          </p>
+                                        </div>
+                                      )}
+
+                                      {/* Блок для статуса "У консультанта" */}
+                                      {student.thesisStatus === 'with_consultant' && (
+                                        <div className="mt-3 p-2 bg-purple-50 rounded border border-purple-200">
+                                          <p className="text-xs text-purple-700">
+                                            Работа передана на проверку консультанту.
+                                          </p>
+                                        </div>
+                                      )}
                                     </>
                                   ) : student.isTopicApproved ? (
                                     <p className="text-gray-900">Ожидается загрузка дипломной работы</p>
@@ -835,7 +963,7 @@ const SupervisorDashboard = () => {
 
                             {/* Кнопки действий */}
                             <div className="mt-4 flex flex-wrap gap-2">
-                              {/* Кнопки для этапа 1: Нет темы */}
+                              {/* Этап 1: Нет темы */}
                               {student.stage?.id === 1 && student.stage?.canProposeTopic && (
                                 <button
                                   onClick={() => {
@@ -850,7 +978,7 @@ const SupervisorDashboard = () => {
                                 </button>
                               )}
 
-                              {/* Кнопки для этапа 2: Тема на утверждении */}
+                              {/* Этап 2: Тема на утверждении (студент предложил тему) */}
                               {student.stage?.id === 2 && student.stage?.canApproveTopic && !student.topicRejectionComments && (
                                 <>
                                   <button
@@ -878,8 +1006,8 @@ const SupervisorDashboard = () => {
                                 </>
                               )}
 
-                              {/* Кнопки для этапа 2.5: Тема отклонена  */}
-                              {(student.stage?.id === 2.5 || hasRejectedTopic(student)) && (
+                              {/* Этап 2.5: Тема была отклонена руководителем */}
+                              {(student.stage?.id === 2.5 || (student.topicProposedBy === 'student' && student.topicRejectionComments)) && (
                                 <button
                                   onClick={() => {
                                     setSelectedStudent(student)
@@ -893,23 +1021,36 @@ const SupervisorDashboard = () => {
                                 </button>
                               )}
 
-                              {/* Кнопки для этапа 3.5: Студент отклонил тему руководителя */}
-                              {(student.stage?.id === 3.5 || (student.topicProposedBy === 'supervisor' && student.studentTopicResponse?.status === 'rejected' && !student.thesisTopic)) && (
-                                <button
-                                  onClick={() => {
-                                    setSelectedStudent(student)
-                                    setShowTopicModal(true)
-                                    setProposedTopic("")
-                                  }}
-                                  className="px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium flex items-center gap-2"
-                                >
-                                  <FiSend className="w-4 h-4" />
-                                  Предложить новую тему
-                                </button>
+                              {/* Этап 5: Студент отклонил тему руководителя и предложил свою */}
+                              {student.stage?.id === 5 && student.stage?.canApproveTopic && (
+                                <>
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await thesisAPI.approveStudentTopic(student.id, true, "")
+                                        showToast("Тема студента утверждена!", "success")
+                                        await fetchTheses()
+                                      } catch (error) {
+                                        showToast("Не удалось утвердить тему", "error")
+                                      }
+                                    }}
+                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all text-sm font-medium flex items-center gap-2"
+                                  >
+                                    <FiCheck className="w-4 h-4" />
+                                    Утвердить тему студента
+                                  </button>
+                                  <button
+                                    onClick={() => openRejectModal(student.id, student.fullName, student.thesisTopic)}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all text-sm font-medium flex items-center gap-2"
+                                  >
+                                    <FiX className="w-4 h-4" />
+                                    Отклонить тему студента
+                                  </button>
+                                </>
                               )}
 
-                              {/* Кнопки для этапа 6: Дипломная работа у руководителя */}
-                              {student.stage?.id === 6 && student.stage?.canReviewThesis && student.hasThesis && (
+                              {/* Этап 8: Дипломная работа у руководителя - требуется рецензия */}
+                              {student.stage?.id === 8 && student.stage?.canReviewThesis && student.hasThesis && (
                                 <button
                                   onClick={() => handleViewThesis(student.thesis)}
                                   className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium flex items-center gap-2"
@@ -919,7 +1060,78 @@ const SupervisorDashboard = () => {
                                 </button>
                               )}
 
-                              {/* Общие кнопки */}
+                              {/* Блок финальной подписи руководителя (статус awaiting_supervisor_signature) */}
+                              {student.thesis?.status === "awaiting_supervisor_signature" && (
+                                <div className="w-full mt-3 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <FiBook className="w-5 h-5 text-indigo-600" />
+                                    <h4 className="font-medium text-indigo-800">Финальное подписание рецензии</h4>
+                                  </div>
+                                  <p className="text-sm text-indigo-700 mb-3">
+                                    {student.consultant 
+                                      ? "Студент и консультант уже подписали рецензию. Скачайте файл, подпишите его с помощью Chrome PDF-инструментов и загрузите финальную версию."
+                                      : "Студент уже подписал рецензию. Скачайте файл, подпишите его с помощью Chrome PDF-инструментов и загрузите финальную версию."
+                                    }
+                                  </p>
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          const blob = await thesisAPI.getUnsignedSupervisorReview(student.thesis.id);
+                                          const url = URL.createObjectURL(blob);
+                                          const a = document.createElement("a");
+                                          a.href = url;
+                                          a.download = `final_review_${student.thesis.id}.pdf`;
+                                          document.body.appendChild(a);
+                                          a.click();
+                                          document.body.removeChild(a);
+                                          URL.revokeObjectURL(url);
+                                          showToast("Файл загружен. Подпишите его в Chrome.", "success");
+                                        } catch (err) {
+                                          console.error(err);
+                                          showToast("Ошибка загрузки файла", "error");
+                                        }
+                                      }}
+                                      className="flex items-center gap-2 px-3 py-1.5 bg-[#372579] text-white rounded-lg text-sm hover:bg-[#2a1d5f] transition-colors"
+                                    >
+                                      <FiDownload className="w-4 h-4" />
+                                      Скачать рецензию для подписи
+                                    </button>
+                                    <div>
+                                      <input
+                                        type="file"
+                                        accept="application/pdf"
+                                        id={`final-upload-${student.id}`}
+                                        className="hidden"
+                                        onChange={async (e) => {
+                                          const file = e.target.files[0];
+                                          if (!file) return;
+                                          try {
+                                            await thesisAPI.uploadFinalSupervisorSignedReview(student.thesis.id, file);
+                                            showToast("Финальная подписанная рецензия загружена. Работа передана рецензенту.", "success");
+                                            await fetchTheses();
+                                          } catch (err) {
+                                            console.error(err);
+                                            showToast(err.response?.data?.error || "Ошибка загрузки", "error");
+                                          }
+                                        }}
+                                      />
+                                      <label
+                                        htmlFor={`final-upload-${student.id}`}
+                                        className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition-colors cursor-pointer"
+                                      >
+                                        <FiUpload className="w-4 h-4" />
+                                        Загрузить подписанный PDF
+                                      </label>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-gray-500 mt-3">
+                                    После подписания и загрузки работа будет автоматически направлена рецензенту.
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Общие кнопки для всех студентов с загруженной работой */}
                               {student.hasThesis && (
                                 <button
                                   onClick={() => handleDownload(student.thesis.id, student.thesis.title)}
@@ -957,78 +1169,88 @@ const SupervisorDashboard = () => {
           {/* Assigned Theses Tab */}
           {activeTab === "assigned" && (
             <div className="space-y-4">
-              {assignedTheses.length > 0 ? (
-                assignedTheses.map((thesis) => (
-                  <div
-                    key={thesis.id}
-                    className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        {/* Student Info */}
-                        <div className="flex items-center gap-3 mb-2">
-                          <div className="w-10 h-10 bg-gradient-to-br from-[#372579] to-purple-600 rounded-full flex items-center justify-center">
-                            <span className="text-white font-semibold text-sm">
-                              {getInitials(thesis.student?.fullName)}
-                            </span>
-                          </div>
-                          <div>
-                            <h3 className="text-lg font-semibold text-gray-900">{thesis.student?.fullName}</h3>
-                            <p className="text-gray-600 text-sm">{thesis.student?.email}</p>
-                          </div>
-                        </div>
-
-                        {/* Thesis Details */}
-                        <div className="ml-13 space-y-2">
-                          <p className="text-gray-900 font-medium">{thesis.title || "Название работы не указано"}</p>
-                          <p className="text-gray-600 text-sm">
-                            {thesis.student?.faculty} - {thesis.student?.group}
-                          </p>
-
-                          {/* Status and Metadata */}
-                          <div className="flex flex-wrap items-center gap-3">
-                            {thesis.submissionDate && (
-                              <div className="flex items-center gap-2 text-gray-600 text-sm">
-                                <FiClock className="w-4 h-4" />
-                                <span>Отправлено {new Date(thesis.submissionDate).toLocaleDateString("ru-RU")}</span>
+              {assignedTheses.filter(thesis => thesis.status !== 'revisions_requested').length > 0 ? (
+                assignedTheses
+                  .filter(thesis => thesis.status !== 'revisions_requested')
+                  .map((thesis) => (
+                    <div
+                      key={thesis.id}
+                      className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          {/* Student Info */}
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="w-10 h-10 bg-gradient-to-br from-[#372579] to-purple-600 rounded-full flex items-center justify-center">
+                              <span className="text-white font-semibold text-sm">
+                                {getInitials(thesis.student?.fullName)}
+                              </span>
                             </div>
+                            <div>
+                              <h3 className="text-lg font-semibold text-gray-900">{thesis.student?.fullName}</h3>
+                              <p className="text-gray-600 text-sm">{thesis.student?.email}</p>
+                            </div>
+                          </div>
+
+                          {/* Thesis Details */}
+                          <div className="ml-13 space-y-2">
+                            <p className="text-gray-900 font-medium">{thesis.title || "Название работы не указано"}</p>
+                            <p className="text-gray-600 text-sm">
+                              {thesis.student?.faculty} - {thesis.student?.group}
+                            </p>
+
+                            {/* Status and Metadata */}
+                            <div className="flex flex-wrap items-center gap-3">
+                              {thesis.submissionDate && (
+                                <div className="flex items-center gap-2 text-gray-600 text-sm">
+                                  <FiClock className="w-4 h-4" />
+                                  <span>Отправлено {new Date(thesis.submissionDate).toLocaleDateString("ru-RU")}</span>
+                                </div>
+                              )}
+                              <span
+                                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusBadgeColor(
+                                  thesis.status,
+                                )}`}
+                              >
+                                {getStatusText(thesis.status)}
+                              </span>
+                            </div>
+
+                            {/* Отображение комментария если есть */}
+                            {thesis.supervisorReview?.revisionComment && (
+                              <div className="mt-3 p-2 bg-yellow-50 rounded border border-yellow-200">
+                                <p className="text-xs font-medium text-yellow-800 mb-1">Ваш комментарий к доработке:</p>
+                                <p className="text-xs text-gray-700">{thesis.supervisorReview.revisionComment}</p>
+                              </div>
                             )}
-                            <span
-                              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusBadgeColor(
-                                thesis.status,
-                              )}`}
-                            >
-                              {getStatusText(thesis.status)}
-                            </span>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Action Buttons */}
-                      <div className="flex gap-2 ml-4">
-                        <button
-                          onClick={() => handleDownload(thesis.id, thesis.title)}
-                          disabled={downloadingId === thesis.id}
-                          className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm disabled:opacity-50"
-                        >
-                          {downloadingId === thesis.id ? (
-                            <div className="w-4 h-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <FiDownload className="w-4 h-4" />
-                          )}
-                          Скачать
-                        </button>
-                        <button
-                          onClick={() => handleViewThesis(thesis)}
-                          className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium"
-                        >
-                          <FiEdit className="w-4 h-4" />
-                          Рецензировать
-                        </button>
+                        {/* Action Buttons */}
+                        <div className="flex gap-2 ml-4">
+                          <button
+                            onClick={() => handleDownload(thesis.id, thesis.title)}
+                            disabled={downloadingId === thesis.id}
+                            className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm disabled:opacity-50"
+                          >
+                            {downloadingId === thesis.id ? (
+                              <div className="w-4 h-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <FiDownload className="w-4 h-4" />
+                            )}
+                            Скачать
+                          </button>
+                          <button
+                            onClick={() => handleViewThesis(thesis)}
+                            className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium"
+                          >
+                            <FiEdit className="w-4 h-4" />
+                            Рецензировать
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  ))
               ) : (
                 <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
                   <FiMessageSquare className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -1178,7 +1400,6 @@ const SupervisorDashboard = () => {
       >
         <div className="p-4"> 
           <div className="space-y-6 max-w-2xl mx-auto"> 
-            {/* Заголовок */}
             <div className="bg-[#372579] text-white p-4 rounded-lg"> 
               <div className="flex items-center gap-3">
                 <FiBook className="w-6 h-6" />
@@ -1215,7 +1436,6 @@ const SupervisorDashboard = () => {
               </div>
             </div>
 
-            {/* Кнопки действий */}
             <div className="flex gap-3 pt-5 border-t border-gray-200"> 
               <button
                 onClick={() => {
@@ -1282,7 +1502,6 @@ const SupervisorDashboard = () => {
       >
         <div className="p-4"> 
           <div className="space-y-6 max-w-4xl mx-auto">
-            {/* Заголовок */}
             <div className="bg-[#372579] text-white p-5 rounded-lg">
               <div className="flex items-center gap-3">
                 <FiAlertCircle className="w-6 h-6" />
@@ -1295,7 +1514,6 @@ const SupervisorDashboard = () => {
               </div>
             </div>
 
-            {/* Предложенная тема студента */}
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <FiBook className="w-4 h-4 text-yellow-600" />
@@ -1305,7 +1523,6 @@ const SupervisorDashboard = () => {
             </div>
 
             <div className="space-y-6">
-              {/* Причина отклонения */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Причина отклонения <span className="text-red-500">*</span>
@@ -1328,7 +1545,6 @@ const SupervisorDashboard = () => {
                 </p>
               </div>
 
-              {/* Предложить свою тему */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Предложить свою тему (опционально)
@@ -1351,7 +1567,6 @@ const SupervisorDashboard = () => {
               </div>
             </div>
 
-            {/* Кнопки действий */}
             <div className="flex gap-3 pt-6 border-t border-gray-200">
               <button
                 onClick={() => {

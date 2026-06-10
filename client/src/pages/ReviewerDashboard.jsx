@@ -1,55 +1,43 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import {
-  FiFile,
   FiClock,
   FiCheck,
-  FiUser,
   FiDownload,
   FiEye,
   FiLogOut,
-  FiFilter,
-  FiCalendar,
-  FiBook,
   FiRefreshCw,
   FiEdit,
+  FiUsers,
+  FiMessageSquare,
+  FiBook,
 } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
 import { thesisAPI } from "../services/api"
 import Modal from "../components/Modal"
-import ReviewerAssessment from "../components/ReviewerAssessment"
+import ReviewerReviewAssessment from "../components/ReviewerReviewAssessment"
 import SignedReviewViewer from "../components/SignedReviewViewer"
 
 const ReviewerDashboard = () => {
-  const { user, logout } = useAuth()
+  const { user, logout, refreshUser } = useAuth()
   const navigate = useNavigate()
-  const [assignedStudents, setAssignedStudents] = useState([])
-  const [completedStudents, setCompletedStudents] = useState([])
-  const [filteredStudents, setFilteredStudents] = useState([])
-  const [selectedStudent, setSelectedStudent] = useState(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [assignedTheses, setAssignedTheses] = useState([])
+  const [completedReviews, setCompletedReviews] = useState([])
   const [activeTab, setActiveTab] = useState("assigned")
   const [isLoading, setIsLoading] = useState(true)
-  const [reviewMode, setReviewMode] = useState("new")
   const [downloadingId, setDownloadingId] = useState(null)
-  const [filterOption, setFilterOption] = useState("all")
-  const [sortOption, setSortOption] = useState("newest")
-  const { toast, showToast, hideToast } = useToast()
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [selectedThesis, setSelectedThesis] = useState(null)
   const [showSignedReview, setShowSignedReview] = useState(false)
-  const [selectedThesisForSignedReview, setSelectedThesisForSignedReview] = useState(null)
+  const { toast, showToast, hideToast } = useToast()
 
   const fetchedRef = useRef(false)
-  const isFetchingRef = useRef(false)
 
-  const fetchStudents = useCallback(async () => {
-    // Предотвращаем одновременные запросы
-    if (isFetchingRef.current) {
-      return
-    }
+  const fetchTheses = useCallback(async () => {
+    if (!user || user.role !== "reviewer") return
 
     try {
-      isFetchingRef.current = true
       setIsLoading(true)
 
       const [assigned, completed] = await Promise.allSettled([
@@ -60,106 +48,58 @@ const ReviewerDashboard = () => {
       const assignedData = assigned.status === "fulfilled" ? assigned.value : []
       const completedData = completed.status === "fulfilled" ? completed.value : []
 
-      console.log("Assigned theses:", assignedData)
-      console.log("Completed reviews:", completedData)
-
-      const allTheses = [...assignedData, ...completedData]
-
-      const uniqueTheses = allTheses.filter(
-        (thesis, index, self) => index === self.findIndex((t) => t.id === thesis.id),
-      )
-
-      const validAssigned = []
-      const validCompleted = []
-
-      uniqueTheses
-        .filter((thesis) => thesis && thesis.student && thesis.student.fullName)
-        .forEach((thesis) => {
-          const studentData = {
-            ...thesis.student,
-            thesis: thesis,
-            thesisId: thesis.id,
-            thesisTitle: thesis.title || "Untitled Thesis",
-            submissionDate: thesis.submissionDate,
-            status: thesis.status,
-            finalGrade: thesis.finalGrade,
-            hasUploaded: !!thesis.fileUrl,
-            hasSignedReview: thesis.hasSignedReview || false,
-          }
-
-          if (thesis.finalGrade || thesis.status === "evaluated") {
-            validCompleted.push(studentData)
-          } else {
-            validAssigned.push(studentData)
-          }
-        })
-
-      setAssignedStudents(validAssigned)
-      setCompletedStudents(validCompleted)
+      setAssignedTheses(Array.isArray(assignedData) ? assignedData : [])
+      setCompletedReviews(Array.isArray(completedData) ? completedData : [])
       fetchedRef.current = true
-
-      if (assigned.status === "rejected" || completed.status === "rejected") {
-        showToast("Some data could not be loaded", "warning")
-      }
     } catch (error) {
-      console.error("Error fetching students:", error)
-      showToast("Failed to fetch students", "error")
+      console.error("Error fetching theses:", error)
+      showToast("Не удалось загрузить данные", "error")
     } finally {
       setIsLoading(false)
-      isFetchingRef.current = false
     }
-  }, [])
+  }, [user, showToast])
 
   useEffect(() => {
     if (user && user.role === "reviewer" && !fetchedRef.current) {
-      fetchStudents()
+      fetchTheses()
     }
-  }, [user])
+  }, [user, fetchTheses])
 
-  // Filter and sort students
   useEffect(() => {
-    let filtered = [...assignedStudents]
-
-    if (filterOption === "uploaded") {
-      filtered = filtered.filter((student) => student.hasUploaded)
-    } else if (filterOption === "not_uploaded") {
-      filtered = filtered.filter((student) => !student.hasUploaded)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && user && user.role === "reviewer") {
+        refreshUser()
+        fetchTheses()
+      }
     }
-
-    if (sortOption === "newest") {
-      filtered.sort((a, b) => new Date(b.submissionDate || 0) - new Date(a.submissionDate || 0))
-    } else if (sortOption === "oldest") {
-      filtered.sort((a, b) => new Date(a.submissionDate || 0) - new Date(b.submissionDate || 0))
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-
-    setFilteredStudents(filtered)
-  }, [assignedStudents, filterOption, sortOption])
+  }, [user, refreshUser, fetchTheses])
 
   const handleLogout = () => {
     logout()
     navigate("/login", { replace: true })
   }
 
-  const handleStudentClick = (student, mode = "new") => {
-    if (!student.hasUploaded) {
-      showToast("Student hasn't uploaded their thesis yet", "info")
-      return
-    }
-    setSelectedStudent(student)
-    setReviewMode(mode)
-    setIsModalOpen(true)
-  }
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false)
-    setSelectedStudent(null)
-    fetchStudents()
-  }
-
-  const handleDownload = async (thesisId, title) => {
+  const handleDownload = async (thesisId, title, isCheckedFile = false) => {
     try {
       setDownloadingId(thesisId)
-      const blob = await thesisAPI.downloadThesis(thesisId)
+      let blob;
+      if (isCheckedFile) {
+        // Скачиваем проверенный на антиплагиат файл
+        const thesis = assignedTheses.find(t => t.id === thesisId) || completedReviews.find(t => t.id === thesisId);
+        if (thesis?.plagiarismInfo?.checkedFileUrl) {
+          // Прямой запрос к файлу
+          const response = await fetch(`http://localhost:8000${thesis.plagiarismInfo.checkedFileUrl}`);
+          blob = await response.blob();
+        } else {
+          blob = await thesisAPI.downloadThesis(thesisId);
+        }
+      } else {
+        blob = await thesisAPI.downloadThesis(thesisId);
+      }
 
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
@@ -172,79 +112,28 @@ const ReviewerDashboard = () => {
       document.body.removeChild(a)
       window.URL.revokeObjectURL(url)
 
-      showToast("Download completed successfully!", "success")
+      showToast("Загрузка завершена успешно!", "success")
     } catch (error) {
-      showToast("Failed to download thesis", "error")
+      showToast("Не удалось загрузить работу", "error")
     } finally {
       setDownloadingId(null)
     }
   }
 
-  const handleReReview = async (student) => {
-    try {
-      await thesisAPI.reReviewThesis(student.thesisId)
-      showToast("Thesis moved back for re-review", "success")
-      fetchStudents()
-    } catch (error) {
-      showToast("Failed to move thesis for re-review", "error")
-    }
-  }
-
   const handleRefresh = () => {
     fetchedRef.current = false
-    fetchStudents()
+    fetchTheses()
   }
 
-  const getCircleColor = (status, hasUploaded) => {
-    if (!hasUploaded) {
-      return "from-red-900 to-red-700"
-    }
-    switch (status) {
-      case "submitted":
-        return "from-blue-500 to-blue-600"
-      case "assigned":
-      case "under_review":
-        return "from-yellow-500 to-orange-500"
-      case "evaluated":
-        return "from-sky-400 to-green-400"
-      default:
-        return "from-gray-500 to-gray-600"
-    }
+  const handleViewThesis = (thesis) => {
+    setSelectedThesis(thesis)
+    setIsModalOpen(true)
   }
 
-  const getStatusText = (status, hasUploaded) => {
-    if (!hasUploaded) {
-      return "Not submitted"
-    }
-    switch (status) {
-      case "submitted":
-        return "Pending Review"
-      case "assigned":
-        return "Pending Review"
-      case "under_review":
-        return "Under Review"
-      case "evaluated":
-        return "Review Completed"
-      default:
-        return "Unknown"
-    }
-  }
-
-  const getStatusColor = (status, hasUploaded) => {
-    if (!hasUploaded) {
-      return "text-red-400"
-    }
-    switch (status) {
-      case "submitted":
-        return "text-blue-400"
-      case "assigned":
-      case "under_review":
-        return "text-orange-400"
-      case "evaluated":
-        return "text-green-400"
-      default:
-        return "text-gray-400"
-    }
+  const handleCloseModal = () => {
+    setIsModalOpen(false)
+    setSelectedThesis(null)
+    fetchTheses()
   }
 
   const getInitials = (fullName) => {
@@ -257,13 +146,26 @@ const ReviewerDashboard = () => {
       .slice(0, 2)
   }
 
-  const handleViewSignedReview = (student) => {
-    setSelectedThesisForSignedReview(student.thesisId)
-    setShowSignedReview(true)
+  const getStatusBadgeColor = (status) => {
+    switch (status) {
+      case "under_review":
+        return "bg-yellow-100 text-yellow-700 border-yellow-200"
+      case "evaluated":
+        return "bg-green-100 text-green-700 border-green-200"
+      default:
+        return "bg-gray-100 text-gray-700 border-gray-200"
+    }
   }
 
-  const handleSignReview = (student) => {
-    navigate(`/sign/${student.thesisId}`)
+  const getStatusText = (status) => {
+    switch (status) {
+      case "under_review":
+        return "На рассмотрении рецензента"
+      case "evaluated":
+        return "Оценено"
+      default:
+        return status || "Неизвестно"
+    }
   }
 
   if (isLoading && !fetchedRef.current) {
@@ -281,11 +183,12 @@ const ReviewerDashboard = () => {
     <div className="min-h-screen bg-white">
       <Toast {...toast} onClose={hideToast} />
 
+      {/* Header */}
       <div className="bg-white border-b border-gray-200 p-4 shadow-sm">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-8 h-8 bg-gradient-to-br from-[#372579] to-purple-600 rounded-full flex items-center justify-center">
-              <FiBook className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
+              <FiUsers className="w-4 h-4 text-white" />
             </div>
             <button
               onClick={() => navigate("/profile")}
@@ -298,14 +201,12 @@ const ReviewerDashboard = () => {
                     .map((name) => name[0])
                     .join("")
                     .toUpperCase()
-                    .slice(0, 2) || "П"}
+                    .slice(0, 2) || "Р"}
                 </span>
               </div>
               <div className="text-left">
                 <p className="text-gray-900 font-medium text-sm">{user?.fullName}</p>
-                <p className="text-gray-500 text-xs capitalize">
-                  {user?.role === "reviewer" ? "Рецензент" : user?.role}
-                </p>
+                <p className="text-gray-500 text-xs">Рецензент</p>
               </div>
             </button>
           </div>
@@ -335,7 +236,7 @@ const ReviewerDashboard = () => {
               <span className="text-white font-bold text-xl">Р</span>
             </div>
             <h1 className="text-2xl font-semibold text-gray-900 mb-2">Панель рецензента</h1>
-            <p className="text-gray-600">Рецензирование и оценка назначенных студенческих работ</p>
+            <p className="text-gray-600">Рецензирование дипломных работ и формирование отзывов</p>
           </div>
 
           <div className="flex gap-4 mb-6">
@@ -345,7 +246,7 @@ const ReviewerDashboard = () => {
                 activeTab === "assigned" ? "bg-[#372579] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
-              Назначенные студенты ({assignedStudents.length})
+              На рецензировании ({assignedTheses.length})
             </button>
             <button
               onClick={() => setActiveTab("completed")}
@@ -353,258 +254,216 @@ const ReviewerDashboard = () => {
                 activeTab === "completed" ? "bg-[#372579] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
-              Завершенные рецензии ({completedStudents.length})
+              Завершённые ({completedReviews.length})
             </button>
           </div>
 
+          {/* Assigned Theses Tab */}
           {activeTab === "assigned" && (
-            <div className="flex gap-4 mb-6 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
-              <div className="flex items-center gap-2">
-                <FiFilter className="w-4 h-4 text-gray-600" />
-                <span className="text-gray-700 text-sm">Фильтр:</span>
-                <select
-                  value={filterOption}
-                  onChange={(e) => setFilterOption(e.target.value)}
-                  className="bg-white border border-gray-300 rounded px-3 py-1 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#372579]"
-                >
-                  <option value="all">Все студенты</option>
-                  <option value="uploaded">Только загруженные</option>
-                  <option value="not_uploaded">Не загружено</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <FiCalendar className="w-4 h-4 text-gray-600" />
-                <span className="text-gray-700 text-sm">Сортировка:</span>
-                <select
-                  value={sortOption}
-                  onChange={(e) => setSortOption(e.target.value)}
-                  className="bg-white border border-gray-300 rounded px-3 py-1 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#372579]"
-                >
-                  <option value="newest">Новые отправки</option>
-                  <option value="oldest">Старые отправки</option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-4">
-            {activeTab === "assigned" ? (
-              filteredStudents.length > 0 ? (
-                filteredStudents.map((student) => (
+            <div className="space-y-4">
+              {assignedTheses.length > 0 ? (
+                assignedTheses.map((thesis) => (
                   <div
-                    key={student.thesisId}
+                    key={thesis.id}
                     className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <div
-                            className={`w-10 h-10 bg-gradient-to-br ${getCircleColor(
-                              student.status,
-                              student.hasUploaded,
-                            )} rounded-full flex items-center justify-center`}
-                          >
-                            <span className="text-white font-semibold text-sm">{getInitials(student.fullName)}</span>
+                          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
+                            <span className="text-white font-semibold text-sm">
+                              {getInitials(thesis.student?.fullName)}
+                            </span>
                           </div>
                           <div>
-                            <h3 className="text-lg font-semibold text-gray-900">{student.fullName}</h3>
-                            <p className="text-gray-600 text-sm">{student.email}</p>
+                            <h3 className="text-lg font-semibold text-gray-900">{thesis.student?.fullName}</h3>
+                            <p className="text-gray-600 text-sm">{thesis.student?.email}</p>
                           </div>
                         </div>
-                        <div className="ml-13">
-                          <p className="text-gray-900 font-medium mb-1">
-                            {student.thesisTitle || "Название работы пока нет"}
+
+                        <div className="ml-13 space-y-2">
+                          <p className="text-gray-900 font-medium">{thesis.title || "Название работы не указано"}</p>
+                          <p className="text-gray-600 text-sm">
+                            {thesis.student?.faculty} - {thesis.student?.group}
                           </p>
-                          <p className="text-gray-600 text-sm mb-2">{student.institution}</p>
-                          <div className="flex items-center gap-4 text-sm">
-                            {student.hasUploaded && student.submissionDate ? (
-                              <div className="flex items-center gap-2 text-gray-600">
+
+                          <div className="flex flex-wrap items-center gap-3">
+                            {thesis.submissionDate && (
+                              <div className="flex items-center gap-2 text-gray-600 text-sm">
                                 <FiClock className="w-4 h-4" />
-                                <span>Отправлено {new Date(student.submissionDate).toLocaleDateString("ru-RU")}</span>
+                                <span>Отправлено на рецензирование: {new Date(thesis.submissionDate).toLocaleDateString("ru-RU")}</span>
                               </div>
-                            ) : null}
-                            <div
-                              className={`flex items-center gap-2 ${getStatusColor(
-                                student.status,
-                                student.hasUploaded,
+                            )}
+                            <span
+                              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusBadgeColor(
+                                thesis.status,
                               )}`}
                             >
-                              <FiFile className="w-4 h-4" />
-                              <span className="font-medium">{getStatusText(student.status, student.hasUploaded)}</span>
-                            </div>
+                              {getStatusText(thesis.status)}
+                            </span>
+                            {thesis.plagiarismInfo?.similarityScore !== undefined && (
+                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${thesis.plagiarismInfo.similarityScore <= 15 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                Оригинальность: {Math.round((1 - thesis.plagiarismInfo.similarityScore) * 100)}%
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        {student.hasUploaded && (
-                          <button
-                            onClick={() => handleDownload(student.thesisId, student.thesisTitle)}
-                            disabled={downloadingId === student.thesisId}
-                            className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm disabled:opacity-50"
-                          >
-                            {downloadingId === student.thesisId ? (
-                              <div className="w-4 h-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <FiDownload className="w-4 h-4" />
-                            )}
-                            Скачать
-                          </button>
-                        )}
+
+                      <div className="flex gap-2 ml-4">
                         <button
-                          onClick={() => handleStudentClick(student, "new")}
-                          disabled={!student.hasUploaded}
-                          className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => handleDownload(thesis.id, thesis.title, true)}
+                          disabled={downloadingId === thesis.id}
+                          className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm disabled:opacity-50"
                         >
-                          <FiEye className="w-4 h-4" />
-                          {student.hasUploaded ? "Рецензировать" : "Ожидание загрузки"}
+                          {downloadingId === thesis.id ? (
+                            <div className="w-4 h-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <FiDownload className="w-4 h-4" />
+                          )}
+                          Скачать работу
+                        </button>
+                        <button
+                          onClick={() => handleViewThesis(thesis)}
+                          className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium"
+                        >
+                          <FiEdit className="w-4 h-4" />
+                          Рецензировать
                         </button>
                       </div>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="text-center py-12">
-                  <FiUser className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-600 mb-2">Студенты не найдены</h3>
-                  <p className="text-gray-500">Нет студентов, соответствующих текущим критериям фильтра.</p>
+                <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+                  <FiMessageSquare className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-600 mb-2">Нет работ для рецензирования</h3>
+                  <p className="text-gray-500">Все назначенные работы уже оценены или ещё не переданы на рецензирование.</p>
                 </div>
-              )
-            ) : completedStudents.length > 0 ? (
-              completedStudents.map((student) => (
-                <div key={student.thesisId} className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div
-                          className={`w-10 h-10 bg-gradient-to-br ${getCircleColor(
-                            student.status,
-                            student.hasUploaded,
-                          )} rounded-full flex items-center justify-center`}
-                        >
-                          <span className="text-white font-semibold text-sm">{getInitials(student.fullName)}</span>
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900">{student.fullName}</h3>
-                          <p className="text-gray-600 text-sm">{student.email}</p>
-                        </div>
-                      </div>
-                      <div className="ml-13">
-                        <p className="text-gray-900 font-medium mb-1">{student.thesisTitle}</p>
-                        <p className="text-gray-600 text-sm mb-2">{student.institution}</p>
-                        <div className="flex items-center gap-4 text-sm">
-                          {student.submissionDate && (
-                            <div className="flex items-center gap-2 text-gray-600">
-                              <FiClock className="w-4 h-4" />
-                              <span>Отправлено {new Date(student.submissionDate).toLocaleDateString("ru-RU")}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 text-green-600">
-                            <FiCheck className="w-4 h-4" />
-                            <span className="font-medium">Рецензия завершена</span>
-                          </div>
-                        </div>
-                        {student.finalGrade && (
-                          <div className="mt-3">
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-50 text-green-700 border border-green-200">
-                              Оценка: {student.finalGrade}
+              )}
+            </div>
+          )}
+
+          {/* Completed Reviews Tab */}
+          {activeTab === "completed" && (
+            <div className="space-y-4">
+              {completedReviews.length > 0 ? (
+                completedReviews.map((review) => (
+                  <div
+                    key={review.id}
+                    className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
+                            <span className="text-white font-semibold text-sm">
+                              {getInitials(review.student?.fullName)}
                             </span>
                           </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900">{review.student?.fullName}</h3>
+                            <p className="text-gray-600 text-sm">{review.student?.email}</p>
+                          </div>
+                        </div>
+
+                        <div className="ml-13 space-y-2">
+                          <p className="text-gray-900 font-medium">{review.title}</p>
+                          <p className="text-gray-600 text-sm">
+                            {review.student?.faculty} - {review.student?.group}
+                          </p>
+
+                          <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-2 text-gray-600 text-sm">
+                              <FiClock className="w-4 h-4" />
+                              <span>Завершено: {new Date(review.signedDate || review.updatedAt).toLocaleDateString("ru-RU")}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-green-600">
+                              <FiCheck className="w-4 h-4" />
+                              <span className="text-sm font-medium">Оценено</span>
+                            </div>
+                            {review.finalGrade && (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200">
+                                Оценка: {review.finalGrade}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 ml-4">
+                        <button
+                          onClick={() => handleDownload(review.id, review.title)}
+                          disabled={downloadingId === review.id}
+                          className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm disabled:opacity-50"
+                        >
+                          {downloadingId === review.id ? (
+                            <div className="w-4 h-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <FiDownload className="w-4 h-4" />
+                          )}
+                          Скачать работу
+                        </button>
+                        {review.status === "evaluated" && (
+                          <button
+                            onClick={() => {
+                              setSelectedThesis(review)
+                              setShowSignedReview(true)
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                          >
+                            <FiEye className="w-4 h-4" />
+                            Подписанная рецензия
+                          </button>
                         )}
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleDownload(student.thesisId, student.thesisTitle)}
-                        disabled={downloadingId === student.thesisId}
-                        className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm disabled:opacity-50"
-                      >
-                        {downloadingId === student.thesisId ? (
-                          <div className="w-4 h-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <FiDownload className="w-4 h-4" />
-                        )}
-                        Скачать работу
-                      </button>
-                      <button
-                        onClick={() => handleStudentClick(student, "view")}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium"
-                      >
-                        <FiEye className="w-4 h-4" />
-                        Просмотр рецензии
-                      </button>
-                      {student.hasSignedReview || student.status === "evaluated" ? (
-                        <button
-                          onClick={() => handleViewSignedReview(student)}
-                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
-                        >
-                          <FiEye className="w-4 h-4" />
-                          Подписанная рецензия
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleSignReview(student)}
-                          className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
-                        >
-                          <FiEdit className="w-4 h-4" />
-                          Подписать рецензию
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleReReview(student)}
-                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium"
-                      >
-                        <FiRefreshCw className="w-4 h-4" />
-                        Повторная рецензия
-                      </button>
-                    </div>
                   </div>
+                ))
+              ) : (
+                <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+                  <FiCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-600 mb-2">Нет завершённых рецензий</h3>
+                  <p className="text-gray-500">Вы ещё не завершили ни одной рецензии.</p>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-12">
-                <FiCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-600 mb-2">Нет завершенных рецензий</h3>
-                <p className="text-gray-500">Вы еще не завершили ни одной рецензии работы.</p>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Review Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
-        title={`${reviewMode === "edit" ? "Редактировать рецензию" : reviewMode === "view" ? "Просмотр рецензии" : "Рецензировать работу"} - ${selectedStudent?.fullName}`}
+        title={`Рецензирование работы - ${selectedThesis?.student?.fullName}`}
         size="full"
       >
-        {selectedStudent && (
-          <ReviewerAssessment
-            thesisId={selectedStudent.thesisId}
-            student={selectedStudent}
-            mode={reviewMode}
-            onClose={handleCloseModal}
-          />
+        {selectedThesis && (
+          <ReviewerReviewAssessment thesisId={selectedThesis.id} thesis={selectedThesis} onClose={handleCloseModal} />
         )}
       </Modal>
-      <Modal
-        isOpen={showSignedReview}
-        onClose={() => {
-          setShowSignedReview(false)
-          setSelectedThesisForSignedReview(null)
-        }}
-        title="Подписанная рецензия"
-        size="full"
-      >
-        {selectedThesisForSignedReview && (
+
+      {/* Signed Review Viewer Modal */}
+      {showSignedReview && selectedThesis && (
+        <Modal
+          isOpen={showSignedReview}
+          onClose={() => {
+            setShowSignedReview(false)
+            setSelectedThesis(null)
+          }}
+          title="Подписанная рецензия"
+          size="full"
+        >
           <SignedReviewViewer
-            thesisId={selectedThesisForSignedReview}
+            thesisId={selectedThesis.id}
             onClose={() => {
               setShowSignedReview(false)
-              setSelectedThesisForSignedReview(null)
+              setSelectedThesis(null)
             }}
           />
-        )}
-      </Modal>
+        </Modal>
+      )}
     </div>
   )
 }

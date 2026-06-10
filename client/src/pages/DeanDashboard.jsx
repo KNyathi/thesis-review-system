@@ -1,186 +1,145 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import {
-  FiClock,
-  FiCheck,
-  FiDownload,
-  FiLogOut,
-  FiFilter,
-  FiCalendar,
-  FiRefreshCw,
-  FiEdit,
-  FiUsers,
-} from "react-icons/fi"
+import { FiClock, FiCheck, FiDownload, FiLogOut, FiRefreshCw, FiUsers, FiBook, FiUpload, FiAward } from "react-icons/fi"
 import { Toast, useToast } from "../components/Toast"
 import { useAuth } from "../context/AuthContext"
 import { thesisAPI } from "../services/api"
+import Modal from "../components/Modal"
+import SignedReviewViewer from "../components/SignedReviewViewer"
 
 const DeanDashboard = () => {
-  const { user, logout } = useAuth()
+  const { user, logout, refreshUser } = useAuth()
   const navigate = useNavigate()
-  const [allTheses, setAllTheses] = useState([])
-  const [readyForSigning, setReadyForSigning] = useState([])
-  const [signedTheses, setSignedTheses] = useState([])
-  const [filteredTheses, setFilteredTheses] = useState([])
-  const [activeTab, setActiveTab] = useState("all")
+  const [thesesForSigning, setThesesForSigning] = useState([])
+  const [completedTheses, setCompletedTheses] = useState([])
+  const [activeTab, setActiveTab] = useState("forSigning")
   const [isLoading, setIsLoading] = useState(true)
   const [downloadingId, setDownloadingId] = useState(null)
-  const [filterOption, setFilterOption] = useState("all")
-  const [sortOption, setSortOption] = useState("newest")
+  const [showSignedReview, setShowSignedReview] = useState(false)
+  const [selectedThesis, setSelectedThesis] = useState(null)
   const { toast, showToast, hideToast } = useToast()
+  const fileInputRef = useRef(null)
+  const [currentThesis, setCurrentThesis] = useState(null)
 
   const fetchedRef = useRef(false)
-  const isFetchingRef = useRef(false)
 
-  const fetchTheses = useCallback(async () => {
-    if (isFetchingRef.current) return
+  const fetchData = useCallback(async () => {
+    if (!user || user.role !== "dean") return
+    if (fetchedRef.current) return
 
     try {
-      isFetchingRef.current = true
+      fetchedRef.current = true
       setIsLoading(true)
+      console.log("Fetching Dean data...")
 
-      const [all, ready, signed] = await Promise.allSettled([
-        thesisAPI.getDeanTheses(),
-        thesisAPI.getDeanThesesReadyForSigning(),
-        thesisAPI.getDeanSignedTheses(),
+      const [forSigning, completed] = await Promise.all([
+        thesisAPI.getDeanThesesForSigning(),
+        thesisAPI.getDeanCompletedTheses(),
       ])
 
-      const allData = all.status === "fulfilled" ? all.value : []
-      const readyData = ready.status === "fulfilled" ? ready.value : []
-      const signedData = signed.status === "fulfilled" ? signed.value : []
+      console.log("Theses for signing:", forSigning)
+      console.log("Completed theses:", completed)
 
-      setAllTheses(allData)
-      setReadyForSigning(readyData)
-      setSignedTheses(signedData)
-      fetchedRef.current = true
-
-      if (all.status === "rejected" || ready.status === "rejected" || signed.status === "rejected") {
-        showToast("Не удалось загрузить некоторые данные", "warning")
-      }
+      setThesesForSigning(Array.isArray(forSigning) ? forSigning : [])
+      setCompletedTheses(Array.isArray(completed) ? completed : [])
     } catch (error) {
-      console.error("Error fetching theses:", error)
+      console.error("Error fetching data:", error)
       showToast("Не удалось загрузить данные", "error")
+      setThesesForSigning([])
+      setCompletedTheses([])
     } finally {
       setIsLoading(false)
-      isFetchingRef.current = false
     }
-  }, [showToast])
+  }, [user, showToast])
 
   useEffect(() => {
     if (user && user.role === "dean" && !fetchedRef.current) {
-      fetchTheses()
+      fetchData()
     }
-  }, [user])
-
-  // Filter and sort theses
-  useEffect(() => {
-    let filtered = [...allTheses]
-
-    if (filterOption === "evaluated") {
-      filtered = filtered.filter((thesis) => thesis.status === "evaluated")
-    } else if (filterOption === "under_review") {
-      filtered = filtered.filter((thesis) => thesis.status === "under_review")
-    } else if (filterOption === "submitted") {
-      filtered = filtered.filter((thesis) => thesis.status === "submitted")
-    }
-
-    if (sortOption === "newest") {
-      filtered.sort((a, b) => new Date(b.submissionDate || 0) - new Date(a.submissionDate || 0))
-    } else if (sortOption === "oldest") {
-      filtered.sort((a, b) => new Date(a.submissionDate || 0) - new Date(b.submissionDate || 0))
-    }
-
-    setFilteredTheses(filtered)
-  }, [allTheses, filterOption, sortOption])
+  }, [user, fetchData])
 
   const handleLogout = () => {
     logout()
     navigate("/login", { replace: true })
   }
 
+  const handleRefresh = () => {
+    fetchedRef.current = false
+    setThesesForSigning([])
+    setCompletedTheses([])
+    fetchData()
+  }
+
   const handleDownload = async (thesisId, title) => {
     try {
       setDownloadingId(thesisId)
       const blob = await thesisAPI.downloadThesis(thesisId)
-
-      const url = window.URL.createObjectURL(blob)
+      const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
       a.download = `${title.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.pdf`
-      a.style.display = "none"
-
-      document.body.appendChild(a)
       a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-
-      showToast("Download completed successfully!", "success")
+      URL.revokeObjectURL(url)
+      showToast("Загрузка завершена!", "success")
     } catch (error) {
-      showToast("Failed to download thesis", "error")
+      showToast("Не удалось загрузить работу", "error")
     } finally {
       setDownloadingId(null)
     }
   }
 
-  const handleRefresh = () => {
-    fetchedRef.current = false
-    fetchTheses()
-  }
-
-  const getCircleColor = (status) => {
-    switch (status) {
-      case "submitted":
-        return "from-blue-500 to-blue-600"
-      case "under_review":
-        return "from-yellow-500 to-orange-500"
-      case "evaluated":
-        return "from-green-500 to-green-600"
-      default:
-        return "from-gray-500 to-gray-600"
+  const handleDownloadForSigning = async (thesis) => {
+    try {
+      const blob = await thesisAPI.getDeanUnsignedReview(thesis.id)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `dean_review_${thesis.id}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      setCurrentThesis(thesis)
+      showToast("Файл загружен. Подпишите его в Chrome и загрузите обратно.", "success")
+    } catch (error) {
+      console.error(error)
+      showToast("Ошибка загрузки файла", "error")
     }
   }
 
-  const getStatusText = (status) => {
-    switch (status) {
-      case "submitted":
-        return "Submitted"
-      case "under_review":
-        return "Under Review"
-      case "evaluated":
-        return "Evaluated"
-      default:
-        return "Unknown"
+  const handleUploadSignedReview = async () => {
+    const file = fileInputRef.current?.files[0]
+    if (!file) return
+    
+    try {
+      await thesisAPI.uploadDeanSignedReview(currentThesis.id, file)
+      showToast("Подписанная рецензия загружена! Работа завершена.", "success")
+      setCurrentThesis(null)
+      fileInputRef.current.value = ""
+      fetchedRef.current = false
+      fetchData()
+    } catch (error) {
+      console.error(error)
+      showToast(error.response?.data?.error || "Ошибка загрузки", "error")
     }
   }
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "submitted":
-        return "text-blue-400"
-      case "under_review":
-        return "text-orange-400"
-      case "evaluated":
-        return "text-green-400"
-      default:
-        return "text-gray-400"
+  const handleApproveDefense = async (thesisId) => {
+    try {
+      await thesisAPI.approveDeanDefense(thesisId)
+      showToast("Защита утверждена! Работа завершена.", "success")
+      fetchedRef.current = false
+      fetchData()
+    } catch (error) {
+      console.error(error)
+      showToast(error.response?.data?.error || "Ошибка утверждения", "error")
     }
   }
 
   const getInitials = (fullName) => {
     if (!fullName || typeof fullName !== "string") return "?"
-    return fullName
-      .split(" ")
-      .map((name) => name[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2)
+    return fullName.split(" ").map((name) => name[0]).join("").toUpperCase().slice(0, 2)
   }
 
-  const handleSignReview = (thesisId) => {
-    navigate(`/sign-dean/${thesisId}`)
-  }
-
-  if (isLoading && !fetchedRef.current) {
+  if (isLoading && thesesForSigning.length === 0 && completedTheses.length === 0) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
@@ -198,43 +157,25 @@ const DeanDashboard = () => {
       <div className="bg-white border-b border-gray-200 p-4 shadow-sm">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-8 h-8 bg-gradient-to-br from-[#372579] to-purple-600 rounded-full flex items-center justify-center">
+            <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-teal-600 rounded-full flex items-center justify-center">
               <FiUsers className="w-4 h-4 text-white" />
             </div>
-            <button
-              onClick={() => navigate("/profile")}
-              className="flex items-center gap-3 hover:bg-gray-50 rounded-lg p-2 transition-colors"
-            >
+            <button onClick={() => navigate("/profile")} className="flex items-center gap-3 hover:bg-gray-50 rounded-lg p-2">
               <div className="w-8 h-8 bg-gradient-to-br from-[#372579] to-purple-600 rounded-full flex items-center justify-center">
-                <span className="text-white font-semibold text-xs">
-                  {user?.fullName
-                    ?.split(" ")
-                    .map((name) => name[0])
-                    .join("")
-                    .toUpperCase()
-                    .slice(0, 2) || "Д"}
-                </span>
+                <span className="text-white font-semibold text-xs">{getInitials(user?.fullName)}</span>
               </div>
               <div className="text-left">
                 <p className="text-gray-900 font-medium text-sm">{user?.fullName}</p>
-                <p className="text-gray-500 text-xs capitalize">{user?.role === "dean" ? "Декан" : user?.role}</p>
+                <p className="text-gray-500 text-xs">Декан</p>
               </div>
             </button>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleRefresh}
-              className="flex items-center gap-2 px-3 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm"
-            >
-              <FiRefreshCw className="w-4 h-4" />
-              Обновить
+            <button onClick={handleRefresh} className="flex items-center gap-2 px-3 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f]">
+              <FiRefreshCw className="w-4 h-4" /> Обновить
             </button>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm"
-            >
-              <FiLogOut className="w-4 h-4" />
-              Выйти
+            <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+              <FiLogOut className="w-4 h-4" /> Выйти
             </button>
           </div>
         </div>
@@ -247,84 +188,90 @@ const DeanDashboard = () => {
               <span className="text-white font-bold text-xl">Д</span>
             </div>
             <h1 className="text-2xl font-semibold text-gray-900 mb-2">Панель декана</h1>
-            <p className="text-gray-600">Управление и утверждение дипломных работ факультета</p>
+            <p className="text-gray-600">Финальное подписание рецензий и утверждение защиты</p>
           </div>
 
           <div className="flex gap-4 mb-6">
-            <button
-              onClick={() => setActiveTab("all")}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === "all" ? "bg-[#372579] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              Все работы ({allTheses.length})
+            <button onClick={() => setActiveTab("forSigning")} className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === "forSigning" ? "bg-[#372579] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+              На подпись ({thesesForSigning.length})
             </button>
-            <button
-              onClick={() => setActiveTab("ready")}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === "ready" ? "bg-[#372579] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              Готовы к подписи ({readyForSigning.length})
-            </button>
-            <button
-              onClick={() => setActiveTab("signed")}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                activeTab === "signed" ? "bg-[#372579] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
-            >
-              Подписанные ({signedTheses.length})
+            <button onClick={() => setActiveTab("completed")} className={`px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === "completed" ? "bg-[#372579] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+              Завершённые ({completedTheses.length})
             </button>
           </div>
 
-          {activeTab === "all" && (
-            <div className="flex gap-4 mb-6 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
-              <div className="flex items-center gap-2">
-                <FiFilter className="w-4 h-4 text-gray-600" />
-                <span className="text-gray-700 text-sm">Фильтр:</span>
-                <select
-                  value={filterOption}
-                  onChange={(e) => setFilterOption(e.target.value)}
-                  className="bg-white border border-gray-300 rounded px-3 py-1 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#372579]"
-                >
-                  <option value="all">Все работы</option>
-                  <option value="submitted">Отправленные</option>
-                  <option value="under_review">На рецензии</option>
-                  <option value="evaluated">Оценённые</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <FiCalendar className="w-4 h-4 text-gray-600" />
-                <span className="text-gray-700 text-sm">Сортировка:</span>
-                <select
-                  value={sortOption}
-                  onChange={(e) => setSortOption(e.target.value)}
-                  className="bg-white border border-gray-300 rounded px-3 py-1 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#372579]"
-                >
-                  <option value="newest">Новые отправки</option>
-                  <option value="oldest">Старые отправки</option>
-                </select>
-              </div>
+          {activeTab === "forSigning" && (
+            <div className="space-y-4">
+              {thesesForSigning.length > 0 ? (
+                thesesForSigning.map((thesis) => (
+                  <div key={thesis.id} className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-teal-600 rounded-full flex items-center justify-center">
+                            <span className="text-white font-semibold text-sm">{getInitials(thesis.student?.fullName)}</span>
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900">{thesis.student?.fullName}</h3>
+                            <p className="text-gray-600 text-sm">{thesis.student?.email}</p>
+                            <p className="text-gray-500 text-xs">{thesis.student?.faculty} - {thesis.student?.group}</p>
+                          </div>
+                        </div>
+                        <div className="ml-13">
+                          <p className="text-gray-900 font-medium">{thesis.title}</p>
+                          {thesis.finalGrade && (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 mt-2">
+                              Оценка: {thesis.finalGrade}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        <button onClick={() => handleDownload(thesis.id, thesis.title)} className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
+                          <FiDownload className="w-4 h-4" /> Скачать работу
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Блок подписания */}
+                    {currentThesis?.id === thesis.id ? (
+                      <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-sm text-blue-700 mb-3">Загрузите подписанную рецензию:</p>
+                        <input ref={fileInputRef} type="file" accept="application/pdf" className="mb-3" />
+                        <div className="flex gap-2">
+                          <button onClick={() => setCurrentThesis(null)} className="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-sm">Отмена</button>
+                          <button onClick={handleUploadSignedReview} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm">Загрузить</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-3 mt-4">
+                        <button onClick={() => handleDownloadForSigning(thesis)} className="px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] text-sm font-medium">
+                          <FiBook className="w-4 h-4 inline mr-2" /> Подписать рецензию
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+                  <FiCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-600 mb-2">Нет работ для подписания</h3>
+                  <p className="text-gray-500">Работы, ожидающие вашей подписи, появятся здесь.</p>
+                </div>
+              )}
             </div>
           )}
 
-          <div className="space-y-4">
-            {activeTab === "all" ? (
-              filteredTheses.length > 0 ? (
-                filteredTheses.map((thesis) => (
-                  <div
-                    key={thesis.id}
-                    className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
-                  >
+          {activeTab === "completed" && (
+            <div className="space-y-4">
+              {completedTheses.length > 0 ? (
+                completedTheses.map((thesis) => (
+                  <div key={thesis.id} className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <div
-                            className={`w-10 h-10 bg-gradient-to-br ${getCircleColor(thesis.status)} rounded-full flex items-center justify-center`}
-                          >
-                            <span className="text-white font-semibold text-sm">
-                              {getInitials(thesis.student?.fullName)}
-                            </span>
+                          <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
+                            <span className="text-white font-semibold text-sm">{getInitials(thesis.student?.fullName)}</span>
                           </div>
                           <div>
                             <h3 className="text-lg font-semibold text-gray-900">{thesis.student?.fullName}</h3>
@@ -332,201 +279,28 @@ const DeanDashboard = () => {
                           </div>
                         </div>
                         <div className="ml-13">
-                          <p className="text-gray-900 font-medium mb-1">{thesis.title || "Название работы пока нет"}</p>
-                          <p className="text-gray-600 text-sm mb-2">
-                            {thesis.student?.faculty} - {thesis.student?.group}
-                          </p>
-                          <div className="flex items-center gap-4 text-sm">
-                            {thesis.submissionDate && (
-                              <div className="flex items-center gap-2 text-gray-600">
-                                <FiClock className="w-4 h-4" />
-                                <span>Отправлено {new Date(thesis.submissionDate).toLocaleDateString("ru-RU")}</span>
-                              </div>
-                            )}
-                            <div className={`flex items-center gap-2 ${getStatusColor(thesis.status)}`}>
-                              <FiClock className="w-4 h-4" />
-                              <span className="font-medium">{getStatusText(thesis.status)}</span>
-                            </div>
-                            {thesis.finalGrade && (
-                              <div className="flex items-center gap-2 text-green-600">
-                                <FiCheck className="w-4 h-4" />
-                                <span className="font-medium">Оценка: {thesis.finalGrade}</span>
-                              </div>
-                            )}
+                          <p className="text-gray-900 font-medium">{thesis.title}</p>
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className="text-xs text-green-600">✓ Работа завершена</span>
+                            {thesis.finalGrade && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Оценка: {thesis.finalGrade}</span>}
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleDownload(thesis.id, thesis.title)}
-                          disabled={downloadingId === thesis.id}
-                          className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm disabled:opacity-50"
-                        >
-                          {downloadingId === thesis.id ? (
-                            <div className="w-4 h-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <FiDownload className="w-4 h-4" />
-                          )}
-                          Скачать
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-12">
-                  <FiClock className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-600 mb-2">Р��боты не найдены</h3>
-                  <p className="text-gray-500">Нет работ, соответствующих текущим критериям фильтра.</p>
-                </div>
-              )
-            ) : activeTab === "ready" ? (
-              readyForSigning.length > 0 ? (
-                readyForSigning.map((thesis) => (
-                  <div
-                    key={thesis.id}
-                    className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center">
-                            <span className="text-white font-semibold text-sm">
-                              {getInitials(thesis.student?.fullName)}
-                            </span>
-                          </div>
-                          <div>
-                            <h3 className="text-lg font-semibold text-gray-900">{thesis.student?.fullName}</h3>
-                            <p className="text-gray-600 text-sm">{thesis.student?.email}</p>
-                          </div>
-                        </div>
-                        <div className="ml-13">
-                          <p className="text-gray-900 font-medium mb-1">{thesis.title}</p>
-                          <p className="text-gray-600 text-sm mb-2">
-                            {thesis.student?.faculty} - {thesis.student?.group}
-                          </p>
-                          <div className="flex items-center gap-4 text-sm">
-                            {thesis.submissionDate && (
-                              <div className="flex items-center gap-2 text-gray-600">
-                                <FiClock className="w-4 h-4" />
-                                <span>Отправлено {new Date(thesis.submissionDate).toLocaleDateString("ru-RU")}</span>
-                              </div>
-                            )}
-                            <div className="flex items-center gap-2 text-orange-600">
-                              <FiClock className="w-4 h-4" />
-                              <span className="font-medium">Готово к подписи декана</span>
-                            </div>
-                            {thesis.finalGrade && (
-                              <div className="flex items-center gap-2 text-green-600">
-                                <FiCheck className="w-4 h-4" />
-                                <span className="font-medium">Оценка: {thesis.finalGrade}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleDownload(thesis.id, thesis.title)}
-                          disabled={downloadingId === thesis.id}
-                          className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm disabled:opacity-50"
-                        >
-                          {downloadingId === thesis.id ? (
-                            <div className="w-4 h-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <FiDownload className="w-4 h-4" />
-                          )}
-                          Скачать работу
-                        </button>
-                        <button
-                          onClick={() => handleSignReview(thesis.id)}
-                          className="flex items-center gap-2 px-4 py-2 bg-[#372579] text-white rounded-lg hover:bg-[#2a1d5f] transition-colors text-sm font-medium"
-                        >
-                          <FiEdit className="w-4 h-4" />
-                          Подписать рецензии
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-12">
-                  <FiEdit className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-600 mb-2">Нет работ для подписи</h3>
-                  <p className="text-gray-500">
-                    Нет работ, готовых к подписи декана. Работы появятся здесь после подписи заведующим кафедрой.
-                  </p>
-                </div>
-              )
-            ) : signedTheses.length > 0 ? (
-              signedTheses.map((thesis) => (
-                <div
-                  key={thesis.id}
-                  className="bg-white rounded-lg p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
-                          <span className="text-white font-semibold text-sm">
-                            {getInitials(thesis.student?.fullName)}
-                          </span>
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900">{thesis.student?.fullName}</h3>
-                          <p className="text-gray-600 text-sm">{thesis.student?.email}</p>
-                        </div>
-                      </div>
-                      <div className="ml-13">
-                        <p className="text-gray-900 font-medium mb-1">{thesis.title}</p>
-                        <p className="text-gray-600 text-sm mb-2">
-                          {thesis.student?.faculty} - {thesis.student?.group}
-                        </p>
-                        <div className="flex items-center gap-4 text-sm">
-                          {thesis.deanSignedDate && (
-                            <div className="flex items-center gap-2 text-gray-600">
-                              <FiClock className="w-4 h-4" />
-                              <span>Подписано {new Date(thesis.deanSignedDate).toLocaleDateString("ru-RU")}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 text-green-600">
-                            <FiCheck className="w-4 h-4" />
-                            <span className="font-medium">Подписано деканом</span>
-                          </div>
-                          {thesis.finalGrade && (
-                            <div className="flex items-center gap-2 text-green-600">
-                              <FiCheck className="w-4 h-4" />
-                              <span className="font-medium">Оценка: {thesis.finalGrade}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleDownload(thesis.id, thesis.title)}
-                        disabled={downloadingId === thesis.id}
-                        className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm disabled:opacity-50"
-                      >
-                        {downloadingId === thesis.id ? (
-                          <div className="w-4 h-4 border-2 border-gray-700 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <FiDownload className="w-4 h-4" />
-                        )}
-                        Скачать работу
+                      <button onClick={() => handleDownload(thesis.id, thesis.title)} className="flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
+                        <FiDownload className="w-4 h-4" /> Скачать работу
                       </button>
                     </div>
                   </div>
+                ))
+              ) : (
+                <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+                  <FiCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-600 mb-2">Нет завершённых работ</h3>
+                  <p className="text-gray-500">Завершённые работы появятся здесь.</p>
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-12">
-                <FiCheck className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-600 mb-2">Нет подписанных работ</h3>
-                <p className="text-gray-500">Вы еще не подписали ни одной работы.</p>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

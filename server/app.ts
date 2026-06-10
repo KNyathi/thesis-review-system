@@ -40,16 +40,16 @@ app.use(
 //routes
 app.use(
   "/api/v1",
+  consultantRouter,
+  deanRouter,
+  hodRouter,
   reviewRouter,
+  supervisorRouter,
+  studentRouter,
   thesisRouter,
   authRouter,
   adminRouter,
   assignRouter,
-  supervisorRouter,
-  studentRouter,
-  consultantRouter,
-  hodRouter,
-  deanRouter,
   plagiarismRouter,
 )
 

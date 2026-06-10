@@ -51,6 +51,28 @@ export const getMyTopicStatus = async (req: Request, res: Response) => {
 };
 
 
+export const saveThesisContent = async (req: Request, res: Response) => {
+  try {
+    const student = req.user as AuthenticatedUser;
+    const { thesisContent } = req.body;
+    
+    // Базовая валидация
+    if (!thesisContent) {
+      res.status(400).json({ error: "Thesis content is required" });
+      return;
+    }
+    
+    await userModel.updateUser(student.id, {
+      thesisContent: thesisContent
+    });
+    
+    res.json({ message: "Thesis content saved successfully" });
+  } catch (error) {
+    console.error("Error saving thesis content:", error);
+    res.status(500).json({ error: "Failed to save thesis content" });
+  }
+};
+
 export const getSignedReview = async (req: Request, res: Response) => {
     try {
         const student = req.user as AuthenticatedUser & IStudent;
@@ -751,3 +773,125 @@ export const uploadStudentSignedReviewReviewer = async (req: Request, res: Respo
 }
 
 
+// Получение unsigned рецензии для подписания студентом
+export const getUnsignedReviewForStudent = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { thesisId } = req.params;
+    console.log("ThesisId:", thesisId);
+    
+    const thesis = await thesisModel.getThesisById(thesisId);
+    if (!thesis) {
+      console.log("ERROR: Thesis not found");
+      res.status(404).json({ error: "Thesis not found" });
+      return;
+    }
+    console.log("Thesis found, student owner:", thesis.data.student);
+    
+    const studentId = thesis.data.student;
+    console.log("Student ID:", studentId);
+    
+    // Пробуем несколько вариантов пути
+    const possiblePaths = [
+      path.join(process.cwd(), "server", "reviews", "supervisor", "unsigned", `unsigned_review1_${studentId}.pdf`),
+      path.join(__dirname, "../../server/reviews/supervisor/unsigned", `unsigned_review1_${studentId}.pdf`),
+      `D:\\четвёртый курс проект\\thesis-review-system\\server\\reviews\\supervisor\\unsigned\\unsigned_review1_${studentId}.pdf`,
+      `D:/четвёртый курс проект/thesis-review-system/server/reviews/supervisor/unsigned/unsigned_review1_${studentId}.pdf`,
+    ];
+    
+    let filePath = null;
+    for (const pathCandidate of possiblePaths) {
+      console.log("Checking path:", pathCandidate);
+      if (fs.existsSync(pathCandidate)) {
+        filePath = pathCandidate;
+        console.log("File found at:", pathCandidate);
+        break;
+      } else {
+        console.log("Not found");
+      }
+    }
+    
+    if (!filePath) {
+      console.log("ERROR: File not found in any of the possible paths");
+      res.status(404).json({ 
+        error: "File not found",
+        studentId: studentId,
+        searchedPaths: possiblePaths
+      });
+      return;
+    }
+    
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="unsigned_review_${studentId}.pdf"`);
+    
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+    
+    fileStream.on("error", (err) => {
+      console.error("Stream error:", err);
+      res.status(500).json({ error: "Error streaming file" });
+    });
+    
+  } catch (error) {
+    console.error("Error in getUnsignedReviewForStudent ===");
+    console.error(error);
+    res.status(500).json({ error: "Server error: " + (error as Error).message });
+  }
+};
+
+// Загрузка подписанной студентом рецензии
+export const uploadStudentSignedReview = async (req: Request, res: Response) => {
+  try {
+    const student = req.user as AuthenticatedUser;
+    const { thesisId } = req.params;
+    const file = req.file;
+    
+    if (!file) {
+      res.status(400).json({ error: "No file uploaded" });
+      return;
+    }
+    
+    const thesis = await thesisModel.getThesisById(thesisId);
+    if (!thesis || thesis.data.student !== student.id) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+    
+    // Проверяем, что работа ожидает подписи студента
+    if (thesis.data.status !== "awaiting_student_signature") {
+      res.status(400).json({ error: "Not awaiting student signature" });
+      return;
+    }
+    
+    // Сохраняем подписанный студентом PDF
+    const signedDir = path.join(__dirname, "../../server/reviews/student/signed");
+    if (!fs.existsSync(signedDir)) fs.mkdirSync(signedDir, { recursive: true });
+    
+    const fileName = `student_signed_${student.id}.pdf`;
+    const signedPath = path.join(signedDir, fileName);
+    fs.renameSync(file.path, signedPath);
+    
+    // Определяем следующий статус:
+    // - Если есть консультант, то работа ожидает подписи консультанта
+    // - Если нет консультанта, то работа ожидает подписи руководителя
+    let nextStatus: string;
+    
+    if (thesis.data.assignedConsultant) {
+      nextStatus = "awaiting_consultant_signature";
+    } else {
+      nextStatus = "awaiting_supervisor_signature";
+    }
+    
+    await thesisModel.updateThesis(thesisId, {
+      status: nextStatus,
+      studentSignedReviewPath: signedPath
+    });
+    
+    res.json({ 
+      message: "Student signed review uploaded successfully", 
+      nextStatus: nextStatus 
+    });
+  } catch (error) {
+    console.error("Error uploading student signed review:", error);
+    res.status(500).json({ error: "Failed to upload signed review" });
+  }
+};

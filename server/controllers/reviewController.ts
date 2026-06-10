@@ -334,97 +334,36 @@ export const getUnsignedReview = async (req: Request, res: Response) => {
     }
 
     // Check if reviewer has access
-    if (thesis.data.assignedReviewer !== reviewer.id) {
+    if (reviewer.role !== 'reviewer') {
       res.status(403).json({ error: "Access denied" })
       return
     }
 
-
+    // Проверяем, что рецензия сгенерирована
     if (!thesis.data.reviewPdfReviewer) {
-      res.status(404).json({ error: "Unsigned review not found" })
+      res.status(404).json({ error: "Review not generated yet" })
       return
     }
 
-    // Check conditions for BOTH files
-    const currentIteration = thesis.data.currentIteration;
-    const currentIterationData = thesis.data.reviewIterations[currentIteration - 1];
-
-    const isSupervisorSigned = currentIterationData?.supervisorReview?.status === 'signed';
-
-    // Get paths and check existence
-    const unsignedSupervisorPath = thesis.data.supervisorSignedReviewPath;
-    const unsignedReviewPath = thesis.data.reviewPdfReviewer
-
-    const hasSupervisorFile = unsignedSupervisorPath && fs.existsSync(unsignedSupervisorPath);
-    const hasReviewerFile = unsignedReviewPath && fs.existsSync(unsignedReviewPath);
-
-    const reviewerNotSigned = !thesis.data.reviewerSignedReviewPath;
-
-    // Only proceed if BOTH files are available and conditions are met
-    if (!isSupervisorSigned || !hasSupervisorFile || !hasReviewerFile || !reviewerNotSigned) {
-      res.status(400).json({
-        error: "Both reviews are not ready for HOD signing",
-        details: {
-          supervisorSigned: isSupervisorSigned,
-          supervisorFileExists: hasSupervisorFile,
-          reviewerFileExists: hasReviewerFile,
-          allConditionsMet: isSupervisorSigned && hasSupervisorFile && hasReviewerFile && reviewerNotSigned
-        }
-      });
-      return;
+    // Проверяем, что файл существует
+    const reviewPath = thesis.data.reviewPdfReviewer
+    if (!fs.existsSync(reviewPath)) {
+      res.status(404).json({ error: "Review file not found" })
+      return
     }
 
-    const supervisorPath = unsignedSupervisorPath!;
-    const reviewerPath = unsignedReviewPath!;
-
-    if (!fs.existsSync(supervisorPath) || !fs.existsSync(reviewerPath)) {
-      res.status(404).json({
-        error: "Review files not found",
-        details: {
-          supervisorExists: fs.existsSync(supervisorPath),
-          reviewerExists: fs.existsSync(reviewerPath)
-        }
-      });
-      return;
-    }
-
-
-    // Set headers for multipart response
-    const boundary = '----HODReviewBoundary';
-    res.setHeader('Content-Type', `multipart/mixed; boundary=${boundary}`);
-    res.setHeader('Content-Disposition', `inline; filename="reviews_${thesisId}.multipart"`);
-
-    // Helper function to send a file part - FIXED Promise types
-    const sendFilePart = (filePath: string, filename: string, contentType: string = 'application/pdf') => {
-      const fileStats = fs.statSync(filePath);
-
-      // Part header
-      res.write(`--${boundary}\r\n`);
-      res.write(`Content-Type: ${contentType}\r\n`);
-      res.write(`Content-Disposition: attachment; filename="${filename}"\r\n`);
-      res.write(`Content-Length: ${fileStats.size}\r\n`);
-      res.write('\r\n');
-
-      // File content
-      const fileStream = fs.createReadStream(filePath);
-      fileStream.pipe(res, { end: false });
-
-      return new Promise<void>((resolve, reject) => { // Changed to Promise<void>
-        fileStream.on('end', () => resolve()); // Fixed: resolve without arguments
-        fileStream.on('error', (error) => reject(error)); // Fixed: reject with error
-      });
-    };
-
-
-    // Send both files
-    await sendFilePart(supervisorPath, `unsigned_review1_${thesis.data.student}.pdf`);
-    await sendFilePart(reviewerPath, `unsigned_review2_${thesis.data.student}.pdf`);
-
-    // End of multipart
-    res.write(`--${boundary}--\r\n`);
-    res.end();
-
-
+    // Отдаём файл
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", `inline; filename="unsigned_review2_${thesis.data.student}.pdf"`)
+    
+    const fileStream = fs.createReadStream(reviewPath)
+    fileStream.pipe(res)
+    
+    fileStream.on("error", (error) => {
+      console.error("Error streaming file:", error)
+      res.status(500).json({ error: "Failed to stream file" })
+    })
+    
   } catch (error) {
     console.error("Error getting unsigned review:", error)
     res.status(500).json({ error: "Failed to get unsigned review" })
@@ -435,100 +374,48 @@ export const uploadSignedReview = async (req: Request, res: Response) => {
   try {
     const reviewer = req.user as AuthenticatedUser & IReviewer
     const { thesisId } = req.params
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const file = req.file
 
-
-    console.log("Uploading HOD signed reviews:", { thesisId, files: files ? Object.keys(files) : 'no files' });
-
-    // Find thesis and check access
-    const thesis = await thesisModel.getThesisById(thesisId)
-    if (!thesis) {
-      res.status(404).json({ error: "Thesis not found" })
+    if (!file) {
+      res.status(400).json({ error: "Signed PDF file is required" })
       return
     }
 
-    if (thesis.data.assignedReviewer !== reviewer.id) {
+    const thesis = await thesisModel.getThesisById(thesisId)
+    if (!thesis || thesis.data.assignedReviewer !== reviewer.id) {
       res.status(403).json({ error: "Access denied" })
       return
     }
 
-    // Check if both files are provided
-    if (!files || !files.review1 || !files.review2) {
-      res.status(400).json({
-        error: "Both supervisor and reviewer unsigned reviews are required",
-        received: files ? Object.keys(files) : 'no files'
-      });
-      return;
+    if (!thesis.data.reviewPdfReviewer) {
+      res.status(400).json({ error: "Review not generated yet" })
+      return
     }
 
-    // Check conditions for BOTH files
-    const currentIteration = thesis.data.currentIteration;
-    const currentIterationData = thesis.data.reviewIterations[currentIteration - 1];
-
-    const isSupervisorSigned = currentIterationData?.supervisorReview?.status === 'signed';
-
-    // Get paths and check existence
-    const unsignedSupervisorPath = thesis.data.supervisorSignedReviewPath;
-    const unsignedReviewPath = thesis.data.reviewPdfReviewer
-
-    const hasSupervisorFile = unsignedSupervisorPath && fs.existsSync(unsignedSupervisorPath);
-    const hasReviewerFile = unsignedReviewPath && fs.existsSync(unsignedReviewPath);
-
-    const reviewerSigned = thesis.data.reviewerSignedReviewPath;
-
-    // Only proceed if BOTH files are available and conditions are met
-    if (!isSupervisorSigned || !hasSupervisorFile || !hasReviewerFile) {
-      res.status(400).json({
-        error: "Both reviews are not ready for HOD signing",
-        details: {
-          supervisorSigned: isSupervisorSigned,
-          supervisorFileExists: hasSupervisorFile,
-          reviewerFileExists: hasReviewerFile,
-          allConditionsMet: isSupervisorSigned && hasSupervisorFile && hasReviewerFile 
-        }
-      });
-      return;
-    }
-
-    if (reviewerSigned) {
-      res.status(400).json({ error: "Reviews already signed by Reviewer" });
-      return;
-    }
-
-    // Ensure signed reviews directory exists
     const signedDir = path.join(__dirname, "../../server/reviews/reviewer/signed")
     if (!fs.existsSync(signedDir)) {
       fs.mkdirSync(signedDir, { recursive: true })
     }
 
-    // Move uploaded files to HOD signed reviews directory
-    const supervisorPath = path.join(signedDir, `signed_review1_${thesis.data.student}.pdf`);
-    const reviewerPath = path.join(signedDir, `signed_review2_${thesis.data.student}.pdf`);
+    const fileName = `signed_review2_${thesis.data.student}.pdf`
+    const signedPath = path.join(signedDir, fileName)
+    fs.renameSync(file.path, signedPath)
 
-    fs.renameSync(files.review1[0].path, supervisorPath);
-    fs.renameSync(files.review2[0].path, reviewerPath);
-
-    
-        console.log(`HOD signed reviews saved to: ${supervisorPath} and ${reviewerPath}`);
-
-    // Update thesis with signed PDF path and status
     await thesisModel.updateThesis(thesisId, {
-      status: "evaluated",
-      reviewerSignedReviewPath: reviewerPath,
-      reviewerSignedReview1Path: supervisorPath,
-      reviewPdfReviewer: unsignedReviewPath,
+      status: "awaiting_hod_signature",
+      reviewerSignedReviewPath: signedPath,
       signedDate: new Date(),
     })
 
-    // Update student status to evaluated
-    await userModel.updateStudentThesisStatus(thesis.data.student, "evaluated")
+    // Обновляем статус студента
+    await userModel.updateStudentThesisStatus(thesis.data.student, "awaiting_hod_signature")
 
     res.json({
-      message: "Signed review uploaded successfully using Chrome's native tools",
+      message: "Signed review uploaded successfully. Waiting for HOD signature.",
       success: true,
     })
   } catch (error) {
-    console.error("Error uploading Chrome-signed review:", error)
+    console.error("Error uploading signed review:", error)
     res.status(500).json({ error: "Failed to upload signed review" })
   }
 }
@@ -545,156 +432,107 @@ export const getSignedReview = async (req: Request, res: Response) => {
       return
     }
 
-    // Try to find both signed review files using full paths from database
-    let signedReview1Path: string
-    let signedReview2Path: string
-
-    // For review1 (supervisor review)
-    if (thesis.data.reviewerSignedReview1Path && fs.existsSync(thesis.data.reviewerSignedReview1Path)) {
-      signedReview1Path = thesis.data.reviewerSignedReview1Path
-    } else {
-      signedReview1Path = path.join(__dirname, "../../server/reviews/reviewer/signed", `signed_review1_${thesis.data.student}.pdf`)
+    // Проверка прав доступа
+    let isAllowed = false
+    if (user.role === "reviewer") {
+      isAllowed = thesis.data.assignedReviewer === user.id
+    } else if (user.role === "student") {
+      isAllowed = thesis.data.student === user.id
+    } else if (user.role === "supervisor") {
+      isAllowed = thesis.data.assignedSupervisor === user.id
+    } else if (user.role === "admin") {
+      isAllowed = true
     }
 
-    // For review2 (reviewer review)
-    if (thesis.data.reviewerSignedReviewPath && fs.existsSync(thesis.data.reviewerSignedReviewPath)) {
-      signedReview2Path = thesis.data.reviewerSignedReviewPath
-    } else {
-      signedReview2Path = path.join(__dirname, "../../server/reviews/reviewer/signed", `signed_review2_${thesis.data.student}.pdf`)
-    }
-
-    // Check if both files exist
-    if (!fs.existsSync(signedReview1Path) || !fs.existsSync(signedReview2Path)) {
-      res.status(404).json({ 
-        error: "Signed reviews not found",
-        details: {
-          review1Exists: fs.existsSync(signedReview1Path),
-          review2Exists: fs.existsSync(signedReview2Path)
-        }
-      })
+    if (!isAllowed) {
+      res.status(403).json({ error: "Access denied" })
       return
     }
 
-    // Set headers for multipart response
-    const boundary = '----SignedReviewBoundary'
-    res.setHeader('Content-Type', `multipart/mixed; boundary=${boundary}`)
-    res.setHeader('Content-Disposition', `inline; filename="signed_reviews_${thesisId}.multipart"`)
-
-    // Helper function to send a file part
-    const sendFilePart = (filePath: string, filename: string, contentType: string = 'application/pdf') => {
-      const fileStats = fs.statSync(filePath)
-
-      // Part header
-      res.write(`--${boundary}\r\n`)
-      res.write(`Content-Type: ${contentType}\r\n`)
-      res.write(`Content-Disposition: attachment; filename="${filename}"\r\n`)
-      res.write(`Content-Length: ${fileStats.size}\r\n`)
-      res.write('\r\n')
-
-      // File content
-      const fileStream = fs.createReadStream(filePath)
-      fileStream.pipe(res, { end: false })
-
-      return new Promise<void>((resolve, reject) => {
-        fileStream.on('end', () => resolve())
-        fileStream.on('error', (error) => reject(error))
-      })
+    // Получаем путь к подписанной рецензии рецензента
+    let signedReviewPath = thesis.data.reviewerSignedReviewPath
+    
+    if (!signedReviewPath || !fs.existsSync(signedReviewPath)) {
+      // Fallback: ищем в папке
+      const fallbackPath = path.join(__dirname, "../../server/reviews/reviewer/signed", `signed_review2_${thesis.data.student}.pdf`)
+      if (fs.existsSync(fallbackPath)) {
+        signedReviewPath = fallbackPath
+      } else {
+        res.status(404).json({ error: "Signed review not found" })
+        return
+      }
     }
 
-    // Send both signed reviews
-    await sendFilePart(signedReview1Path, `signed_review1_${thesis.data.student}.pdf`)
-    await sendFilePart(signedReview2Path, `signed_review2_${thesis.data.student}.pdf`)
-
-    // End of multipart
-    res.write(`--${boundary}--\r\n`)
-    res.end()
-
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", `inline; filename="signed_review_${thesis.data.student}.pdf"`)
+    
+    const fileStream = fs.createReadStream(signedReviewPath)
+    fileStream.pipe(res)
+    
+    fileStream.on("error", (error) => {
+      console.error("Error streaming signed review:", error)
+      res.status(500).json({ error: "Failed to stream signed review" })
+    })
+    
   } catch (error) {
-    console.error("Error getting signed reviews:", error)
-    res.status(500).json({ error: "Failed to get signed reviews" })
+    console.error("Error getting signed review:", error)
+    res.status(500).json({ error: "Failed to get signed review" })
   }
 }
-
 
 export const downloadSignedReview = async (req: Request, res: Response) => {
   try {
     const user = req.user as AuthenticatedUser
     const { thesisId } = req.params
 
-    // Find thesis
     const thesis = await thesisModel.getThesisById(thesisId)
     if (!thesis) {
       res.status(404).json({ error: "Thesis not found" })
       return
     }
 
-    // Try to find both signed review files using full paths from database
-    let signedReview1Path: string
-    let signedReview2Path: string
-
-    // For review1 (supervisor review)
-    if (thesis.data.reviewerSignedReview1Path && fs.existsSync(thesis.data.reviewerSignedReview1Path)) {
-      signedReview1Path = thesis.data.reviewerSignedReview1Path
-    } else {
-      signedReview1Path = path.join(__dirname, "../../server/reviews/reviewer/signed", `signed_review1_${thesis.data.student}.pdf`)
+    // Проверка прав доступа
+    let isAllowed = false
+    if (user.role === "reviewer") {
+      isAllowed = thesis.data.assignedReviewer === user.id
+    } else if (user.role === "student") {
+      isAllowed = thesis.data.student === user.id
+    } else if (user.role === "supervisor") {
+      isAllowed = thesis.data.assignedSupervisor === user.id
+    } else if (user.role === "admin") {
+      isAllowed = true
     }
 
-    // For review2 (reviewer review)
-    if (thesis.data.reviewerSignedReviewPath && fs.existsSync(thesis.data.reviewerSignedReviewPath)) {
-      signedReview2Path = thesis.data.reviewerSignedReviewPath
-    } else {
-      signedReview2Path = path.join(__dirname, "../../server/reviews/reviewer/signed", `signed_review2_${thesis.data.student}.pdf`)
-    }
-
-    // Check if both files exist
-    if (!fs.existsSync(signedReview1Path) || !fs.existsSync(signedReview2Path)) {
-      res.status(404).json({ 
-        error: "Signed reviews not found",
-        details: {
-          review1Exists: fs.existsSync(signedReview1Path),
-          review2Exists: fs.existsSync(signedReview2Path)
-        }
-      })
+    if (!isAllowed) {
+      res.status(403).json({ error: "Access denied" })
       return
     }
 
-    // Set headers for multipart response with download disposition
-    const boundary = '----SignedReviewBoundary'
-    res.setHeader('Content-Type', `multipart/mixed; boundary=${boundary}`)
-    res.setHeader('Content-Disposition', `attachment; filename="signed_reviews_${thesisId}.multipart"`)
-
-    // Helper function to send a file part
-    const sendFilePart = (filePath: string, filename: string, contentType: string = 'application/pdf') => {
-      const fileStats = fs.statSync(filePath)
-
-      // Part header
-      res.write(`--${boundary}\r\n`)
-      res.write(`Content-Type: ${contentType}\r\n`)
-      res.write(`Content-Disposition: attachment; filename="${filename}"\r\n`)
-      res.write(`Content-Length: ${fileStats.size}\r\n`)
-      res.write('\r\n')
-
-      // File content
-      const fileStream = fs.createReadStream(filePath)
-      fileStream.pipe(res, { end: false })
-
-      return new Promise<void>((resolve, reject) => {
-        fileStream.on('end', () => resolve())
-        fileStream.on('error', (error) => reject(error))
-      })
+    let signedReviewPath = thesis.data.reviewerSignedReviewPath
+    if (!signedReviewPath || !fs.existsSync(signedReviewPath)) {
+      const fallbackPath = path.join(__dirname, "../../server/reviews/reviewer/signed", `signed_review2_${thesis.data.student}.pdf`)
+      if (fs.existsSync(fallbackPath)) {
+        signedReviewPath = fallbackPath
+      } else {
+        res.status(404).json({ error: "Signed review not found" })
+        return
+      }
     }
 
-    // Send both signed reviews
-    await sendFilePart(signedReview1Path, `signed_review1_${thesis.data.student}.pdf`)
-    await sendFilePart(signedReview2Path, `signed_review2_${thesis.data.student}.pdf`)
-
-    // End of multipart
-    res.write(`--${boundary}--\r\n`)
-    res.end()
-
+    res.setHeader("Content-Type", "application/pdf")
+    res.setHeader("Content-Disposition", `attachment; filename="signed_review_${thesis.data.student}.pdf"`)
+    
+    const fileStream = fs.createReadStream(signedReviewPath)
+    fileStream.pipe(res)
+    
+    fileStream.on("error", (error) => {
+      console.error("Error downloading signed review:", error)
+      res.status(500).json({ error: "Failed to download signed review" })
+    })
+    
   } catch (error) {
-    console.error("Error downloading signed reviews:", error)
-    res.status(500).json({ error: "Failed to download signed reviews" })
+    console.error("Error downloading signed review:", error)
+    res.status(500).json({ error: "Failed to download signed review" })
   }
 }
 
@@ -702,97 +540,45 @@ export const signedReview = async (req: Request, res: Response) => {
   try {
     const reviewer = req.user as AuthenticatedUser & IReviewer;
     const { thesisId } = req.params;
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const file = req.file;  // ← один файл
 
-    if (!files || !files.supervisorReview || !files.reviewerReview) {
-      res.status(400).json({ error: "Both supervisor and reviewer signed files are required" });
+    if (!file) {
+      res.status(400).json({ error: "Signed PDF file is required" });
       return;
     }
 
-    // Get the current thesis first to access student data
-    const currentThesis = await thesisModel.getThesisById(thesisId);
-    if (!currentThesis) {
-      res.status(404).json({ error: "Thesis not found" });
+    const thesis = await thesisModel.getThesisById(thesisId);
+    if (!thesis || thesis.data.assignedReviewer !== reviewer.id) {
+      res.status(403).json({ error: "Access denied" });
       return;
     }
 
-    // Verify reviewer has access to this thesis
-    if (currentThesis.data.assignedReviewer !== reviewer.id) {
-      res.status(403).json({ error: "Access denied: Not your assigned thesis" });
+    if (!thesis.data.reviewPdfReviewer) {
+      res.status(400).json({ error: "Review not generated yet" });
       return;
     }
 
-    // Check conditions for BOTH files
-    const currentIteration = currentThesis.data.currentIteration;
-    const currentIterationData = currentThesis.data.reviewIterations[currentIteration - 1];
-
-    const isSupervisorSigned = currentIterationData?.supervisorReview?.status === 'signed';
-
-    // Get paths and check existence of unsigned files
-    const unsignedSupervisorPath = currentThesis.data.supervisorSignedReviewPath;
-    const unsignedReviewPath = currentThesis.data.reviewPdfReviewer;
-
-    const hasSupervisorFile = unsignedSupervisorPath && fs.existsSync(unsignedSupervisorPath);
-    const hasReviewerFile = unsignedReviewPath && fs.existsSync(unsignedReviewPath);
-
-    const reviewerSigned = currentThesis.data.reviewerSignedReviewPath;
-
-    // Only proceed if BOTH files are available and conditions are met
-    if (!isSupervisorSigned || !hasSupervisorFile || !hasReviewerFile) {
-      res.status(400).json({
-        error: "Both reviews are not ready for signing",
-        details: {
-          supervisorSigned: isSupervisorSigned,
-          supervisorFileExists: hasSupervisorFile,
-          reviewerFileExists: hasReviewerFile,
-          allConditionsMet: isSupervisorSigned && hasSupervisorFile && hasReviewerFile 
-        }
-      });
-      return;
-    }
-
-    if (reviewerSigned) {
-      res.status(400).json({ error: "Reviews already signed by Reviewer" });
-      return;
-    }
-
-    // Move signed PDFs to permanent storage - KEEPING ORIGINAL PATHS
-    const supervisorSignedPath = path.join(__dirname, "../../server/reviews/reviewer/signed", `signed_review1_${currentThesis.data.student}.pdf`);
-    const reviewerSignedPath = path.join(__dirname, "../../server/reviews/reviewer/signed", `signed_review2_${currentThesis.data.student}.pdf`);
-
-    // Ensure directory exists
     const signedDir = path.join(__dirname, "../../server/reviews/reviewer/signed");
     if (!fs.existsSync(signedDir)) {
       fs.mkdirSync(signedDir, { recursive: true });
     }
 
-    fs.renameSync(files.supervisorReview[0].path, supervisorSignedPath);
-    fs.renameSync(files.reviewerReview[0].path, reviewerSignedPath);
+    const fileName = `signed_review2_${thesis.data.student}.pdf`;
+    const signedPath = path.join(signedDir, fileName);
+    fs.renameSync(file.path, signedPath);
 
-    // Update thesis with reviewer signed paths and metadata - KEEPING ORIGINAL FIELD NAMES
-    const thesis = await thesisModel.updateThesis(thesisId, {
+    await thesisModel.updateThesis(thesisId, {
       status: "evaluated",
-      reviewerSignedReviewPath: reviewerSignedPath,  
-      reviewerSignedReview1Path: supervisorSignedPath, 
-      reviewPdfReviewer: unsignedReviewPath,
+      reviewerSignedReviewPath: signedPath,
       signedDate: new Date(),
     });
 
-    if (!thesis) {
-      res.status(404).json({ error: "Thesis not found" });
-      return;
-    }
+    await userModel.updateStudentThesisStatus(thesis.data.student, "evaluated");
 
-    // Update student status to evaluated
-    await userModel.updateStudentThesisStatus(currentThesis.data.student, "evaluated");
-
-    res.json({ 
-      success: true,
-      message: "Both reviews signed successfully by Reviewer"
-    });
+    res.json({ success: true });
   } catch (error) {
-    console.error("Error finalizing reviewer review:", error);
-    res.status(500).json({ error: "Failed to finalize reviewer review" });
+    console.error("Error finalizing review:", error);
+    res.status(500).json({ error: "Failed to finalize review" });
   }
 };
 

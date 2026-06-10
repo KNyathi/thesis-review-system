@@ -1,7 +1,7 @@
 import express from 'express';
 import upload from "../utils/multer"
 import { authenticate, isConsultantReview, isSupervisor } from '../middleware/auth';
-import { approveThesisTopic, downloadSignedReview, downloadThesis, getAssignedTheses, getCompletedReviews, getPendingApprovals, getSignedReview, getUnsignedReview, proposeThesisTopic, reReviewThesis, signedReview, submitReview, uploadSignedReview, viewThesis, getMyStudents } from '../controllers/supervisorController';
+import { approveThesisTopic, downloadSignedReview, downloadThesis, getAssignedTheses, getCompletedReviews, getPendingApprovals, getSignedReview, getUnsignedReview, getUnsignedSupervisorReview, proposeThesisTopic, reReviewThesis, signedReview, submitReview, uploadSignedReview, viewThesis, getMyStudents, uploadFinalSupervisorSignedReview } from '../controllers/supervisorController';
 
 const supervisorRouter = express.Router();
 
@@ -19,13 +19,12 @@ supervisorRouter.post("/submit-review-supervisor/:thesisId", authenticate, isSup
 supervisorRouter.post("/re-review-supervisor/:thesisId", authenticate, isSupervisor, reReviewThesis)
 
 // Review signing routes
-supervisorRouter.get("/unsigned-review-supervisor/:thesisId", authenticate, isSupervisor, getUnsignedReview)
 supervisorRouter.get(
-    "/signed-review-supervisor/:thesisId",
-    authenticate,
-    isConsultantReview,
-    getSignedReview,
-)
+  "/unsigned-review-supervisor/:thesisId",
+  authenticate,
+  isSupervisor,  
+  getUnsignedReview
+);
 
 // Chrome native tools upload route
 supervisorRouter.post(
@@ -35,6 +34,21 @@ supervisorRouter.post(
     upload.single("signedReview"),
     uploadSignedReview,
 )
+
+supervisorRouter.get(
+  "/get-student-signed/:thesisId",
+  authenticate,
+  isSupervisor,
+  getUnsignedSupervisorReview
+);
+
+supervisorRouter.post(
+  "/upload-final-signed-review/:thesisId",
+  authenticate,
+  isSupervisor,
+  upload.single("finalSignedReview"),
+  uploadFinalSupervisorSignedReview
+);
 
 supervisorRouter.post("/signed-review-supervisor/:thesisId", authenticate, isSupervisor, signedReview)
 
@@ -51,5 +65,14 @@ supervisorRouter.get(
 supervisorRouter.get("/view-pdf-supervisor/:id", authenticate, isSupervisor, viewThesis) //complete
 
 supervisorRouter.get('/my-students', authenticate, isSupervisor, getMyStudents);
+
+// Загрузка финальной подписанной рецензии руководителем
+supervisorRouter.post(
+  "/upload-final-signed-review/:thesisId",
+  authenticate,
+  isSupervisor,
+  upload.single("finalSignedReview"),
+  uploadFinalSupervisorSignedReview
+);
 
 export default supervisorRouter;
